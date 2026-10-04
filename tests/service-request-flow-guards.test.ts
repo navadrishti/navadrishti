@@ -30,6 +30,8 @@ const mocks = vi.hoisted(() => ({
   releaseAllocation: vi.fn(),
   verification: vi.fn(),
   snapshot: vi.fn(),
+  createShipment: vi.fn(),
+  upsertWarehouse: vi.fn(),
   razorpay: { orders: { fetch: vi.fn(), create: vi.fn() }, payments: { fetch: vi.fn(), refund: vi.fn() } },
 }))
 
@@ -60,7 +62,13 @@ vi.mock('@/lib/server-auth', () => ({
 vi.mock('@/lib/infrastructure-assignment-lock', () => ({
   canIndividualApplyToNeed: vi.fn(async () => ({ allowed: true, reason: null, blockingApplicationId: null })),
 }))
-vi.mock('@/lib/delhivery', () => ({ getDelhiveryTrackingSnapshot: mocks.snapshot }))
+vi.mock('@/lib/delhivery', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/delhivery')>()),
+  getDelhiveryTrackingSnapshot: mocks.snapshot,
+  createDelhiveryShipment: mocks.createShipment,
+  assertDelhiveryRouteServiceable: vi.fn(async () => undefined),
+  upsertDelhiveryWarehouse: mocks.upsertWarehouse,
+}))
 vi.mock('razorpay', () => ({
   default: vi.fn(function () {
     return mocks.razorpay
@@ -264,27 +272,113 @@ describe('PUT volunteer status: NGO', () => {
 })
 
 describe('delivery sync', () => {
-  const sync = () =>
-    syncDelivery(jsonRequest('http://localhost/api/service-requests/5/volunteers/9/delivery/sync', { token: NGO, body: { trackingId: 'T1' } }), volunteerParams)
+  const sync = (token = NGO, body: Record<string, unknown> = {}) =>
+    syncDelivery(jsonRequest('http://localhost/api/service-requests/5/volunteers/9/delivery/sync', { token, body }), volunteerParams)
+  const booked = (status: string, meta: Record<string, unknown> = { delivery_tracking_id: 'T1' }) =>
+    application(status, { response_meta: meta })
 
   beforeEach(() => {
-    mocks.snapshot.mockResolvedValue({ provider: 'delhivery', trackingId: 'T1', currentStatus: 'In Transit', lastLocation: null, lastEventAt: null, events: [] })
+    mocks.snapshot.mockResolvedValue({ provider: 'delhivery', trackingId: 'T1', currentStatus: 'In Transit', statusType: 'UD', lastLocation: null, lastEventAt: null, events: [] })
   })
 
   it.each(['pending', 'rejected', 'completed'])('refuses to sync a %s application', async (status) => {
-    volunteerDb(application(status))
+    volunteerDb(booked(status))
     const res = await sync()
     expect(res.status).toBe(409)
     expect(mocks.snapshot).not.toHaveBeenCalled()
   })
 
-  it('fails when the shipment upsert fails', async () => {
-    volunteerDb(application('accepted'), (query) =>
-      query.table === 'service_request_shipments' && query.op === 'upsert' ? { error: { code: '500', message: 'nope' } } : undefined
+  it('fails when the shipment cannot be saved', async () => {
+    volunteerDb(booked('accepted'), (query) =>
+      query.table === 'service_request_shipments' && query.op === 'insert' ? { error: { code: '500', message: 'nope' } } : undefined
     )
     const res = await sync()
     expect(res.status).toBe(500)
     expect(mocks.db.serviceRequestApplications.update).not.toHaveBeenCalled()
+  })
+
+  it('ignores a tracking id typed into the request and only follows the booked shipment', async () => {
+    volunteerDb(booked('accepted', {}))
+    const res = await sync(INDIVIDUAL, { trackingId: 'SOMEONE-ELSES-AWB' })
+    expect(res.status).toBe(400)
+    expect(mocks.snapshot).not.toHaveBeenCalled()
+  })
+
+  it('records the status and completes the donation once delivered', async () => {
+    mocks.snapshot.mockResolvedValue({ provider: 'delhivery', trackingId: 'T1', currentStatus: 'Delivered', statusType: 'DL', lastLocation: 'Pune', lastEventAt: '2026-10-01T10:00:00.000Z', events: [] })
+    volunteerDb(booked('accepted'))
+    const res = await sync()
+    expect(res.status).toBe(200)
+    const [insert] = supabaseFake.find('service_request_shipments', 'insert')
+    expect(insert.payload).toMatchObject({ tracking_id: 'T1', shipment_status: 'delivered', application_id: 9 })
+    expect(mocks.db.serviceRequestApplications.update).toHaveBeenCalledWith(9, expect.objectContaining({ status: 'completed', fulfilled_quantity: 3 }))
+  })
+
+  describe('booking', () => {
+    const users: Record<number, Record<string, unknown>> = {
+      14: { id: 14, name: 'Ravi', phone: '9876543210', profile_data: { home_address: { address_line: '7 Park St', city: 'Pune', state: 'Maharashtra', pincode: '411001' } } },
+      12: { id: 12, name: 'Seva Trust', phone: '9123456789', profile_data: { ngo_headquarters: { address_line: 'NGO Office', city: 'Mumbai', state: 'Maharashtra', pincode: '400001' } } },
+    }
+    const bookingDb = (app: Record<string, unknown>, project: Record<string, unknown> | null = null) =>
+      volunteerDb(app, (query) => {
+        if (query.table === 'service_requests') return { data: { ...materialNeed, project } }
+        if (query.table === 'users' && query.op === 'select') return { data: users[Number(eqsOf(query).id)] ?? null }
+        return undefined
+      })
+
+    beforeEach(() => {
+      mocks.upsertWarehouse.mockResolvedValue(undefined)
+      mocks.createShipment.mockResolvedValue({ success: true, waybill: 'AWB55', orderId: 'sr_5_9', status: 'Success', remark: null, raw: {} })
+      mocks.snapshot.mockResolvedValue({ provider: 'delhivery', trackingId: 'AWB55', currentStatus: 'Manifested', statusType: 'UD', lastLocation: null, lastEventAt: null, events: [] })
+    })
+
+    it('books from the donor address to the NGO and stores the system-assigned AWB', async () => {
+      bookingDb(application('accepted'))
+      const res = await sync(INDIVIDUAL, { action: 'book' })
+      expect(res.status).toBe(200)
+      expect(mocks.createShipment).toHaveBeenCalledWith(expect.objectContaining({
+        orderId: 'sr_5_9',
+        pickupLocationName: 'Navadrishti-14',
+        quantity: 3,
+        seller: expect.objectContaining({ name: 'Ravi', address: '7 Park St', pincode: '411001' }),
+        consignee: expect.objectContaining({ name: 'Seva Trust', address: 'NGO Office', pincode: '400001' }),
+      }))
+      expect(mocks.upsertWarehouse).toHaveBeenCalledWith(expect.objectContaining({ name: 'Navadrishti-14', pincode: '411001' }))
+      expect(mocks.db.serviceRequestApplications.update).toHaveBeenCalledWith(9, expect.objectContaining({
+        response_meta: expect.objectContaining({ delivery_tracking_id: 'AWB55', delivery_order_id: 'sr_5_9' }),
+      }))
+    })
+
+    it('delivers to the project site when the need has a full address', async () => {
+      bookingDb(application('accepted'), { exact_address: JSON.stringify({ address_line: 'School, Ward 4', city: 'Nashik', state: 'Maharashtra', pincode: '422001' }) })
+      await sync(INDIVIDUAL, { action: 'book' })
+      expect(mocks.createShipment).toHaveBeenCalledWith(expect.objectContaining({
+        consignee: expect.objectContaining({ name: 'Seva Trust', phone: '9123456789', address: 'School, Ward 4', pincode: '422001' }),
+      }))
+    })
+
+    it('only lets the donor book', async () => {
+      bookingDb(application('accepted'))
+      const res = await sync(NGO, { action: 'book' })
+      expect(res.status).toBe(403)
+      expect(mocks.createShipment).not.toHaveBeenCalled()
+    })
+
+    it('refuses to book twice', async () => {
+      bookingDb(booked('accepted'))
+      const res = await sync(INDIVIDUAL, { action: 'book' })
+      expect(res.status).toBe(409)
+      expect(mocks.createShipment).not.toHaveBeenCalled()
+    })
+
+    it('asks the donor to complete their address first', async () => {
+      users[14] = { ...users[14], profile_data: {} }
+      bookingDb(application('accepted'))
+      const res = await sync(INDIVIDUAL, { action: 'book' })
+      expect(res.status).toBe(422)
+      expect((await res.json()).error).toBe('Add a street address to your profile before booking Delhivery')
+      expect(mocks.createShipment).not.toHaveBeenCalled()
+    })
   })
 })
 
@@ -468,6 +562,24 @@ describe('refresh-status', () => {
     const [update] = supabaseFake.find('service_requests', 'update')
     expect(update.payload).toMatchObject({ status: 'completed' })
     expect(eqsOf(update)).toEqual({ id: 5, status: 'active' })
+  })
+
+  it('keeps a completed request completed when nobody is still working on it', async () => {
+    mocks.db.serviceRequests.getById.mockResolvedValue({ ...materialNeed, status: 'completed' })
+    useDb((query) => (query.table === 'service_request_applications' ? { data: [{ id: 1, status: 'rejected' }] } : undefined))
+    const res = await refresh()
+    expect(res.status).toBe(200)
+    expect((await res.json()).data.newStatus).toBe('completed')
+    expect(supabaseFake.find('service_requests', 'update')).toHaveLength(0)
+  })
+
+  it('reopens a completed request when a volunteer is still working', async () => {
+    mocks.db.serviceRequests.getById.mockResolvedValue({ ...materialNeed, status: 'completed' })
+    useDb((query) => (query.table === 'service_request_applications' ? { data: [{ id: 1, status: 'active' }] } : undefined))
+    const res = await refresh()
+    const [update] = supabaseFake.find('service_requests', 'update')
+    expect(res.status).toBe(200)
+    expect(update.payload).toMatchObject({ status: 'active' })
   })
 })
 
@@ -659,6 +771,7 @@ describe('engagement settlement verify', () => {
 describe('engagement settlement start', () => {
   const offerRental = {
     id: 'asg_2',
+    status: 'active',
     owner_user_id: 30,
     assignee_user_id: 12,
     application_table: 'service_clients',
@@ -687,10 +800,18 @@ describe('engagement settlement start', () => {
     expect(res.status).toBe(403)
   })
 
+  it('refuses to settle an engagement that is no longer active', async () => {
+    useDb((query) => (query.table === 'service_engagement_assignments' ? { data: { ...offerRental, status: 'cancelled' } } : undefined))
+    const res = await start(NGO)
+    expect(res.status).toBe(409)
+    expect(mocks.razorpay.orders.create).not.toHaveBeenCalled()
+  })
+
   it('returns a clear 409 when the provider has not connected Razorpay', async () => {
     useDb((query) => {
       if (query.table === 'service_engagement_assignments') return { data: offerRental }
       if (query.table === 'users') return { data: { profile_data: {} } }
+      if (query.table === 'service_attendance_entries') return { data: [{ amount_due: 1000, payment_status: 'pending' }] }
       return undefined
     })
     const res = await start(NGO)
@@ -704,6 +825,9 @@ describe('engagement settlement start', () => {
       if (query.table === 'service_engagement_assignments') return { data: offerRental }
       if (query.table === 'users') {
         return { data: { profile_data: { razorpay_linked_account_id: 'acc_30', razorpay_link_status: 'active' } } }
+      }
+      if (query.table === 'service_attendance_entries') {
+        return { data: [{ amount_due: 500, payment_status: 'pending' }, { amount_due: 500, payment_status: 'pending' }] }
       }
       return undefined
     })

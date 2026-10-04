@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
 import { escapeHtml, sendEmail } from '@/lib/email';
 import { getAdminUser } from '@/lib/server-auth';
-import { processAdminRefund } from '@/lib/admin-refund';
+import { AdminRefundError, processAdminRefund } from '@/lib/admin-refund';
 import { parseAmountToInr, getErrorMessage } from '@/lib/utils';
 import type { TablesUpdate } from '@/lib/database.types';
 
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const { ticketId } = await params;
     const body = await request.json();
-    const serviceRequestId = Number(body?.service_request_id);
+    const serviceRequestId = Number(body?.service_request_id) || null;
     const refundPaymentId = String(body?.razorpay_payment_id || '').trim();
     const requestedRefundInr = parseAmountToInr(body?.amount);
     const refundReason = String(body?.reason || 'admin_support_refund').trim();
@@ -139,7 +139,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
     console.error('Admin support ticket refund error:', error);
-    return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status: 500 });
+    const status = error instanceof AdminRefundError ? error.status : 500;
+    return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status });
   }
 }
 

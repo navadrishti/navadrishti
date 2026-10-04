@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { listCompanyOwnedAssignmentIds } from '@/lib/company-ca'
+import { listCompanyPayableAssignmentIds } from '@/lib/company-ca-payable'
 import { getCompanyCAFromRequest, hasCompanyCaPermission } from '@/lib/server-auth'
 import Razorpay from 'razorpay'
 import { supabase } from '@/lib/db'
@@ -46,13 +46,13 @@ export async function POST(request: NextRequest) {
     if (contributionId) contributionIds.push(contributionId)
 
     if (attendanceEntryIds.length > 0) {
-      const ownedAssignmentIds = await listCompanyOwnedAssignmentIds(companyUserId)
-      const { data: entries } = ownedAssignmentIds.length > 0
+      const payableAssignmentIds = await listCompanyPayableAssignmentIds(companyUserId)
+      const { data: entries } = payableAssignmentIds.length > 0
         ? await supabase
             .from('service_attendance_entries')
             .select('*')
             .in('id', attendanceEntryIds)
-            .in('assignment_id', ownedAssignmentIds)
+            .in('assignment_id', payableAssignmentIds)
         : { data: [] }
       if (!entries || entries.length === 0) return NextResponse.json({ error: 'Attendance entries not found' }, { status: 404 })
       const payableEntries = entries.filter((e) => !SETTLED_ENTRY_STATUSES.has(String(e.payment_status || 'pending').toLowerCase()))

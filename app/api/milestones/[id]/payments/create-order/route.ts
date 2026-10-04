@@ -100,7 +100,7 @@ export async function POST(
     }
 
     const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
-    const receipt = `csr_ms_${milestoneId}_${Date.now()}`;
+    const receipt = `csr_ms_${String(milestoneId).slice(0, 8)}_${Date.now()}`;
     const { order, pricing, orderNotes } = await createPlatformPricedOrder({
       razorpay,
       baseAmountInr,
@@ -118,7 +118,7 @@ export async function POST(
     });
 
     const nowIso = new Date().toISOString();
-    await supabase.from('razorpay_payment_orders').upsert(
+    const { error: orderRecordError } = await supabase.from('razorpay_payment_orders').upsert(
       {
         service_request_id: null,
         contribution_id: null,
@@ -136,6 +136,7 @@ export async function POST(
       },
       { onConflict: 'razorpay_order_id' }
     );
+    if (orderRecordError) throw orderRecordError;
 
     return NextResponse.json({
       success: true,

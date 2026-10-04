@@ -238,15 +238,18 @@ export function useNgoDashboardData(userId: number | undefined) {
         return;
       }
 
-      const response = await fetch('/api/campaigns/lead-assignments', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const headers = { Authorization: `Bearer ${token}` };
+      const [response, trackingResponse] = await Promise.all([
+        fetch('/api/campaigns/lead-assignments', { headers }),
+        fetch('/api/campaigns/tracking', { headers }),
+      ]);
 
       const payload = await response.json();
+      const trackingPayload = trackingResponse.ok ? await trackingResponse.json().catch(() => null) : null;
+      const tracking: Record<string, CampaignLeadAssignment['tracking']> = trackingPayload?.data || {};
       if (response.ok && payload?.success) {
-        setCampaignLeadAssignments(Array.isArray(payload.data) ? payload.data : []);
+        const rows: CampaignLeadAssignment[] = Array.isArray(payload.data) ? payload.data : [];
+        setCampaignLeadAssignments(rows.map((row) => ({ ...row, tracking: tracking[String(row.campaign_id)] ?? null })));
       } else {
         setCampaignLeadAssignments([]);
       }

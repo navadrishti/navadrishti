@@ -28,6 +28,10 @@ type AdminPaymentRow = {
   payment_method?: string | null;
   paid_at?: string | null;
   created_at?: string | null;
+  payment_kind_label?: string | null;
+  payer?: Pick<AdminUserSummary, 'id' | 'name' | 'email'> | null;
+  payee?: Pick<AdminUserSummary, 'id' | 'name' | 'email'> | null;
+  refunded_inr?: number | null;
   service_request_id?: number | null;
   service_request?: {
     id: number;
@@ -98,7 +102,7 @@ export function AdminRefundsPanel() {
     setSelectedPayment(payment);
     setRefundPaymentId(payment.razorpay_payment_id || '');
     setRefundRequestId(payment.service_request_id ? String(payment.service_request_id) : '');
-    setRefundAmount(payment.amount_inr ? String(payment.amount_inr) : '');
+    setRefundAmount('');
     setRefundReason('admin_refund');
   };
 
@@ -108,9 +112,8 @@ export function AdminRefundsPanel() {
       const res = await fetch(`/api/admin/payments/discover?paymentId=${encodeURIComponent(paymentId)}`, { credentials: 'include' });
       const payload = await res.json();
       if (res.ok && payload?.success && payload.data) {
-        const { service_request_id, amount_inr } = payload.data;
+        const { service_request_id } = payload.data;
         if (service_request_id) setRefundRequestId(String(service_request_id));
-        if (amount_inr) setRefundAmount(String(amount_inr));
       }
     } catch {
       // ignore
@@ -138,7 +141,9 @@ export function AdminRefundsPanel() {
       const data = await response.json();
       if (!response.ok || !data?.success) throw new Error(data?.error || 'Failed to initiate refund');
       sonnerToast.success(data?.data?.message || 'Refund initiated');
+      for (const action of data?.data?.actions || []) sonnerToast.info(action);
       for (const warning of data?.data?.warnings || []) sonnerToast.warning(warning);
+      setSelectedPayment(null);
       await loadPayments();
     } catch (error) {
       sonnerToast.error(getErrorMessage(error) || 'Refund failed');
@@ -161,7 +166,7 @@ export function AdminRefundsPanel() {
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search payment ID, request ID, title, payer"
+            placeholder="Search payment ID, request, payer, payee or type"
             className="h-10 border-blue-200 bg-white"
           />
           <div className="grid grid-cols-3 gap-2">
@@ -200,9 +205,10 @@ export function AdminRefundsPanel() {
                       <div className="min-w-0">
                         <p className="truncate font-semibold text-slate-900">{payment.razorpay_payment_id}</p>
                         <p className="text-xs text-slate-500">
+                          {payment.payment_kind_label || 'Platform payment'}
                           {payment.service_request_id
-                            ? `Request #${payment.service_request_id} • ${payment.service_request?.title || 'Unknown request'}`
-                            : payment.razorpay_order_id || 'Platform payment'}
+                            ? ` • Request #${payment.service_request_id} ${payment.service_request?.title || ''}`
+                            : ''}
                         </p>
                       </div>
                       <Badge className={cn('shrink-0', statusTone(payment.latest_refund_status || payment.payment_status))}>
@@ -210,7 +216,8 @@ export function AdminRefundsPanel() {
                       </Badge>
                     </div>
                     <p className="mt-2 text-sm text-slate-600">
-                      INR {formatAdminDetailValue(payment.amount_inr)} • {payment.service_request?.requester?.name || 'Unknown payer'}
+                      INR {formatAdminDetailValue(payment.amount_inr)} • {payment.payer?.name || 'Unknown payer'}
+                      {payment.refunded_inr ? ` • INR ${payment.refunded_inr} refunded` : ''}
                     </p>
                   </button>
                 ))}
@@ -236,12 +243,15 @@ export function AdminRefundsPanel() {
                   items={[
                     { label: 'Payment ID', value: formatAdminDetailValue(selectedPayment.razorpay_payment_id) },
                     { label: 'Order ID', value: formatAdminDetailValue(selectedPayment.razorpay_order_id) },
+                    { label: 'Payment type', value: formatAdminDetailValue(selectedPayment.payment_kind_label) },
                     { label: 'Amount (INR)', value: formatAdminDetailValue(selectedPayment.amount_inr) },
+                    { label: 'Refunded so far (INR)', value: formatAdminDetailValue(selectedPayment.refunded_inr || 0) },
                     { label: 'Payment status', value: formatAdminDetailValue(selectedPayment.payment_status) },
                     { label: 'Refund status', value: formatAdminDetailValue(selectedPayment.latest_refund_status) },
                     { label: 'Paid at', value: formatAdminDetailValue(selectedPayment.paid_at) },
+                    { label: 'Paid by', value: formatAdminDetailValue(selectedPayment.payer?.name) },
+                    { label: 'Paid to', value: formatAdminDetailValue(selectedPayment.payee?.name) },
                     { label: 'Service request', value: formatAdminDetailValue(selectedPayment.service_request?.title) },
-                    { label: 'Requester', value: formatAdminDetailValue(selectedPayment.service_request?.requester?.name) },
                     { label: 'Request status', value: formatAdminDetailValue(selectedPayment.service_request?.status) },
                   ]}
                 />
@@ -249,9 +259,18 @@ export function AdminRefundsPanel() {
 
               {Array.isArray(selectedPayment.refunds) && selectedPayment.refunds.length > 0 ? (
                 <AdminDetailSection title="Refund history">
-                  <pre className="max-h-40 overflow-auto rounded-md border bg-white p-3 text-xs text-slate-700">
-                    {JSON.stringify(selectedPayment.refunds, null, 2)}
-                  </pre>
+                  <ul className="max-h-40 space-y-2 overflow-auto text-sm">
+                    {selectedPayment.refunds.map((refund) => (
+                      <li key={refund.id} className="flex items-center justify-between gap-3 rounded-md border border-slate-100 px-3 py-2">
+                        <span className="min-w-0 truncate text-slate-700">
+                          INR {formatAdminDetailValue(refund.amount_inr)} • {refund.refund_reason || 'refund'} • {formatAdminDetailValue(refund.initiated_at)}
+                        </span>
+                        <Badge className={cn('shrink-0', statusTone(refund.refund_status))}>
+                          {formatStatusLabel(refund.refund_status)}
+                        </Badge>
+                      </li>
+                    ))}
+                  </ul>
                 </AdminDetailSection>
               ) : null}
 
@@ -275,7 +294,7 @@ export function AdminRefundsPanel() {
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-700">Refund amount (optional)</label>
-                    <Input value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} placeholder="Leave blank for full refund" />
+                    <Input value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} placeholder="Leave blank to refund everything left" />
                   </div>
                   <div className="space-y-2 md:col-span-2">
                     <label className="text-sm font-medium text-slate-700">Refund reason</label>
@@ -289,7 +308,7 @@ export function AdminRefundsPanel() {
                   onClick={initiateRefund}
                   disabled={refunding || !selectedPayment.refundable}
                 >
-                  {refunding ? 'Initiating refund...' : selectedPayment.refundable ? 'Initiate Refund' : 'Already refunded'}
+                  {refunding ? 'Initiating refund...' : selectedPayment.refundable ? 'Initiate Refund' : 'Fully refunded'}
                 </Button>
               </AdminDetailSection>
             </div>

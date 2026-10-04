@@ -1,5 +1,14 @@
 import { supabase } from "@/lib/db";
-import { createDelhiveryShipment } from "@/lib/delhivery";
+import { assertDelhiveryRouteServiceable, createDelhiveryShipment } from "@/lib/delhivery";
+import {
+  ensureDelhiveryPickupLocation,
+  isCompleteAddress,
+  loadDelhiveryParty,
+  readStructuredAddress,
+  withAddress,
+  type DelhiveryParty,
+} from "@/lib/delhivery-parties";
+import { isCancelledTrackingStatus } from "@/lib/service-request-allocation";
 import { parseJsonObject } from "@/lib/utils";
 import {
   buildCsrDeliveryLocation,
@@ -12,112 +21,46 @@ import { loadCampaignRentalByOffer, updateCsrCapabilityRentalStatus } from "./re
 
 type DeliveryLegName = "outbound" | "return";
 
-type CsrShippingAddress = {
-  name: string;
-  phone: string;
-  addressLine: string;
-  city: string;
-  state: string;
-  pincode: string;
-};
-
-async function loadUserShippingAddress(userId: number): Promise<CsrShippingAddress> {
-  const { data: user, error } = await supabase
-    .from("users")
-    .select("id, name, phone, city, state_province, pincode, location, profile_data")
-    .eq("id", userId)
-    .single();
-
-  if (error || !user) throw new Error("User profile not found for Delhivery booking");
-
-  const profile = parseJsonObject(user.profile_data);
-  const phone = String(user.phone || profile.phone || "").replace(/\D/g, "");
-  const pincode = String(user.pincode || profile.pincode || "").replace(/\D/g, "").slice(0, 6);
-
-  if (phone.length < 10) {
-    throw new Error("Add a valid phone number on the NGO profile before booking Delhivery");
-  }
-  if (pincode.length !== 6) {
-    throw new Error("Add a valid 6-digit pincode on the NGO profile before booking Delhivery");
-  }
-
-  const addressLine = String(user.location || profile.address || profile.location || "").trim();
-  if (!addressLine) {
-    throw new Error("Add a pickup/delivery address on the NGO profile before booking Delhivery");
-  }
-
-  return {
-    name: String(user.name || profile.organization_name || "GRAM NGO").trim(),
-    phone,
-    addressLine,
-    city: String(user.city || profile.city || "").trim() || "NA",
-    state: String(user.state_province || profile.state || profile.state_province || "").trim() || "NA",
-    pincode,
-  };
-}
-
 function readOfferDetails(offer: Record<string, unknown>): Record<string, unknown> {
-  return offer.offer_details && typeof offer.offer_details === "object"
-    ? (offer.offer_details as Record<string, unknown>)
-    : {};
+  return parseJsonObject(offer.offer_details);
 }
 
-async function loadOfferPickupAddress(offer: Record<string, unknown>): Promise<CsrShippingAddress> {
-  const providerId = Number(offer.creator_id || 0);
-  const base = await loadUserShippingAddress(providerId);
-  const details = readOfferDetails(offer);
-
-  return {
-    ...base,
-    name: String(offer.title || base.name).trim(),
-    addressLine:
-      String(offer.coverage_area || offer.location || details.pickup_address || base.addressLine).trim() ||
-      base.addressLine,
-    city: String(offer.city || base.city).trim() || base.city,
-    state: String(offer.state_province || base.state).trim() || base.state,
-    pincode: String(offer.pincode || base.pincode).replace(/\D/g, "").slice(0, 6) || base.pincode,
-  };
+async function loadProviderParty(offer: Record<string, unknown>): Promise<DelhiveryParty> {
+  const provider = await loadDelhiveryParty(Number(offer.creator_id || 0), "the capability provider's");
+  const pickupAddress = readStructuredAddress(readOfferDetails(offer).pickup_address);
+  return isCompleteAddress(pickupAddress) ? withAddress(provider, pickupAddress) : provider;
 }
 
-async function loadCampaignDropAddress(
+/** The lead NGO receives the material, at the campaign site when it has a complete address. */
+async function loadCampaignSiteParty(
   campaign: Record<string, unknown>,
   leadNgoUserId: number | null
-): Promise<CsrShippingAddress> {
-  const delivery = buildCsrDeliveryLocation(campaign);
+): Promise<DelhiveryParty> {
   const leadId = Number(leadNgoUserId || 0);
-  const leadAddress = leadId > 0 ? await loadUserShippingAddress(leadId) : null;
-
-  const pincode = String(delivery?.pincode || leadAddress?.pincode || "")
-    .replace(/\D/g, "")
-    .slice(0, 6);
-  if (pincode.length !== 6) {
-    throw new Error("CSR campaign delivery pincode is missing. Set campaign location pincode before booking Delhivery");
+  if (leadId <= 0) {
+    throw new Error("A lead NGO must accept the campaign before Delhivery can deliver the material");
   }
-
-  const addressLine = String(delivery?.location || leadAddress?.addressLine || "").trim();
-  if (!addressLine) {
-    throw new Error("CSR campaign delivery address is missing. Set campaign location before booking Delhivery");
-  }
-
-  return {
-    name: leadAddress?.name || String(campaign.title || "CSR project site").trim(),
-    phone: leadAddress?.phone || "",
-    addressLine,
-    city: String(delivery?.city || leadAddress?.city || "").trim() || "NA",
-    state: String(delivery?.state || leadAddress?.state || "").trim() || "NA",
-    pincode,
-  };
+  const leadNgo = await loadDelhiveryParty(leadId, "the lead NGO's");
+  const site = buildCsrDeliveryLocation(campaign);
+  const siteAddress = readStructuredAddress({
+    address_line: site?.location,
+    city: site?.city,
+    state: site?.state,
+    pincode: site?.pincode,
+  });
+  return isCompleteAddress(siteAddress) ? withAddress(leadNgo, siteAddress) : leadNgo;
 }
 
-function resolveDelhiveryPickupLocationName(profileData: unknown): string {
-  const profile = parseJsonObject(profileData);
-  const fromProfile = String(profile.delhivery_pickup_location || "").trim();
-  const fromEnv = String(process.env.DELHIVERY_PICKUP_LOCATION_NAME || "").trim();
-  if (fromProfile) return fromProfile;
-  if (fromEnv) return fromEnv;
-  throw new Error(
-    "Delhivery pickup warehouse is not configured. Set DELHIVERY_PICKUP_LOCATION_NAME or profile delhivery_pickup_location"
-  );
+function toShipmentParty(party: DelhiveryParty) {
+  return {
+    name: party.name,
+    phone: party.phone,
+    address: party.address,
+    city: party.city,
+    state: party.state,
+    pincode: party.pincode,
+    country: party.country,
+  };
 }
 
 function estimateOfferWeightGrams(offer: Record<string, unknown>): number {
@@ -215,7 +158,7 @@ export async function bookCsrCapabilityRentalDelhivery(input: {
   }
 
   const existingLeg = input.leg === "outbound" ? rental.outbound_delivery : rental.return_delivery;
-  if (existingLeg?.tracking_id && !existingLeg?.last_status?.toLowerCase().includes("cancel")) {
+  if (existingLeg?.tracking_id && !isCancelledTrackingStatus(existingLeg?.last_status)) {
     throw new Error("Delhivery shipment is already booked for this leg");
   }
 
@@ -226,45 +169,25 @@ export async function bookCsrCapabilityRentalDelhivery(input: {
     .single();
   if (offerError || !offer) throw new Error("Capability offer not found");
 
-  const { data: bookingUser } = await supabase
-    .from("users")
-    .select("profile_data")
-    .eq("id", input.bookedByUserId)
-    .single();
-
-  const pickupLocationName = resolveDelhiveryPickupLocationName(bookingUser?.profile_data);
-
   const offerRecord: Record<string, unknown> = offer;
-  const providerAddress = await loadOfferPickupAddress(offerRecord);
-  const dropAddress = await loadCampaignDropAddress(campaign, rental.lead_ngo_user_id || null);
+  const siteParty = await loadCampaignSiteParty(campaign, rental.lead_ngo_user_id || null);
+  const providerParty = await loadProviderParty(offerRecord);
 
-  const seller = input.leg === "outbound" ? providerAddress : dropAddress;
-  const consignee = input.leg === "outbound" ? dropAddress : providerAddress;
+  const seller = input.leg === "outbound" ? providerParty : siteParty;
+  const consignee = input.leg === "outbound" ? siteParty : providerParty;
 
-  if (!consignee.phone) {
-    throw new Error("Lead NGO phone number is required on profile for Delhivery delivery");
-  }
+  await assertDelhiveryRouteServiceable(seller.pincode, consignee.pincode);
+  const pickupLocationName = await ensureDelhiveryPickupLocation(seller);
 
-  const orderId = `csr_${input.campaignId}_${input.offerId}_${input.leg}_${Date.now()}`;
+  // A fixed order id lets Delhivery reject a retried booking as a duplicate instead of shipping twice.
+  const orderId = existingLeg?.tracking_id
+    ? `csr_${input.campaignId}_${input.offerId}_${input.leg}_${Date.now()}`
+    : `csr_${input.campaignId}_${input.offerId}_${input.leg}`;
   const booking = await createDelhiveryShipment({
     orderId,
     pickupLocationName,
-    consignee: {
-      name: consignee.name,
-      phone: consignee.phone,
-      address: consignee.addressLine,
-      city: consignee.city,
-      state: consignee.state,
-      pincode: consignee.pincode,
-    },
-    seller: {
-      name: seller.name,
-      phone: seller.phone,
-      address: seller.addressLine,
-      city: seller.city,
-      state: seller.state,
-      pincode: seller.pincode,
-    },
+    consignee: toShipmentParty(consignee),
+    seller: toShipmentParty(seller),
     paymentMode: "Prepaid",
     weightGrams: estimateOfferWeightGrams(offerRecord),
     quantity: 1,

@@ -1,5 +1,6 @@
 import { useEffect, useEffectEvent, useState } from "react"
 import { useAuth } from '@/lib/auth-context'
+import { isFullyVerifiedAccount } from '@/lib/auth'
 import { isCampaignStarted, isVolunteerRegistrationPastDeadline } from "@/lib/format-date"
 import { getVolunteerButtonState, sumVolunteerApplicationCount } from "@/lib/campaign-schema"
 import { isCampaignLeadNgo, parseLeadNgoInvites } from '@/lib/campaign-volunteer-attendance'
@@ -16,7 +17,7 @@ export function useCampaignDetail(campaignId: string) {
   const [applying, setApplying] = useState(false)
 
   const currentUserId = Number(user?.id || 0)
-  const allVerified = Boolean(user?.email_verified && user?.phone_verified && user?.verification_status === 'verified')
+  const allVerified = isFullyVerifiedAccount(user)
 
   const loadCampaign = async () => {
     setLoading(true)

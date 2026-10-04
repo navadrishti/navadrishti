@@ -30,6 +30,31 @@ export async function POST(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
+    const projectStatus = String(project.project_status || '').toLowerCase();
+    if (['completed', 'cancelled', 'closed'].includes(projectStatus)) {
+      return NextResponse.json({ error: `A ${projectStatus} project cannot change its NGO` }, { status: 409 });
+    }
+
+    const currentNgoId = Number(project.ngo_user_id || 0);
+    if (currentNgoId === ngoUserId) {
+      return NextResponse.json({ success: true, data: project });
+    }
+    if (currentNgoId > 0) {
+      const { data: startedMilestones, error: milestonesError } = await supabase
+        .from('csr_project_milestones')
+        .select('id')
+        .eq('project_id', projectId)
+        .not('status', 'in', '("pending","draft","not_started")')
+        .limit(1);
+      if (milestonesError) throw milestonesError;
+      if ((startedMilestones ?? []).length > 0) {
+        return NextResponse.json(
+          { error: 'Milestone work has already started with the current NGO, so the project NGO cannot be changed.' },
+          { status: 409 }
+        );
+      }
+    }
+
     const { data: ngoUser, error: ngoError } = await supabase
       .from('users')
       .select('id, user_type')

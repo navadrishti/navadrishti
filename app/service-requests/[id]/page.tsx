@@ -185,11 +185,13 @@ export default function ServiceRequestDetailPage() {
 
                         {isAuthenticated && userApplication && (
                           <MyApplicationCard
+                            serviceRequestId={Number(requestId)}
                             application={userApplication}
                             isFinancialNeed={isFinancialNeed}
                             isMaterialNeed={isMaterialNeed}
                             usesManualMarkDone={usesManualMarkDone}
                             actions={volunteer}
+                            onUpdated={checkExistingApplication}
                           />
                         )}
 

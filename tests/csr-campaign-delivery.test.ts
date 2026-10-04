@@ -39,7 +39,7 @@ function seed(rentals: CsrCapabilityRentalRecord[], campaign: Row = {}) {
     title: 'Water',
     status: 'active',
     location: 'Village Road, Mulshi',
-    impact_metrics: { pincode: '411045', city: 'Mulshi', csr_capability_rentals: rentals },
+    impact_metrics: { pincode: '411045', city: 'Mulshi', state: 'Maharashtra', csr_capability_rentals: rentals },
     ...campaign,
   }]
 }
@@ -62,27 +62,42 @@ function jsonResponse(body: unknown) {
 
 function createRequestBody() {
   const call = fetchMock.mock.calls.find(([url]) => url.includes('/api/cmu/create.json'))
-  const body = String(call?.[1]?.body ?? '')
-  return JSON.parse(body.slice('format=json&data='.length)) as { pickup_location: Row; shipments: Row[] }
+  return JSON.parse(String(new URLSearchParams(String(call?.[1]?.body ?? '')).get('data'))) as { pickup_location: Row; shipments: Row[] }
 }
+
+const deliveryCalls = () => fetchMock.mock.calls.filter(([url]) => url.includes('/api/cmu/create.json') || url.includes('clientwarehouse'))
 
 beforeEach(() => {
   vi.resetAllMocks()
   db = createCampaignStore()
   db.store.users = {
-    12: { id: 12, name: 'Seva Trust', phone: '9123456789', pincode: '560001', location: 'NGO Office, MG Road', city: 'Bengaluru', state_province: 'KA', profile_data: {} },
-    40: { id: 40, name: 'Tank Co', phone: '+91 98765 43210', pincode: '411001', location: 'Warehouse Rd', city: 'Pune', state_province: 'MH', profile_data: { delhivery_pickup_location: 'GRAM-WH' } },
+    12: {
+      id: 12, name: 'Seva Trust', phone: '9123456789', pincode: '560001', city: 'Bengaluru', state_province: 'Karnataka',
+      location: 'NGO Office, MG Road, Bengaluru, Karnataka, 560001, India',
+      profile_data: { ngo_headquarters: { address_line: 'NGO Office, MG Road', city: 'Bengaluru', state: 'Karnataka', pincode: '560001' } },
+    },
+    40: {
+      id: 40, name: 'Tank Co', phone: '+91 98765 43210', pincode: '411001', city: 'Pune', state_province: 'Maharashtra',
+      profile_data: {
+        delhivery_pickup_location: 'GRAM-WH',
+        company_headquarters: { address_line: 'Warehouse Rd', city: 'Pune', state: 'Maharashtra', pincode: '411001' },
+      },
+    },
   }
   db.store.offers = { 7: { id: 7, creator_id: 40, title: 'Water tanks', offer_details: { quantity: 3, weight_grams: 2000 } } }
   supabaseFake.reset()
   supabaseFake.respondWith(db.respond)
   trackingPayload = shipment('Manifested')
   createPayload = { success: true, packages: [{ waybill: 'AWB9', status: 'Success' }] }
-  fetchMock.mockImplementation(async (url) => jsonResponse(url.includes('/api/cmu/create.json') ? createPayload : trackingPayload))
+  fetchMock.mockImplementation(async (url) => {
+    if (url.includes('/api/cmu/create.json')) return jsonResponse(createPayload)
+    if (url.includes('/c/api/pin-codes/')) return jsonResponse({ delivery_codes: [{ postal_code: { pre_paid: 'Y', pickup: 'Y' } }] })
+    if (url.includes('clientwarehouse')) return jsonResponse({ success: true })
+    return jsonResponse(trackingPayload)
+  })
   vi.stubGlobal('fetch', fetchMock)
   vi.stubEnv('DELHIVERY_API_TOKEN', 'dl-token')
   vi.stubEnv('DELHIVERY_API_BASE_URL', 'https://delhivery.test')
-  vi.stubEnv('DELHIVERY_PICKUP_LOCATION_NAME', '')
 })
 
 afterEach(() => {
@@ -311,38 +326,78 @@ describe('Delhivery booking', () => {
       pin: '411045',
       phone: '9123456789',
       city: 'Mulshi',
-      seller_name: 'Water tanks',
+      state: 'Maharashtra',
+      seller_name: 'Tank Co',
+      seller_add: 'Warehouse Rd',
       return_pin: '411001',
+      return_city: 'Pune',
       return_phone: '9876543210',
       weight: '6000',
       total_amount: 1000,
       payment_mode: 'Prepaid',
     })
     expect(updated.outbound_delivery).toMatchObject({ tracking_id: 'AWB9', last_status: 'Manifested', booking_error: null })
-    expect(updated.outbound_delivery?.delhivery_order_id).toMatch(/^csr_c1_7_outbound_\d+$/)
+    expect(updated.outbound_delivery?.delhivery_order_id).toBe('csr_c1_7_outbound')
     expect(db.rentals()[0].logistics_provider).toBe('delhivery')
   })
 
-  it('books the return leg back to the provider', async () => {
-    db.store.users[12] = { ...db.store.users[12], profile_data: { delhivery_pickup_location: 'NGO-WH' } }
-    seed([rental({ status: 'return_pending' })])
-    await bookCsrCapabilityRentalDelhivery({ ...input, leg: 'return', bookedByUserId: 12 })
-    expect(createRequestBody().shipments[0]).toMatchObject({ pin: '411001', phone: '9876543210', return_pin: '411045' })
-    expect(createRequestBody().pickup_location).toEqual({ name: 'NGO-WH' })
+  it('delivers to the lead NGO office when the campaign site has no full address', async () => {
+    seed([rental()], { impact_metrics: { csr_capability_rentals: [rental()] } })
+    await bookCsrCapabilityRentalDelhivery(input)
+    expect(createRequestBody().shipments[0]).toMatchObject({
+      add: 'NGO Office, MG Road',
+      city: 'Bengaluru',
+      state: 'Karnataka',
+      pin: '560001',
+    })
   })
 
-  it('uses the configured pickup warehouse when the profile has none', async () => {
-    vi.stubEnv('DELHIVERY_PICKUP_LOCATION_NAME', 'ENV-WH')
+  it('collects from the pickup address on the offer when it is complete', async () => {
+    db.store.offers[7] = {
+      ...db.store.offers[7],
+      offer_details: { pickup_address: { address_line: 'Godown 4, MIDC', city: 'Chakan', state: 'Maharashtra', pincode: '410501' } },
+    }
+    seed([rental()])
+    await bookCsrCapabilityRentalDelhivery(input)
+    expect(createRequestBody().shipments[0]).toMatchObject({ seller_name: 'Tank Co', seller_add: 'Godown 4, MIDC', return_pin: '410501' })
+  })
+
+  it('books the return leg from the lead NGO, registering its address as a pickup warehouse', async () => {
+    seed([rental({ status: 'return_pending' })])
+    await bookCsrCapabilityRentalDelhivery({ ...input, leg: 'return', bookedByUserId: 3 })
+    expect(createRequestBody().shipments[0]).toMatchObject({ pin: '411001', phone: '9876543210', return_pin: '411045' })
+    expect(createRequestBody().pickup_location).toEqual({ name: 'Navadrishti-12' })
+    const registration = fetchMock.mock.calls.find(([url]) => url.includes('clientwarehouse/create'))
+    expect(JSON.parse(String(registration?.[1]?.body))).toMatchObject({ name: 'Navadrishti-12', pin: '411045', phone: '9123456789' })
+    const [profileUpdate] = supabaseFake.find('users', 'update')
+    expect(eqValue(profileUpdate, 'id')).toBe(12)
+    expect((profileUpdate.payload as Row).profile_data).toMatchObject({ delhivery_pickup_location: 'Navadrishti-12' })
+  })
+
+  it('skips re-registering a pickup address that has not changed', async () => {
     seed([rental({ status: 'return_pending' })])
     await bookCsrCapabilityRentalDelhivery({ ...input, leg: 'return', bookedByUserId: 12 })
-    expect(createRequestBody().pickup_location).toEqual({ name: 'ENV-WH' })
+    const saved = (supabaseFake.find('users', 'update')[0].payload as Row).profile_data as Row
+    db.store.users[12] = { ...db.store.users[12], profile_data: saved }
+    seed([rental({ status: 'return_pending' })])
+    fetchMock.mockClear()
+    await bookCsrCapabilityRentalDelhivery({ ...input, leg: 'return', bookedByUserId: 12 })
+    expect(fetchMock.mock.calls.some(([url]) => url.includes('clientwarehouse'))).toBe(false)
+  })
+
+  it('refuses a route Delhivery cannot service', async () => {
+    fetchMock.mockImplementation(async (url) =>
+      url.includes('/c/api/pin-codes/') ? jsonResponse({ delivery_codes: [] }) : jsonResponse(trackingPayload)
+    )
+    seed([rental()])
+    await expect(bookCsrCapabilityRentalDelhivery(input)).rejects.toThrow('Delhivery does not collect from pincode 411001')
+    expect(deliveryCalls()).toHaveLength(0)
   })
 
   it.each([
     ['service rentals', rental({ offer_type: 'service' }), input, 'Delhivery booking applies to material capability rentals only'],
     ['a leg that is already booked', rental({ outbound_delivery: { tracking_id: 'AWB1', last_status: 'In Transit' } }), input, 'Delhivery shipment is already booked for this leg'],
-    ['a missing pickup warehouse', rental(), { ...input, bookedByUserId: 12 }, 'Delhivery pickup warehouse is not configured'],
-    ['a missing lead NGO', rental({ lead_ngo_user_id: null }), input, 'Lead NGO phone number is required on profile for Delhivery delivery'],
+    ['a missing lead NGO', rental({ lead_ngo_user_id: null }), input, 'A lead NGO must accept the campaign before Delhivery can deliver the material'],
   ])('rejects %s', async (_label, record, bookingInput, error) => {
     seed([record])
     await expect(bookCsrCapabilityRentalDelhivery(bookingInput)).rejects.toThrow(error)
@@ -350,14 +405,14 @@ describe('Delhivery booking', () => {
   })
 
   it.each([
-    ['phone', { phone: '12345' }, 'Add a valid phone number on the NGO profile before booking Delhivery'],
-    ['pincode', { pincode: '4110' }, 'Add a valid 6-digit pincode on the NGO profile before booking Delhivery'],
-    ['address', { location: ' ' }, 'Add a pickup/delivery address on the NGO profile before booking Delhivery'],
+    ['phone', { phone: '12345' }, "Add a valid 10-digit phone number to the capability provider's profile before booking Delhivery"],
+    ['pincode', { pincode: '4110', profile_data: { company_headquarters: { address_line: 'Warehouse Rd', city: 'Pune', state: 'Maharashtra' } } }, "Add a valid 6-digit pincode to the capability provider's profile before booking Delhivery"],
+    ['address', { profile_data: {} }, "Add a street address to the capability provider's profile before booking Delhivery"],
   ])('requires a valid provider %s', async (_label, overrides, error) => {
     db.store.users[40] = { ...db.store.users[40], ...overrides }
-    db.store.offers[7] = { ...db.store.offers[7], coverage_area: (overrides as Row).location }
     seed([rental()])
     await expect(bookCsrCapabilityRentalDelhivery(input)).rejects.toThrow(error)
+    expect(deliveryCalls()).toHaveLength(0)
   })
 
   it('allows rebooking a cancelled shipment', async () => {

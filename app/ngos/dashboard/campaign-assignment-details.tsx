@@ -1,6 +1,6 @@
 'use client';
 
-
+import { CampaignTrackingPanel } from '@/components/campaign-tracking-panel';
 import { VerifiedAccountName } from '@/components/verification-badge';
 import { Button } from '@/components/ui/button';
 import { formatDisplayDate, formatCampaignLeadLifecycleLabel, formatStatusLabel, type CampaignLeadLifecycle } from '@/lib/format-date';
@@ -72,6 +72,8 @@ export function CampaignAssignmentDetails({
           Waiting for the company to publish this campaign.
         </div>
       ) : null}
+
+      {assignment.tracking ? <CampaignTrackingPanel tracking={assignment.tracking} /> : null}
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm md:grid-cols-3">
         <div>

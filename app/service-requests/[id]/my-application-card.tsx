@@ -1,6 +1,7 @@
 'use client'
 
-import { CheckCircle, Loader2 } from 'lucide-react'
+import { CheckCircle } from 'lucide-react'
+import { DelhiveryFulfillment } from '@/components/delhivery-fulfillment'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -8,34 +9,35 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { formatStatusLabel } from '@/lib/format-date'
-import { formatDate, formatDateTime, getStatusColor } from './helpers'
+import { parseJsonObject } from '@/lib/utils'
+import { formatDate, getStatusColor } from './helpers'
 import type { VolunteerApplication } from './types'
 import type { VolunteerApplicationActions } from './use-volunteer-application'
 
 interface MyApplicationCardProps {
+  serviceRequestId: number
   application: VolunteerApplication
   isFinancialNeed: boolean
   isMaterialNeed: boolean
   usesManualMarkDone: boolean
   actions: VolunteerApplicationActions
+  onUpdated?: () => void | Promise<void>
 }
 
 export function MyApplicationCard({
+  serviceRequestId,
   application,
   isFinancialNeed,
   isMaterialNeed,
   usesManualMarkDone,
   actions,
+  onUpdated,
 }: MyApplicationCardProps) {
   const {
     setIndividualReceiptFile,
     individualCompletionNote,
     setIndividualCompletionNote,
-    individualDeliveryTrackingId,
-    setIndividualDeliveryTrackingId,
-    syncingOwnTracking,
     handleMarkIndividualDone,
-    syncOwnDelivery,
   } = actions
   const meta = application.response_meta
 
@@ -75,7 +77,7 @@ export function MyApplicationCard({
           <div>
             <span className="font-medium">Receipt Status:</span>
             <p className="mt-1 p-2 bg-muted rounded">
-              {meta?.individual_done_at ? 'Marked done' : 'Pending completion'}
+              {application.individual_done_at || meta?.individual_done_at ? 'Marked done' : 'Pending completion'}
             </p>
           </div>
         </div>
@@ -96,43 +98,20 @@ export function MyApplicationCard({
                 <Textarea id="individual-note" value={individualCompletionNote} onChange={(e) => setIndividualCompletionNote(e.target.value)} rows={2} placeholder="Optional note about the completed fulfillment" />
               </div>
             </div>
-            {isMaterialNeed && (
-              <div className="space-y-2">
-                <Label htmlFor="individual-tracking">Delhivery Tracking ID</Label>
-                <Input
-                  id="individual-tracking"
-                  value={individualDeliveryTrackingId}
-                  onChange={(e) => setIndividualDeliveryTrackingId(e.target.value)}
-                  placeholder="Optional tracking id"
-                />
-                {(individualDeliveryTrackingId || meta?.delivery_tracking_id) && (
-                  <div className="space-y-2 rounded border bg-white p-2 text-xs text-muted-foreground">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <span>
-                        Status: <span className="font-medium text-foreground">{meta?.delivery_tracking_last_status || 'Not synced yet'}</span>
-                      </span>
-                      <Button type="button" variant="outline" size="sm" onClick={syncOwnDelivery} disabled={syncingOwnTracking}>
-                        {syncingOwnTracking ? (
-                          <><Loader2 className="mr-2 h-3 w-3 animate-spin" /> Syncing...</>
-                        ) : (
-                          'Sync Delhivery Status'
-                        )}
-                      </Button>
-                    </div>
-                    <div>
-                      Last location: {meta?.delivery_tracking_last_location || 'N/A'}
-                    </div>
-                    <div>
-                      Last event: {formatDateTime(meta?.delivery_tracking_last_event_at || meta?.delivery_tracking_synced_at)}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
             <Button onClick={handleMarkIndividualDone} className="w-full">
               Mark as Done
             </Button>
           </div>
+        )}
+
+        {isMaterialNeed && (['accepted', 'active'].includes(String(application.status)) || Boolean(meta?.delivery_tracking_id)) && (
+          <DelhiveryFulfillment
+            serviceRequestId={serviceRequestId}
+            volunteerApplicationId={Number(application.id)}
+            responseMeta={parseJsonObject(meta)}
+            role="donor"
+            onUpdated={onUpdated}
+          />
         )}
 
         {application.status === 'rejected' && meta?.ngo_decision_comment && (

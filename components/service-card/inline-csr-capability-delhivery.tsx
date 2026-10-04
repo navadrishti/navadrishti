@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { CheckCircle2, Loader2, Truck } from 'lucide-react'
+import { TrackingIdChip } from '@/components/tracking-id-chip'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
 import {
@@ -154,7 +155,7 @@ export function InlineCsrCapabilityDelhivery({
             ) : pickedUp ? (
               <span className="text-udaan-blue">In transit · {statusLabel}</span>
             ) : hasAwb ? (
-              <span className="text-udaan-blue">AWB {delivery?.tracking_id} · {statusLabel}</span>
+              <span className="text-udaan-blue">Booked · {statusLabel}</span>
             ) : bookingPending ? (
               <span className="inline-flex items-center gap-1 text-udaan-blue">
                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -164,6 +165,11 @@ export function InlineCsrCapabilityDelhivery({
               <span className="text-[#8C5555]">{bookingError || 'Delhivery booking pending'}</span>
             )}
           </div>
+          {hasAwb ? (
+            <div className="mt-1.5">
+              <TrackingIdChip trackingId={String(delivery?.tracking_id)} />
+            </div>
+          ) : null}
         </div>
         {hasAwb && !delivered ? (
           <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={busy} onClick={() => void handleSync()}>

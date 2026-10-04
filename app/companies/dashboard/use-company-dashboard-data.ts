@@ -109,10 +109,16 @@ export function useCompanyDashboardData({
         return;
       }
 
-      const response = await fetch(`/api/campaigns?company_id=${userId}`);
+      const [response, trackingResponse] = await Promise.all([
+        fetch(`/api/campaigns?company_id=${userId}`),
+        fetch('/api/campaigns/tracking', { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
       const payload = await response.json();
+      const trackingPayload = trackingResponse.ok ? await trackingResponse.json().catch(() => null) : null;
+      const tracking: Record<string, PublishedCsrCampaign['tracking']> = trackingPayload?.data || {};
       if (response.ok && payload?.success) {
-        setPublishedCsrCampaigns(Array.isArray(payload.data) ? payload.data : []);
+        const rows: PublishedCsrCampaign[] = Array.isArray(payload.data) ? payload.data : [];
+        setPublishedCsrCampaigns(rows.map((row) => ({ ...row, tracking: tracking[row.id] ?? null })));
       }
       reportLoad('CSR campaigns', response.ok && Boolean(payload?.success));
     } catch (error) {

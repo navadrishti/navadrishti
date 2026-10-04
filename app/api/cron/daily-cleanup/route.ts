@@ -7,6 +7,8 @@ import { autoRejectExpiredServiceOffers } from '@/lib/admin-offer-automation';
 import { processCsrCapabilityDailyCompliance, markCsrProjectCompleted, syncAllCsrCapabilityRentalsDelhivery } from '@/lib/csr-agent/campaign';
 import { getDocumentExpiries, dropExpiredCaComplianceTags } from '@/lib/auth';
 import { backfillServiceOfferEmbeddings } from '@/lib/embeddings';
+import { isDelhiveryConfigured } from '@/lib/delhivery';
+import { syncAllServiceRequestDeliveries } from '@/lib/service-request-delivery';
 import { parseJsonObject, getErrorMessage } from '@/lib/utils';
 import { isMissingStoreError } from '@/lib/auth-store';
 
@@ -96,7 +98,7 @@ async function processNgoDocumentExpiryJobs(now = new Date()) {
  * Performs:
  * 1. Auto-rejection of expired service offers (pending > 5 days)
  * 2. Expire projects and their needs
- * 3. CSR capability daily compliance / Delhivery sync
+ * 3. Delhivery sync for material needs and CSR capability rentals, plus rental compliance
  * 4. Drop expired optional CA compliance tags (12A / 80G / CSR-1 / FCRA). Never unverify.
  * 5. Embed active service offers that have no embedding yet
  * 6. Release held financial-need contributions once the need stops collecting
@@ -155,7 +157,7 @@ export async function GET(request: NextRequest) {
         .from('service_request_projects')
         .select('id, title, valid_until')
         .lt('valid_until', nowIso)
-        .neq('status', 'expired')
+        .not('status', 'in', '(expired,completed,cancelled,closed)')
         .limit(1000);
 
       if (expiredProjectsError) {
@@ -178,7 +180,7 @@ export async function GET(request: NextRequest) {
               .from('service_requests')
               .update({ status: 'expired', updated_at: nowIso })
               .eq('project_id', proj.id)
-              .neq('status', 'expired');
+              .not('status', 'in', '(expired,completed,fulfilled,cancelled,closed)');
 
             if (updateNeedsErr) {
               console.error(`Error expiring needs for project ${proj.id}:`, updateNeedsErr);
@@ -191,6 +193,15 @@ export async function GET(request: NextRequest) {
       }
     } catch (expireErr) {
       console.error('Error in project expiry task:', expireErr);
+    }
+
+    let needDeliverySyncStats = { synced: 0, failed: 0 };
+    if (isDelhiveryConfigured()) {
+      try {
+        needDeliverySyncStats = await syncAllServiceRequestDeliveries();
+      } catch (deliveryErr) {
+        console.error('Error syncing material-need deliveries:', deliveryErr);
+      }
     }
 
     // CSR capability rentals: SLAs, fines, reminders.
@@ -210,15 +221,29 @@ export async function GET(request: NextRequest) {
         .limit(200);
 
       for (const campaign of endedCampaigns || []) {
-        await markCsrProjectCompleted({ campaignId: String(campaign.id) });
-        await supabase
-          .from('campaigns')
-          .update({
-            status: 'completed',
-            impact_metrics: { ...parseJsonObject(campaign.impact_metrics), completed_at: todayIso },
-            updated_at: todayIso,
-          })
-          .eq('id', campaign.id);
+        try {
+          await markCsrProjectCompleted({ campaignId: String(campaign.id) });
+          // markCsrProjectCompleted rewrites the rentals, so build on what it saved, not the row read above.
+          const { data: latest, error: latestError } = await supabase
+            .from('campaigns')
+            .select('impact_metrics')
+            .eq('id', campaign.id)
+            .maybeSingle();
+          if (latestError) throw latestError;
+          const { error: completeError } = await supabase
+            .from('campaigns')
+            .update({
+              status: 'completed',
+              impact_metrics: { ...parseJsonObject(latest?.impact_metrics ?? campaign.impact_metrics), completed_at: todayIso },
+              updated_at: todayIso,
+            })
+            .eq('id', campaign.id)
+            .eq('status', 'active');
+          if (completeError) throw completeError;
+        } catch (campaignCloseErr) {
+          console.error(`Failed to close ended campaign ${campaign.id}:`, campaignCloseErr);
+          continue;
+        }
 
         try {
           const { processCompletedCampaignVolunteerOutcomes } = await import('@/lib/db');
@@ -281,6 +306,7 @@ export async function GET(request: NextRequest) {
         autoRejectExpired,
         documentExpiry: documentExpiryStats,
         csrDelhiverySync: csrDelhiverySyncStats,
+        needDeliverySync: needDeliverySyncStats,
         csrCapabilityCompliance: csrComplianceStats,
         offerEmbeddings: offerEmbeddingStats,
         heldTransfersReleased,

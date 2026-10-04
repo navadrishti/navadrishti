@@ -15,7 +15,7 @@ import {
   shouldUseRazorpayForNeed,
 } from '@/lib/service-request-allocation';
 import { parseJsonObject } from '@/lib/utils';
-import { InlineDelhiveryFulfillment } from './delhivery-fulfillment';
+import { DelhiveryFulfillment } from '@/components/delhivery-fulfillment';
 import {
   formatNgoRequestFulfillmentValue,
   getNgoRequestFulfillmentStage,
@@ -68,34 +68,20 @@ export function NgoRequestCard({ application, onUpdated }: NgoRequestCardProps) 
 
         <p className="text-sm">Your offer: {formatNgoRequestFulfillmentValue(application)}</p>
 
-        {shouldUseDelhiveryForNeed(request) && inFulfillment && !delivered && requestId ? (
-          <InlineDelhiveryFulfillment
+        {shouldUseDelhiveryForNeed(request) && (inFulfillment || status === 'completed' || delivered) && requestId ? (
+          <DelhiveryFulfillment
             serviceRequestId={Number(requestId)}
             volunteerApplicationId={application.id}
             responseMeta={meta}
-            canEditTrackingId
-            canVerifyPickup
+            role="donor"
             onUpdated={onUpdated}
           />
         ) : null}
 
         {shouldUseDelhiveryForNeed(request) && status === 'pending' ? (
           <p className="text-sm text-muted-foreground">
-            Delhivery tracking starts after the NGO accepts your application.
+            You can book the Delhivery pickup once the NGO accepts your donation.
           </p>
-        ) : null}
-
-        {shouldUseDelhiveryForNeed(request) &&
-        (status === 'completed' || delivered) &&
-        requestId ? (
-          <InlineDelhiveryFulfillment
-            serviceRequestId={Number(requestId)}
-            volunteerApplicationId={application.id}
-            responseMeta={meta}
-            canEditTrackingId={false}
-            canVerifyPickup
-            onUpdated={onUpdated}
-          />
         ) : null}
 
         {shouldUseRazorpayForNeed(request) && inFulfillment && requestId ? (

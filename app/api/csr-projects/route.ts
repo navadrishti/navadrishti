@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
         ? project.csr_project_milestones.length
         : 0,
       completed_milestones_count: Array.isArray(project.csr_project_milestones)
-        ? project.csr_project_milestones.filter((m) => m.status === 'approved').length
+        ? project.csr_project_milestones.filter((m) => m.status === 'approved' || m.status === 'completed').length
         : 0,
       latest_impact: Array.isArray(project.csr_impact_metrics)
         ? project.csr_impact_metrics[0] ?? null

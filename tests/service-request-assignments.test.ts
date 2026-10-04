@@ -54,7 +54,8 @@ describe('assignment meta helpers', () => {
 describe('isFullyVerifiedCompany', () => {
   it.each([
     [{ email_verified: true, phone_verified: true, verification_status: 'Verified' }, true],
-    [{ email_verified: true, phone_verified: false, verification_status: 'verified' }, false],
+    [{ email_verified: true, phone_verified: false, verification_status: 'verified' }, true],
+    [{ email_verified: false, phone_verified: true, verification_status: 'verified' }, false],
     [{ email_verified: true, phone_verified: true, verification_status: 'pending' }, false],
     [null, false],
   ])('checks %j', async (row, expected) => {
@@ -214,6 +215,35 @@ describe('reviewProjectApplication', () => {
     expect(update.payload).not.toHaveProperty('assigned_company_user_id')
     const apps = parseProjectMeta((update.payload as { description: string }).description).pending_company_applications
     expect(apps?.map((app) => [app.company_id, app.status])).toEqual([[COMPANY_ID, 'rejected'], [9, 'pending']])
+  })
+
+  it('refuses to reject the company already working on the project', async () => {
+    const row = projectRow({
+      description: withProjectMeta('Library', { pending_company_applications: [application(COMPANY_ID, 'accepted')] }),
+      assigned_company_user_id: COMPANY_ID,
+      assignment_status: 'accepted',
+    })
+    const fake = useDb({
+      'service_request_projects.select': [{ data: row }],
+      'service_requests.select': [{ data: [] }],
+    })
+    await expect(review({ ...accept, decision: 'rejected' })).resolves.toMatchObject({ status: 409 })
+    expect(fake.writes('service_request_projects')).toHaveLength(0)
+  })
+
+  it('keeps the accepted assignment when a late applicant is rejected', async () => {
+    const row = projectRow({
+      description: withProjectMeta('Library', { pending_company_applications: [application(8, 'accepted'), application(COMPANY_ID)] }),
+      assigned_company_user_id: 8,
+      assignment_status: 'accepted',
+    })
+    const fake = useDb({
+      'service_request_projects.select': [{ data: row }],
+      'service_requests.select': [{ data: [] }],
+    })
+    await expect(review({ ...accept, decision: 'rejected' })).resolves.toMatchObject({ status: 200 })
+    const [update] = fake.writes('service_request_projects')
+    expect(update.payload).not.toHaveProperty('assignment_status')
   })
 
   it('marks matching need contributions and hands the needs to the company', async () => {

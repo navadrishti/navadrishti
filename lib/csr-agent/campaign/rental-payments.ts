@@ -1,6 +1,7 @@
 import Razorpay from "razorpay";
 import { supabase } from "@/lib/db";
 import { createPlatformPricedOrder, refundDuplicatePayment } from "@/lib/razorpay-route";
+import { recordCapturedPaymentFromProvider } from "@/lib/razorpay/payment-records";
 import { parseJsonObject, validateCapturedPaymentAmounts } from "@/lib/utils";
 import {
   addDaysIso,
@@ -78,6 +79,7 @@ export async function createCsrCapabilityRentalOrder(input: {
   if (rental.payment_status === "paid") {
     return { paymentRequired: false, rental };
   }
+  await assertOfferAvailableForRental(input.offerId, input.campaignId);
 
   const baseAmountInr = rental.rental_amount_inr;
   if (baseAmountInr <= 0) {
@@ -141,6 +143,32 @@ export async function createCsrCapabilityRentalOrder(input: {
     pricing,
     rental: updated.find((row) => row.id === rental.id),
   };
+}
+
+function rentalLockCampaignId(offer: { offer_details?: unknown } | null | undefined): string {
+  return String(parseJsonObject(parseJsonObject(offer?.offer_details).csr_rental_lock).campaign_id || "");
+}
+
+/** A capability serves one engagement at a time: another campaign's rental or an accepted client blocks it. */
+async function assertOfferAvailableForRental(offerId: number, campaignId: string) {
+  const [{ data: offer, error: offerError }, { data: clients, error: clientsError }] = await Promise.all([
+    supabase.from("service_offers").select("id, status, offer_details").eq("id", offerId).maybeSingle(),
+    supabase.from("service_clients").select("id, response_meta").eq("service_offer_id", offerId).eq("status", "accepted"),
+  ]);
+  if (offerError) throw offerError;
+  if (clientsError) throw clientsError;
+  if (!offer) throw new Error("Capability offer not found");
+
+  const lockedBy = rentalLockCampaignId(offer);
+  if (lockedBy && lockedBy !== campaignId) {
+    throw new Error("This capability is already rented to another campaign.");
+  }
+  const busyElsewhere = (clients || []).some(
+    (client) => String(parseJsonObject(client.response_meta).campaign_id || "") !== campaignId
+  );
+  if (busyElsewhere || (!lockedBy && String(offer.status || "").toLowerCase() !== "active")) {
+    throw new Error("This capability is not available for rent right now.");
+  }
 }
 
 type RentalPaymentInput = {
@@ -261,6 +289,11 @@ export async function attachCsrCapabilityAfterPayment(input: RentalPaymentInput)
   }
 
   await assertCsrRentalPaymentCaptured(rental, input);
+
+  const lockedBy = rentalLockCampaignId(offer);
+  if (lockedBy && lockedBy !== input.campaignId) {
+    return refundDuplicateRentalPayment(rental, input);
+  }
 
   const paidAt = new Date().toISOString();
   const leadNgoId = Number(campaign.lead_ngo_user_id || 0) || null;
@@ -409,6 +442,10 @@ export async function attachCsrCapabilityAfterPayment(input: RentalPaymentInput)
     .from("razorpay_payment_orders")
     .update({ order_status: "paid", updated_at: new Date().toISOString() })
     .eq("razorpay_order_id", input.razorpayOrderId);
+
+  await recordCapturedPaymentFromProvider(createRazorpayClient(), input.razorpayPaymentId).catch((error) =>
+    console.error("Failed to record CSR capability rental payment:", error)
+  );
 
   if (shouldUseDelhiveryForCsrCapabilityRental(attachedRental)) {
     return autoBookCsrCapabilityDelhivery({

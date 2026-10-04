@@ -148,7 +148,7 @@ export async function createNgoNetworkDonationOrder(params: {
   });
 
   const nowIso = new Date().toISOString();
-  await supabase.from('razorpay_payment_orders').upsert(
+  const { error: orderRecordError } = await supabase.from('razorpay_payment_orders').upsert(
     {
       service_request_id: null,
       application_id: null,
@@ -166,6 +166,7 @@ export async function createNgoNetworkDonationOrder(params: {
     },
     { onConflict: 'razorpay_order_id' }
   );
+  if (orderRecordError) throw orderRecordError;
 
   return { order, pricing, contributionInr };
 }

@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { supabaseFake, type FakeQuery } from './support/supabase-fake'
-import { deleteCampaignWithDependencies, formatCampaignDeleteError } from '@/lib/campaign-delete'
+import {
+  assertCampaignDeletable,
+  CampaignDeleteBlockedError,
+  deleteCampaignWithDependencies,
+  formatCampaignDeleteError,
+} from '@/lib/campaign-delete'
 
 vi.mock('@/lib/db', async () => {
   const { supabaseFake: fake } = await import('./support/supabase-fake')
@@ -59,6 +64,24 @@ describe('deleteCampaignWithDependencies', () => {
     const failure = { code: '23503' }
     supabaseFake.respondWith((query) => (query.op === 'delete' ? { error: failure } : { data: [] }))
     await expect(deleteCampaignWithDependencies('c1')).rejects.toBe(failure)
+  })
+})
+
+describe('assertCampaignDeletable', () => {
+  it('allows a campaign with no money moved', async () => {
+    supabaseFake.respondWith((query) => (query.table === 'csr_projects' ? { data: [{ id: 'p1' }] } : { data: null, count: 0 }))
+    await expect(assertCampaignDeletable({ id: 'c1', impact_metrics: {} })).resolves.toBeUndefined()
+  })
+
+  it('blocks a campaign with a paid capability rental', async () => {
+    const impact = { csr_capability_rentals: [{ id: 'c1:7', service_offer_id: 7, payment_status: 'paid' }] }
+    await expect(assertCampaignDeletable({ id: 'c1', impact_metrics: impact })).rejects.toBeInstanceOf(CampaignDeleteBlockedError)
+    expect(supabaseFake.queries).toHaveLength(0)
+  })
+
+  it('blocks a campaign with confirmed milestone payments', async () => {
+    supabaseFake.respondWith((query) => (query.table === 'csr_projects' ? { data: [{ id: 'p1' }] } : { data: null, count: 2 }))
+    await expect(assertCampaignDeletable({ id: 'c1', impact_metrics: {} })).rejects.toThrow('confirmed milestone payments')
   })
 })
 

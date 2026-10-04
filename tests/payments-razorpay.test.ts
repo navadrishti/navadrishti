@@ -610,12 +610,16 @@ describe('Razorpay webhook signature', () => {
   it('debits only the base share of a processed refund', async () => {
     const refundBody = JSON.stringify({
       event: 'refund.processed',
-      payload: { refund: { entity: { id: 'rfnd_1', payment_id: 'pay_1', amount: 52950, status: 'processed' } } },
+      payload: {
+        refund: { entity: { id: 'rfnd_1', payment_id: 'pay_1', amount: 52950, status: 'processed' } },
+        payment: { entity: { id: 'pay_1', amount: 105900, amount_refunded: 52950 } },
+      },
     })
     dbMock.db.serviceRequests.getById.mockResolvedValue({ status: 'in_progress', current_amount: 5000, target_amount: 10000, requirements: {} })
     dbMock.adjustProgress.mockImplementation(fakeAdjustProgress)
     useSupabase((query) => {
       if (query.table === 'provider_webhook_events' && argOf(query, 'insert')) return { data: { id: 'evt_row' } }
+      if (query.table === 'razorpay_refunds' && query.op === 'update') return { data: [{ id: 'r1' }] }
       if (query.table === 'razorpay_payments' && argOf(query, 'select')) return { data: { id: 9, order_id: 44, amount_inr: 1059 } }
       if (query.table === 'razorpay_payment_orders') {
         return {
@@ -642,11 +646,15 @@ describe('Razorpay webhook signature', () => {
   ])('leaves the request total alone when refunding %s', async (_label, orderNotes) => {
     const refundBody = JSON.stringify({
       event: 'refund.processed',
-      payload: { refund: { entity: { id: 'rfnd_2', payment_id: 'pay_1', amount: 105900, status: 'processed' } } },
+      payload: {
+        refund: { entity: { id: 'rfnd_2', payment_id: 'pay_1', amount: 105900, status: 'processed' } },
+        payment: { entity: { id: 'pay_1', amount: 105900, amount_refunded: 105900 } },
+      },
     })
     dbMock.adjustProgress.mockImplementation(fakeAdjustProgress)
     const fake = useSupabase((query) => {
       if (query.table === 'provider_webhook_events' && argOf(query, 'insert')) return { data: { id: 'evt_row' } }
+      if (query.table === 'razorpay_refunds' && query.op === 'update') return { data: [{ id: 'r1' }] }
       if (query.table === 'razorpay_payments' && argOf(query, 'select')) return { data: { id: 9, order_id: 44, amount_inr: 1059 } }
       if (query.table === 'razorpay_payment_orders') return { data: { service_request_id: 12, order_notes: orderNotes } }
       return undefined

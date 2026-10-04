@@ -2,6 +2,7 @@
 
 import { useState, Suspense } from 'react';
 import { useIsClient } from '@/hooks/use-is-client';
+import { isFullyVerifiedAccount } from '@/lib/auth';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
@@ -38,11 +39,7 @@ function CompanyDashboardContent() {
   const [capabilityOffersTab, setCapabilityOffersTab] = useState<CapabilityOffersSubTab>('your-capabilities');
   const [offerRequestsTab, setOfferRequestsTab] = useState<OfferRequestsSubTab>('pending');
 
-  const allVerified = Boolean(
-    user?.email_verified &&
-    user?.phone_verified &&
-    user?.verification_status === 'verified'
-  );
+  const allVerified = isFullyVerifiedAccount(user);
 
   const companyCa = useCompanyCaAccounts(user?.id, activeTab === 'company-ca');
   const data = useCompanyDashboardData({

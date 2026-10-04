@@ -170,6 +170,9 @@ export type CsrCapabilityRentalRecord = {
   paid_at?: string | null
   razorpay_order_id?: string | null
   razorpay_payment_id?: string | null
+  refund_id?: string | null
+  refund_error?: string | null
+  refunded_at?: string | null
   logistics_provider?: 'delhivery' | null
   outbound_delivery?: CsrCapabilityDeliveryLeg | null
   return_delivery?: CsrCapabilityDeliveryLeg | null

@@ -12,7 +12,16 @@ import {
   normalizeCompanyGovernanceMechanism,
   normalizeCompanyImplementationModel,
 } from '@/lib/categories'
-import { createDelhiveryShipment, getDelhiveryTrackingSnapshot, sanitizeDelhiveryText, type CreateDelhiveryShipmentInput } from '@/lib/delhivery'
+import {
+  assertDelhiveryRouteServiceable,
+  checkDelhiveryPincode,
+  createDelhiveryShipment,
+  getDelhiveryTrackingSnapshot,
+  normalizeDelhiveryPhone,
+  sanitizeDelhiveryText,
+  upsertDelhiveryWarehouse,
+  type CreateDelhiveryShipmentInput,
+} from '@/lib/delhivery'
 import {
   confirmedFunds,
   milestonesFromCampaign,
@@ -285,7 +294,6 @@ describe('delhivery', () => {
   beforeEach(() => {
     vi.stubEnv('DELHIVERY_API_TOKEN', 'tok')
     vi.stubEnv('DELHIVERY_API_BASE_URL', 'https://delhivery.test/')
-    vi.stubEnv('DELHIVERY_PICKUP_LOCATION_NAME', '')
     fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
   })
@@ -309,7 +317,10 @@ describe('delhivery', () => {
     const [url, init] = fetchMock.mock.calls[0]
     expect(url).toBe('https://delhivery.test/api/cmu/create.json')
     expect(init.headers.Authorization).toBe('Token tok')
-    const payload = JSON.parse(String(init.body).replace('format=json&data=', ''))
+    expect(init.headers['Content-Type']).toBe('application/x-www-form-urlencoded')
+    const form = new URLSearchParams(String(init.body))
+    expect(form.get('format')).toBe('json')
+    const payload = JSON.parse(String(form.get('data')))
     expect(payload.pickup_location).toEqual({ name: 'Warehouse' })
     expect(payload.shipments[0]).toMatchObject({
       order: 'ORD 1',
@@ -318,11 +329,98 @@ describe('delhivery', () => {
       pin: '411001',
       phone: '9876543210',
       return_phone: '2212345678',
+      return_name: 'Acme',
       weight: '100',
       quantity: 1,
       payment_mode: 'Prepaid',
+      shipping_mode: 'Surface',
       country: 'India',
     })
+  })
+
+  it('keeps characters like + and = intact inside the encoded payload', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ success: true, packages: [{ waybill: 'WB1' }] }))
+    await createDelhiveryShipment({ ...shipment, consignee: { ...shipment.consignee, address: 'Flat 2+3, Lane=5' } })
+    const payload = JSON.parse(String(new URLSearchParams(String(fetchMock.mock.calls[0][1].body)).get('data')))
+    expect(payload.shipments[0].add).toBe('Flat 2+3, Lane=5')
+  })
+
+  it('uses the staging host when DELHIVERY_ENV is staging', async () => {
+    vi.stubEnv('DELHIVERY_API_BASE_URL', '')
+    vi.stubEnv('DELHIVERY_ENV', 'staging')
+    fetchMock.mockImplementation(async () => jsonResponse({ ShipmentData: [] }))
+    await getDelhiveryTrackingSnapshot('WB1')
+    expect(fetchMock.mock.calls[0][0]).toBe('https://staging-express.dlv.one/api/v1/packages/json/?waybill=WB1')
+    vi.stubEnv('DELHIVERY_ENV', '')
+    await getDelhiveryTrackingSnapshot('WB1')
+    expect(fetchMock.mock.calls[1][0]).toBe('https://track.delhivery.com/api/v1/packages/json/?waybill=WB1')
+  })
+
+  it('reports the package remarks when Delhivery refuses a booking', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ success: false, packages: [{ waybill: '', remarks: ['Crashing while saving package', 'Invalid pin'] }] }))
+    await expect(createDelhiveryShipment(shipment)).rejects.toThrow('Crashing while saving package; Invalid pin')
+  })
+
+  it('returns the existing waybill when the order was already booked', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ success: false, packages: [{ remarks: ['Duplicate order id'] }] }))
+      .mockResolvedValueOnce(jsonResponse({ ShipmentData: [{ Shipment: { AWB: 'WB-OLD' } }] }))
+    await expect(createDelhiveryShipment(shipment)).resolves.toMatchObject({ success: true, waybill: 'WB-OLD' })
+    expect(fetchMock.mock.calls[1][0]).toBe('https://delhivery.test/api/v1/packages/json/?ref_ids=ORD%231%3B')
+  })
+
+  it.each([
+    ['+91 98765 43210', '9876543210'],
+    ['09876543210', '9876543210'],
+    ['98765', ''],
+    ['1234567890123', ''],
+  ])('normalises phone %s', (input, expected) => {
+    expect(normalizeDelhiveryPhone(input)).toBe(expected)
+  })
+
+  it('reads IST scan times that carry no offset', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({
+      ShipmentData: [{ Shipment: { AWB: 'WB1', Status: { Status: 'Pending', StatusType: 'UD' }, Scans: [{ ScanDetail: { Scan: 'Pending', ScanDateTime: '2026-01-02T15:30:00' } }] } }],
+    }))
+    const snapshot = await getDelhiveryTrackingSnapshot('WB1')
+    expect(snapshot.events[0].timestamp).toBe('2026-01-02T10:00:00.000Z')
+    expect(snapshot.statusType).toBe('UD')
+  })
+
+  it('checks pincode serviceability for pickup and delivery', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('411001')) return jsonResponse({ delivery_codes: [{ postal_code: { pin: 411001, pre_paid: 'Y', pickup: 'Y' } }] })
+      if (url.includes('110001')) return jsonResponse({ delivery_codes: [{ postal_code: { pin: 110001, pre_paid: 'Y', pickup: 'N' } }] })
+      return jsonResponse({ delivery_codes: [] })
+    })
+    await expect(checkDelhiveryPincode('411001')).resolves.toEqual({ pincode: '411001', serviceable: true, prepaid: true, pickup: true })
+    await expect(assertDelhiveryRouteServiceable('411001', '411001')).resolves.toBeUndefined()
+    await expect(assertDelhiveryRouteServiceable('110001', '411001')).rejects.toThrow('Delhivery does not collect from pincode 110001')
+    await expect(assertDelhiveryRouteServiceable('411001', '999999')).rejects.toThrow('Delhivery does not deliver to pincode 999999')
+  })
+
+  it('does not block a booking when the serviceability check is unavailable', async () => {
+    fetchMock.mockResolvedValue(new Response('down', { status: 503 }))
+    await expect(assertDelhiveryRouteServiceable('411001', '560001')).resolves.toBeUndefined()
+  })
+
+  it('registers a warehouse and updates it when the name already exists', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ success: true }))
+    const warehouse = { name: 'Navadrishti-4', phone: '+91 98765 43210', address: 'Plot 5', city: 'Pune', state: 'MH', pincode: '411001' }
+    await upsertDelhiveryWarehouse(warehouse)
+    expect(fetchMock.mock.calls[0][0]).toBe('https://delhivery.test/api/backend/clientwarehouse/create/')
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1].body))).toMatchObject({ name: 'Navadrishti-4', phone: '9876543210', pin: '411001', return_pin: '411001' })
+
+    fetchMock.mockReset()
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ success: false, error: ['Warehouse with this name already exists'] }, 400))
+      .mockResolvedValueOnce(jsonResponse({ success: true }))
+    await upsertDelhiveryWarehouse(warehouse)
+    expect(fetchMock.mock.calls[1][0]).toBe('https://delhivery.test/api/backend/clientwarehouse/edit/')
+
+    fetchMock.mockReset()
+    fetchMock.mockResolvedValueOnce(jsonResponse({ success: false, error: ['Invalid pincode'] }, 400))
+    await expect(upsertDelhiveryWarehouse(warehouse)).rejects.toThrow('Delhivery could not register the pickup address: Invalid pincode')
   })
 
   it.each<[string, Partial<CreateDelhiveryShipmentInput>, RegExp]>([
@@ -330,7 +428,7 @@ describe('delhivery', () => {
     ['short seller phone', { seller: { ...shipment.seller, phone: '99' } }, /Pickup contact phone number is required/],
     ['bad consignee pincode', { consignee: { ...shipment.consignee, pincode: '4110' } }, /Consignee pincode must be 6 digits/],
     ['bad seller pincode', { seller: { ...shipment.seller, pincode: '' } }, /Pickup pincode must be 6 digits/],
-    ['no pickup location', { pickupLocationName: '' }, /DELHIVERY_PICKUP_LOCATION_NAME is not configured/],
+    ['no pickup location', { pickupLocationName: '' }, /Delhivery pickup location is required/],
   ])('rejects a booking with %s', async (_label, overrides, message) => {
     await expect(createDelhiveryShipment({ ...shipment, ...overrides })).rejects.toThrow(message)
     expect(fetchMock).not.toHaveBeenCalled()
@@ -377,15 +475,15 @@ describe('delhivery', () => {
     expect(snapshot.events[0].details).toBe('Bagged')
   })
 
-  it('tries the verbose endpoint when the first one fails', async () => {
-    fetchMock
-      .mockResolvedValueOnce(new Response('down', { status: 503 }))
-      .mockResolvedValueOnce(new Response('{"status":"Delivered"}', { status: 200 }))
+  it('surfaces tracking errors', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('{"status":"Delivered"}', { status: 200 }))
     await expect(getDelhiveryTrackingSnapshot('WB2')).resolves.toMatchObject({ trackingId: 'WB2', currentStatus: 'Delivered', events: [] })
-    expect(fetchMock.mock.calls[1][0]).toContain('verbose=2')
 
     fetchMock.mockImplementation(async () => new Response('gateway error', { status: 502 }))
     await expect(getDelhiveryTrackingSnapshot('WB3')).rejects.toThrow('gateway error')
+
+    fetchMock.mockImplementation(async () => jsonResponse({ ShipmentData: [], Error: 'No such waybill' }))
+    await expect(getDelhiveryTrackingSnapshot('WB4')).rejects.toThrow('No such waybill')
   })
 
   it('requires a tracking id', async () => {

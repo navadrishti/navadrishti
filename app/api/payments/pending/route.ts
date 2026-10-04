@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
-import { listCompanyOwnedAssignmentIds } from '@/lib/company-ca'
+import { listCompanyPayableAssignmentIds } from '@/lib/company-ca-payable'
 import { getCompanyCAFromRequest } from '@/lib/server-auth'
 import { getErrorMessage } from '@/lib/utils'
 
@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const assignmentIds = await listCompanyOwnedAssignmentIds(companyUserId)
+    const assignmentIds = await listCompanyPayableAssignmentIds(companyUserId)
 
     let attendance: Record<string, unknown>[] = []
     if (assignmentIds.length > 0) {

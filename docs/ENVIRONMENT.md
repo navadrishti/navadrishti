@@ -72,7 +72,14 @@ Support ticket notifications go to `SUPPORT_EMAIL`, falling back to the reply-to
 
 ## Shipping (Delhivery)
 
-`DELHIVERY_API_TOKEN`, `DELHIVERY_API_BASE_URL`, `DELHIVERY_API_TIMEOUT_MS`, `DELHIVERY_PICKUP_LOCATION_NAME`
+| Variable | Default |
+|---|---|
+| `DELHIVERY_API_TOKEN` | — (required for shipping) |
+| `DELHIVERY_ENV` | `production` (`staging` uses `staging-express.dlv.one`) |
+| `DELHIVERY_API_BASE_URL` | derived from `DELHIVERY_ENV` |
+| `DELHIVERY_API_TIMEOUT_MS` | `10000` |
+
+Each sender's saved profile address is registered as their own Delhivery pickup warehouse (`Navadrishti-<userId>`) on first booking and re-registered when it changes, so no warehouse needs to be set up by hand.
 
 ## Generating a secret
 

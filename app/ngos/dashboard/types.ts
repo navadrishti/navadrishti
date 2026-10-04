@@ -1,4 +1,5 @@
 import type { CampaignLeadLifecycle } from '@/lib/format-date';
+import type { CampaignTracking } from '@/lib/campaign-tracking';
 import type { Tables } from '@/lib/database.types';
 import type { CapabilityOfferSummary } from '@/lib/service-offers';
 import type { CsrCapabilityRentalDeliveryView } from '@/lib/csr-agent/campaign';
@@ -50,6 +51,7 @@ export interface CampaignLeadAssignment {
   company_email?: string;
   company_verification_status?: string | null;
   company_verified?: boolean;
+  tracking?: CampaignTracking | null;
 }
 
 export interface CampaignVolunteerAssignment {

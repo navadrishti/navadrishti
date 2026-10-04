@@ -113,6 +113,10 @@ export function useProfileDetails() {
     })
     setAge(text(userProfile.age))
 
+    if (freshUser?.user_type === 'individual') {
+      setAddressLine(headquartersFrom(userProfile.home_address).address_line || '')
+    }
+
     if (freshUser?.user_type === 'ngo') {
       setAddressLine(headquartersFrom(userProfile.ngo_headquarters).address_line || '')
       setRegistrationDate(String(userProfile.registration_date || ''))
@@ -183,6 +187,10 @@ export function useProfileDetails() {
 
     if (userType === 'individual' && age) {
       profileData.age = parseInt(age)
+    }
+
+    if (userType === 'individual') {
+      profileData.home_address = buildHeadquarters()
     }
 
     if (userType === 'company') {

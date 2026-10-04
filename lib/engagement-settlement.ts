@@ -10,6 +10,7 @@ import {
   isRazorpayRouteEnabled,
   refundDuplicatePayment,
 } from '@/lib/razorpay-route'
+import { recordCapturedPayment } from '@/lib/razorpay/payment-records'
 
 type EngagementAssignment = Pick<
   Tables<'service_engagement_assignments'>,
@@ -69,6 +70,28 @@ export function getAssignmentOutstandingAmount(assignment: Pick<EngagementAssign
   }
 }
 
+/** What is still owed, read from the attendance rows themselves rather than the cached summary. */
+export async function loadAssignmentOutstanding(assignmentId: string) {
+  const { data, error } = await supabase
+    .from('service_attendance_entries')
+    .select('amount_due, payment_status')
+    .eq('assignment_id', assignmentId)
+  if (error) throw error
+
+  let totalDue = 0
+  let paidTotal = 0
+  let outstanding = 0
+  for (const entry of data || []) {
+    const amount = Number(entry.amount_due || 0)
+    const status = String(entry.payment_status || '').toLowerCase()
+    totalDue += amount
+    if (status === 'paid') paidTotal += amount
+    else if (status === 'pending' || status === 'billed') outstanding += amount
+  }
+  const round = (value: number) => Number(value.toFixed(2))
+  return { totalDue: round(totalDue), paidTotal: round(paidTotal), outstanding: round(outstanding) }
+}
+
 export function isDailyRentalAssignment(
   assignment: Pick<EngagementAssignment, 'meta' | 'billing_cycle' | 'payment_mode'>
 ) {
@@ -93,7 +116,7 @@ export async function finalizeEngagementSettlement(assignment: EngagementAssignm
     .eq('assignment_id', assignment.id)
 
   for (const entry of entries || []) {
-    if (String(entry.payment_status || '').toLowerCase() === 'paid') continue
+    if (['paid', 'waived'].includes(String(entry.payment_status || '').toLowerCase())) continue
     await supabase
       .from('service_attendance_entries')
       .update({
@@ -185,7 +208,7 @@ export async function createEngagementSettlementOrder(
   parties: { payerUserId: number; payeeUserId: number }
 ) {
   const { payerUserId, payeeUserId } = parties
-  const { outstanding } = getAssignmentOutstandingAmount(assignment)
+  const { outstanding } = await loadAssignmentOutstanding(String(assignment.id))
   if (outstanding <= 0) {
     const meta = await finalizeEngagementSettlement(assignment, {
       settledAmount: 0,
@@ -204,7 +227,7 @@ export async function createEngagementSettlementOrder(
   const { order, pricing, orderNotes } = await createPlatformPricedOrder({
     razorpay,
     baseAmountInr: outstanding,
-    receipt: `assign_${assignment.id}_${Date.now()}`,
+    receipt: `asg_${String(assignment.id).slice(0, 8)}_${Date.now()}`,
     paymentKind: 'engagement_settlement',
     beneficiaryUserId: payeeUserId,
     beneficiaryName: 'The service provider',
@@ -221,7 +244,7 @@ export async function createEngagementSettlementOrder(
   const serviceRequestId =
     assignment.target_type === 'service_request' ? Number(assignment.target_id || 0) : null
 
-  await supabase.from('razorpay_payment_orders').upsert({
+  const { error: orderRecordError } = await supabase.from('razorpay_payment_orders').upsert({
     service_request_id: serviceRequestId,
     application_id: assignment.application_table === 'service_request_applications'
       ? Number(assignment.application_id || 0) || null
@@ -230,7 +253,7 @@ export async function createEngagementSettlementOrder(
     payer_user_id: payerUserId,
     ngo_user_id: payeeUserId,
     razorpay_order_id: String(order.id),
-    receipt: String(order.receipt || `assign_${assignment.id}`),
+    receipt: String(order.receipt || `asg_${String(assignment.id).slice(0, 8)}`),
     amount_inr: Number(pricing.totalChargeInr.toFixed(2)),
     amount_paise: pricing.totalChargePaise,
     currency: 'INR',
@@ -243,6 +266,7 @@ export async function createEngagementSettlementOrder(
     },
     updated_at: nowIso,
   }, { onConflict: 'razorpay_order_id' })
+  if (orderRecordError) throw orderRecordError
 
   return {
     paymentRequired: true,
@@ -394,6 +418,13 @@ export async function settleEngagementFromCapturedPayment(input: {
     .from('razorpay_payment_orders')
     .update({ order_status: 'paid', updated_at: new Date().toISOString() })
     .eq('razorpay_order_id', input.razorpayOrderId)
+
+  await recordCapturedPayment({
+    razorpayOrderId: input.razorpayOrderId,
+    razorpayPaymentId: input.razorpayPaymentId,
+    amountPaise: Math.round(amountCheck.paidInr * 100),
+    payload: { source: 'engagement_settlement', assignment_id: assignmentId },
+  }).catch((error) => console.error('Failed to record engagement settlement payment:', error))
 
   return { ok: true, alreadyProcessed: false, settledAmount: amountCheck.baseAmountInr, paidInr: amountCheck.paidInr, meta }
 }

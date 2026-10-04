@@ -118,6 +118,23 @@ export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
     )
   }
 
+  const projectAcceptedCompanyId =
+    String(projectForReviewRaw.assignment_status || '').toLowerCase() === 'accepted'
+      ? Number(projectForReviewRaw.assigned_company_user_id || 0)
+      : 0
+
+  if (decision === 'rejected') {
+    const acceptedAlready =
+      projectAcceptedCompanyId === companyId ||
+      String(metaApp?.status || '').toLowerCase() === 'accepted'
+    if (acceptedAlready) {
+      return NextResponse.json(
+        { error: 'This company is already working on the project, so its application can no longer be rejected.' },
+        { status: 409 }
+      )
+    }
+  }
+
   if (decision === 'accepted') {
     const alreadyAcceptedMeta = pendingApps.some(
       (item) =>
@@ -214,7 +231,7 @@ export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
       Object.assign(projectUpdate, buildProjectLeadNgoPatch(userId))
       projectUpdate.assigned_company_user_id = companyId
       projectUpdate.assignment_status = 'accepted'
-    } else if (decision === 'rejected') {
+    } else if (decision === 'rejected' && !projectAcceptedCompanyId) {
       projectUpdate.assignment_status = 'pending'
     }
 

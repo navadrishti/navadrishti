@@ -1,5 +1,6 @@
 import type { CSRTrackingAssignment } from '@/components/csr-tracking-project-details';
 import type { Tables } from '@/lib/database.types';
+import type { CampaignTracking } from '@/lib/campaign-tracking';
 
 export type { CompanyCaIdSuccessionOption } from '@/lib/company-ca';
 
@@ -45,6 +46,7 @@ export interface PublishedCsrCampaign {
   impact_metrics?: Record<string, unknown> | null;
   company_id?: number | null;
   created_at?: string | null;
+  tracking?: CampaignTracking | null;
 }
 
 export interface NgoDirectoryItem {

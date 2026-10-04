@@ -404,7 +404,7 @@ Project path → /service-requests/projects/create OR Atlas (Project)
 
 ```
 [Financial] → Razorpay create-order → verify/webhook → is_fulfilled
-[Material]    → Volunteer assigned → Delhivery sync → shipment events
+[Material]    → Donor accepted → donor books pickup (system assigns AWB) → Delhivery sync → shipment events
 [Skill/Infra] → Volunteer apply → accept → attendance → settle
 ```
 
@@ -795,7 +795,7 @@ See `.env.example` for committed variables. Key groups:
 - **Admin:** `ADMIN_USERNAME`, `ADMIN_PASSWORD`
 - **Cloudinary:** `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`
 - **Payments:** `NEXT_PUBLIC_RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, `RAZORPAY_ROUTE_ENABLED`, `NEXT_PUBLIC_PLATFORM_FEE_PERCENT`, `NEXT_PUBLIC_PLATFORM_FEE_MIN_INR`, `NEXT_PUBLIC_PLATFORM_GST_PERCENT`
-- **Logistics:** `DELHIVERY_API_TOKEN`, `DELHIVERY_API_BASE_URL`, `DELHIVERY_API_TIMEOUT_MS`, `DELHIVERY_PICKUP_LOCATION_NAME`
+- **Logistics:** `DELHIVERY_API_TOKEN`, `DELHIVERY_ENV`, optional `DELHIVERY_API_BASE_URL` and `DELHIVERY_API_TIMEOUT_MS`
 - **AI:** `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`
 - **Cron:** `CRON_SECRET`
 - **Field app:** `PWA_UPSTREAM_URL`, `PWA_APP_URL`, `NEXT_PUBLIC_PWA_URL`, `PWA_CORS_ORIGIN` (code only)

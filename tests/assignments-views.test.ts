@@ -112,7 +112,7 @@ describe('getCompanyProjects', () => {
   })
 
   it('explains why an unverified company cannot apply', async () => {
-    companyDb([project('open')], { email_verified: true, phone_verified: false, verification_status: 'verified' })
+    companyDb([project('open')], { email_verified: true, phone_verified: true, verification_status: 'pending' })
     const { json } = await read(await getCompanyProjects(ctx(COMPANY, 'company')))
     expect(json.meta).toEqual({ company_fully_verified: false })
     expect(json.data[0]).toMatchObject({

@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
+import { isFullyVerifiedAccount } from '@/lib/auth';
 import ProtectedRoute from '@/components/protected-route';
 import { Header } from '@/components/header';
 import { Card, CardContent } from '@/components/ui/card';
@@ -56,11 +57,7 @@ function NGODashboardContent() {
     setCsrProjectsTab('ongoing');
   });
 
-  const allVerified = Boolean(
-    user?.email_verified &&
-    user?.phone_verified &&
-    user?.verification_status === 'verified'
-  );
+  const allVerified = isFullyVerifiedAccount(user);
   const [acceptsPayments, setAcceptsPayments] = useState<boolean | null>(null);
   const [payoutDetailsSaved, setPayoutDetailsSaved] = useState<boolean | null>(null);
   const { connected: payoutConnected } = usePayoutConnection(Boolean(user));

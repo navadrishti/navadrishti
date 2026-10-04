@@ -18,19 +18,6 @@ export const formatDisplayDate = (value?: string | null): string => {
   });
 };
 
-export function formatDelhiveryEventTime(value: unknown) {
-  if (!value) return 'Time not available';
-  const date = new Date(String(value));
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString('en-IN', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 export function normalizeNgoRequestApplication(application: IndividualNgoRequestApplication) {
   return normalizeServiceRequestRecord(application.request);
 }

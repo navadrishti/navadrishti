@@ -107,6 +107,9 @@ export async function POST(
     if (settlement.settlementStatus === 'settled') {
       return NextResponse.json({ error: 'This engagement is already settled' }, { status: 409 })
     }
+    if (!['active', 'in_progress'].includes(String(assignment.status || '').toLowerCase())) {
+      return NextResponse.json({ error: 'Only an active engagement can be settled' }, { status: 409 })
+    }
 
     const result = await createEngagementSettlementOrder(assignment, parties)
     if (!result.paymentRequired) {
