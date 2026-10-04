@@ -332,8 +332,8 @@ describe('delivery sync', () => {
       mocks.snapshot.mockResolvedValue({ provider: 'delhivery', trackingId: 'AWB55', currentStatus: 'Manifested', statusType: 'UD', lastLocation: null, lastEventAt: null, events: [] })
     })
 
-    it('books from the donor address to the NGO and stores the system-assigned AWB', async () => {
-      bookingDb(application('accepted'))
+    it('books from the donor address to the project and stores the system-assigned AWB', async () => {
+      bookingDb(application('accepted'), { exact_address: JSON.stringify({ address_line: 'NGO Office', city: 'Mumbai', state: 'Maharashtra', pincode: '400001' }) })
       const res = await sync(INDIVIDUAL, { action: 'book' })
       expect(res.status).toBe(200)
       expect(mocks.createShipment).toHaveBeenCalledWith(expect.objectContaining({
@@ -347,6 +347,13 @@ describe('delivery sync', () => {
       expect(mocks.db.serviceRequestApplications.update).toHaveBeenCalledWith(9, expect.objectContaining({
         response_meta: expect.objectContaining({ delivery_tracking_id: 'AWB55', delivery_order_id: 'sr_5_9' }),
       }))
+    })
+
+    it('refuses to book when the project delivery address is incomplete', async () => {
+      bookingDb(application('accepted'))
+      const res = await sync(INDIVIDUAL, { action: 'book' })
+      expect(res.status).toBe(409)
+      expect(mocks.createShipment).not.toHaveBeenCalled()
     })
 
     it('delivers to the project site when the need has a full address', async () => {

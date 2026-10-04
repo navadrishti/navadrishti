@@ -11,7 +11,7 @@ import {
   isServiceRequestContributionOrder,
   resolveRefundDebitInr,
 } from '@/lib/service-request-payments'
-import { getErrorMessage, parseAmountToInr, parseJsonObject } from '@/lib/utils'
+import { parseAmountToInr, parseJsonObject } from '@/lib/utils'
 
 export type RefundedOrder = {
   id: string
@@ -290,18 +290,12 @@ export async function reverseRefundedPayment(input: RefundReversalInput): Promis
   const notes = parseJsonObject(input.order.order_notes)
   const result: RefundReversalResult = { kind: refundPaymentKind(notes), raisedInr: null, actions: [], warnings: [] }
 
-  try {
-    if (isServiceRequestContributionOrder(notes)) await reverseContribution(input, result)
-    else if (isCompanyCaPaymentOrder(notes)) await reverseCompanyCa(input, result)
-    else if (isCsrMilestonePaymentOrder(notes)) await reverseMilestone(input, result)
-    else if (isServiceOfferPaymentOrder(notes)) await reverseServiceOffer(input, result)
-    else if (isEngagementSettlementOrder(notes)) await reverseEngagement(input, result)
-    else if (isCsrCapabilityRentalOrder(notes)) await reverseCsrRental(input, result)
-  } catch (error) {
-    console.error('Refund reversal failed:', error)
-    result.warnings.push(
-      `The refund went through, but updating the ${refundPaymentKindLabel(notes).toLowerCase()} failed: ${getErrorMessage(error) || 'unknown error'}`
-    )
-  }
+  if (isServiceRequestContributionOrder(notes)) await reverseContribution(input, result)
+  else if (isCompanyCaPaymentOrder(notes)) await reverseCompanyCa(input, result)
+  else if (isCsrMilestonePaymentOrder(notes)) await reverseMilestone(input, result)
+  else if (isServiceOfferPaymentOrder(notes)) await reverseServiceOffer(input, result)
+  else if (isEngagementSettlementOrder(notes)) await reverseEngagement(input, result)
+  else if (isCsrCapabilityRentalOrder(notes)) await reverseCsrRental(input, result)
+
   return result
 }

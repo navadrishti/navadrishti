@@ -221,10 +221,12 @@ describe('Razorpay webhook refunds', () => {
     expect(argOf(writes('provider_webhook_events', 'update').at(-1), 'update')).toMatchObject({ processing_status: 'processed' })
   })
 
-  it('still reopens the milestone before the refunds migration lets the row be stored', async () => {
+  it('fails and leaves the webhook retryable when the refund ledger cannot store a null request id', async () => {
     refundDb({ service_request_id: null, order_notes: milestoneNotes }, { recordError: { code: '23502', message: 'null value' } })
-    await webhookPost(webhookRequest(refundEvent('refund.processed', 'processed'), 'evt_r1b'))
-    expect(argOf(writes('csr_project_milestones', 'update')[0], 'update')).toMatchObject({ status: 'approved' })
+    const response = await webhookPost(webhookRequest(refundEvent('refund.processed', 'processed'), 'evt_r1b'))
+    expect(response.status).toBe(500)
+    expect(writes('csr_project_milestones', 'update')).toHaveLength(0)
+    expect(argOf(writes('provider_webhook_events', 'update').at(-1), 'update')).toMatchObject({ processing_status: 'failed' })
   })
 
   it('debits a processed contribution refund once', async () => {
@@ -469,11 +471,10 @@ describe('admin refund recording', () => {
     expect(mocks.adjustProgress).toHaveBeenCalledTimes(1)
   })
 
-  it('leaves the debit to the webhook when the refund row could not be saved', async () => {
+  it('fails instead of reporting success when the refund row could not be saved', async () => {
     setup(true)
     supabaseFake.queue('razorpay_refunds.upsert', { error: { message: 'boom' } })
-    const result = await refund()
+    await expect(refund()).rejects.toMatchObject({ status: 503 })
     expect(mocks.adjustProgress).not.toHaveBeenCalled()
-    expect(result.warnings.join(' ')).toContain('refund webhook will finish it')
   })
 })

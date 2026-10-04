@@ -800,7 +800,7 @@ See `.env.example` for committed variables. Key groups:
 - **Cron:** `CRON_SECRET`
 - **Field app:** `PWA_UPSTREAM_URL`, `PWA_APP_URL`, `NEXT_PUBLIC_PWA_URL`, `PWA_CORS_ORIGIN` (code only)
 - **SMS:** `MSG91_API_KEY`, `MSG91_TEMPLATE_ID` (code only, not in .env.example)
-- **Email:** `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `SMTP_REPLY_TO`, `SUPPORT_EMAIL` (code only)
+- **Application email:** optional Nodemailer adapter for platform-generated emails; no SMTP variables are required by the default deployment. Supabase Auth email/SMS is configured separately in Supabase
 
 ## Storage Services
 

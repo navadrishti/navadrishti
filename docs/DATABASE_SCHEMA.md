@@ -50,6 +50,18 @@ Removed from product: `users.verified`, `users.identity_verified`
 - CSR disbursement confirmations: `csr_payment_confirmations` (separate domain)
 - `support_tickets`, `support_ticket_messages`
 
+`razorpay_refunds.service_request_id` must be nullable. CSR milestone, service-offer,
+engagement, and capability-rental payments can be refunded without a service request.
+On existing Supabase projects, apply this once before enabling admin refunds:
+
+```sql
+ALTER TABLE public.razorpay_refunds
+  ALTER COLUMN service_request_id DROP NOT NULL;
+```
+
+The refund API fails explicitly if this constraint is still present; it must not report a
+successful refund while omitting the platform ledger entry.
+
 ### G) Other domains
 - Government: `government_bodies`, `government_admin_accounts`, `government_projects`, `government_project_milestones`
 - AI agents: `ngo_ai_agent_*`, `csr_ai_agent_*`

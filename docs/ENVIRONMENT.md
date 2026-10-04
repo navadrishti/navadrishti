@@ -31,10 +31,8 @@ CA accounts are created from the admin console. `CA_USERNAME` and `CA_MEMBERSHIP
 |----------|-------|
 | `APP_URL` | Server-side base URL (emails, redirects) |
 | `NEXT_PUBLIC_APP_URL` | Client-side base URL |
-| `NEXT_PUBLIC_PWA_URL` | Shows the field app link in the sidebar |
-| `PWA_APP_URL` / `FIELD_APP_URL` | Field app origin for access control |
-| `PWA_CORS_ORIGIN` | Extra allowed origin for `/api/pwa/*` |
-| `PWA_UPSTREAM_URL` | Optional upstream for the PWA proxy |
+| `NEXT_PUBLIC_PWA_URL` | Public field-app URL shown in the platform sidebar |
+| `PWA_UPSTREAM_URL` | Server-side field-app URL used by the `/api/pwa/*` proxy |
 
 ## Media
 
@@ -53,7 +51,11 @@ CA accounts are created from the admin console. `CA_USERNAME` and `CA_MEMBERSHIP
 
 ## Email (Nodemailer SMTP)
 
-`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `SMTP_REPLY_TO`, `EMAIL_REPLY_TO`, `SUPPORT_EMAIL`
+Supabase Auth email and Twilio/SMS delivery are configured in the Supabase dashboard.
+The application contains an optional Nodemailer adapter for platform-generated support,
+offer-review, and CSR notification emails, but no SMTP variables are required by the
+default deployment. Those notifications remain disabled unless an SMTP provider is
+intentionally configured.
 
 Support ticket notifications go to `SUPPORT_EMAIL`, falling back to the reply-to or SMTP sender.
 

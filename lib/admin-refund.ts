@@ -186,7 +186,7 @@ export async function processAdminRefund(input: ProcessAdminRefundInput) {
     .eq('id', paymentRow.id);
   if (paymentUpdateError) console.error('Failed to update refunded payment status:', paymentUpdateError);
 
-  let recording: 'recorded' | 'unsupported' | 'failed' = 'failed';
+  let recording: 'recorded' | 'failed' = 'failed';
   if (razorpayRefundId) {
     try {
       const { recorded } = await recordRefund({
@@ -200,25 +200,24 @@ export async function processAdminRefund(input: ProcessAdminRefundInput) {
         amount_paise: refundPaise,
         provider_payload: (refund ? { ...refund } : {}) as Json,
       });
-      recording = recorded ? 'recorded' : 'unsupported';
-      if (recorded) {
-        // The refund webhook may have stored the row first; keep who issued it and why.
-        await supabase
-          .from('razorpay_refunds')
-          .update({
-            initiated_by_admin_id: Number(admin.id) > 0 ? Number(admin.id) : null,
-            support_ticket_id: supportTicketId,
-            refund_reason: refundReason,
-            updated_at: nowIso,
-          })
-          .eq('razorpay_refund_id', razorpayRefundId);
-      } else {
-        warnings.push('Refund history is not stored for this payment type until the refunds migration is applied.');
-      }
+      recording = recorded ? 'recorded' : 'failed';
+      // The refund webhook may have stored the row first; keep who issued it and why.
+      await supabase
+        .from('razorpay_refunds')
+        .update({
+          initiated_by_admin_id: Number(admin.id) > 0 ? Number(admin.id) : null,
+          support_ticket_id: supportTicketId,
+          refund_reason: refundReason,
+          updated_at: nowIso,
+        })
+        .eq('razorpay_refund_id', razorpayRefundId);
     } catch (error) {
       console.error('Failed to record Razorpay refund:', error);
-      warnings.push(
-        `The refund was issued but could not be saved yet (${getErrorMessage(error) || 'unknown error'}); the refund webhook will finish it.`
+      throw new AdminRefundError(
+        `The refund was issued, but its ledger entry could not be saved. Razorpay will retry the refund webhook. ${
+          getErrorMessage(error) || 'Unknown ledger error'
+        }`,
+        503
       );
     }
   }
@@ -229,7 +228,7 @@ export async function processAdminRefund(input: ProcessAdminRefundInput) {
     // cannot be stored before the migration, and their reversals are safe to repeat.
     const firstToProcess = recording === 'recorded' && razorpayRefundId
       ? await settleRefundStatus(razorpayRefundId, 'processed', (refund ? { ...refund } : {}) as Json).catch(() => false)
-      : recording === 'unsupported';
+      : false;
     if (firstToProcess && order) {
       const reversal = await reverseRefundedPayment({
         order: {

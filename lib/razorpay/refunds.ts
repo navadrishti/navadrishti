@@ -46,9 +46,8 @@ export async function syncPaymentRefundStatus(
 }
 
 /**
- * Stores the refund as pending if it is new. Rows for payments outside a service request need
- * razorpay_refunds.service_request_id to be nullable; until then those refunds are skipped here
- * and the Razorpay dashboard stays the record.
+ * Stores the refund as pending if it is new. The refunds table must allow nullable
+ * service_request_id because several supported payment types are not tied to a service request.
  */
 export async function recordRefund(record: RefundRecord): Promise<{ recorded: boolean }> {
   const nowIso = new Date().toISOString();
@@ -58,7 +57,11 @@ export async function recordRefund(record: RefundRecord): Promise<{ recorded: bo
     { onConflict: 'razorpay_refund_id', ignoreDuplicates: true }
   );
   if (!error) return { recorded: true };
-  if (error.code === '23502' && record.service_request_id === null) return { recorded: false };
+  if (error.code === '23502' && record.service_request_id === null) {
+    throw new Error(
+      'Refund ledger cannot record a payment without a service request. Apply the refunds schema migration before processing this refund.'
+    );
+  }
   throw error;
 }
 

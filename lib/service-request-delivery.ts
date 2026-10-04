@@ -211,7 +211,8 @@ export async function syncServiceRequestDelivery(input: {
 
 /**
  * Books Delhivery to collect a material donation from the donor's saved address and deliver it
- * to the need's project site (or the NGO's registered office when the project has no full address).
+ * to the need's project site. A project must have a complete delivery address so a valid
+ * shipment cannot be created for the wrong destination.
  */
 export async function bookServiceRequestDelivery(input: {
   requestId: number;
@@ -241,7 +242,13 @@ export async function bookServiceRequestDelivery(input: {
   const donor = await loadDelhiveryParty(donorId, 'your');
   const ngo = await loadDelhiveryParty(ngoId, "the NGO's");
   const site = readStructuredAddress(request.project?.exact_address);
-  const consignee = isCompleteAddress(site) ? withAddress(ngo, site) : ngo;
+  if (!isCompleteAddress(site)) {
+    throw new DeliveryRequestError(
+      'Add a complete project delivery address (street address, city, state and 6-digit pincode) before booking Delhivery',
+      409
+    );
+  }
+  const consignee = withAddress(ngo, site);
 
   await assertDelhiveryRouteServiceable(donor.pincode, consignee.pincode);
   const pickupLocationName = await ensureDelhiveryPickupLocation(donor);

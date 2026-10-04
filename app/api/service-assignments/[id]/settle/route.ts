@@ -71,10 +71,15 @@ export async function POST(
         razorpay.payments.fetch(razorpay_payment_id),
         razorpay.orders.fetch(razorpay_order_id),
       ])
-      if (payment?.order_id !== razorpay_order_id || providerOrder?.id !== razorpay_order_id) {
+      if (
+        !payment ||
+        payment.id !== razorpay_payment_id ||
+        payment.order_id !== razorpay_order_id ||
+        providerOrder?.id !== razorpay_order_id
+      ) {
         return NextResponse.json({ error: 'Order and payment mismatch' }, { status: 400 })
       }
-      if (String(payment.status) !== 'captured') {
+      if (String(payment.status || '').toLowerCase() !== 'captured') {
         return NextResponse.json({ error: 'Payment not captured yet' }, { status: 409 })
       }
 
