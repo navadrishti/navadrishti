@@ -54,7 +54,7 @@ export function NeedDetailsCard({ request, applicantCount, deliverableNeed }: Ne
         </div>
         {deliverableNeed ? (
           <p className="mt-3 text-sm text-indigo-700">
-            Deliverable need — fulfillment is tracked via Delhivery after you accept an applicant.
+            Deliverable need — fulfillment is tracked through delivery updates after you accept an applicant.
           </p>
         ) : null}
       </CardContent>

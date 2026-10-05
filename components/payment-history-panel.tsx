@@ -15,6 +15,11 @@ const PAYMENT_SOURCE_BADGE_CLASS: Record<string, string> = {
   razorpay: 'bg-slate-100 text-slate-700 hover:bg-slate-100',
 }
 
+function paymentSourceLabel(label: string | null | undefined) {
+  const normalized = String(label || '').toLowerCase()
+  return normalized.includes('razorpay') ? 'Online payment' : label || 'Online payment'
+}
+
 function formatPaymentInr(value: number) {
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -171,7 +176,7 @@ export function PaymentHistoryPanel({
                     <div className="flex flex-wrap gap-2">
                       <Badge variant="outline">{formatStatusLabel(payment.payment_status)}</Badge>
                       <Badge className={PAYMENT_SOURCE_BADGE_CLASS[payment.source] || PAYMENT_SOURCE_BADGE_CLASS.razorpay}>
-                        {payment.source_label || 'Razorpay payment'}
+                        {paymentSourceLabel(payment.source_label)}
                       </Badge>
                     </div>
                   </div>

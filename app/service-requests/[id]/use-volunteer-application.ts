@@ -36,9 +36,6 @@ export function useVolunteerApplication({
   const [applicationFulfillmentQuantity, setApplicationFulfillmentQuantity] = useState('')
   const [individualReceiptFile, setIndividualReceiptFile] = useState<File | null>(null)
   const [individualCompletionNote, setIndividualCompletionNote] = useState('')
-  const [individualDeliveryTrackingId, setIndividualDeliveryTrackingId] = useState('')
-  const [syncingOwnTracking, setSyncingOwnTracking] = useState(false)
-
   const isAuthenticated = !!(user && token)
 
   const handleApply = async () => {
@@ -188,7 +185,6 @@ export function useVolunteerApplication({
           status: 'completed',
           receiptUrl,
           completionNote: individualCompletionNote,
-          deliveryTrackingId: individualDeliveryTrackingId.trim() || undefined
         })
       })
 
@@ -199,51 +195,11 @@ export function useVolunteerApplication({
       }
 
       setUserApplication(data.data)
-      setIndividualDeliveryTrackingId('')
       toast({ title: 'Done', description: 'Your fulfillment has been marked as done.' })
       fetchRequestDetails()
       checkExistingApplication()
     } catch (error) {
       toast({ title: 'Update failed', description: getErrorMessage(error) || 'Could not mark completion', variant: 'destructive' })
-    }
-  }
-
-  const syncOwnDelivery = async () => {
-    if (!userApplication || !token) return
-
-    const trackingId = (individualDeliveryTrackingId || userApplication.response_meta?.delivery_tracking_id || '').trim()
-    if (!trackingId) {
-      toast({ title: 'Tracking ID required', description: 'Enter or save a Delhivery tracking ID first.', variant: 'destructive' })
-      return
-    }
-
-    setSyncingOwnTracking(true)
-    try {
-      const response = await fetch(`/api/service-requests/${requestId}/volunteers/${userApplication.id}/delivery/sync`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ trackingId })
-      })
-
-      const data = await response.json()
-      if (!response.ok || !data?.success) {
-        toast({ title: 'Sync failed', description: data?.error || 'Could not fetch Delhivery status', variant: 'destructive' })
-        return
-      }
-
-      const updatedAssignment = data?.data?.assignment
-      if (updatedAssignment) {
-        setUserApplication(updatedAssignment)
-      }
-
-      toast({ title: 'Tracking synced', description: 'Latest Delhivery shipment status has been updated.' })
-    } catch (error) {
-      toast({ title: 'Sync failed', description: getErrorMessage(error) || 'Could not fetch Delhivery status', variant: 'destructive' })
-    } finally {
-      setSyncingOwnTracking(false)
     }
   }
 
@@ -258,12 +214,8 @@ export function useVolunteerApplication({
     setIndividualReceiptFile,
     individualCompletionNote,
     setIndividualCompletionNote,
-    individualDeliveryTrackingId,
-    setIndividualDeliveryTrackingId,
-    syncingOwnTracking,
     handleApply,
     handleMarkIndividualDone,
-    syncOwnDelivery,
   }
 }
 

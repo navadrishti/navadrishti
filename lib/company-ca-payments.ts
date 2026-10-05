@@ -1,5 +1,7 @@
+import type Razorpay from 'razorpay'
 import { adjustServiceRequestProgress, supabase } from '@/lib/db'
-import { parseJsonObject, validateCapturedPaymentAmounts } from '@/lib/utils'
+import { refundDuplicatePayment } from '@/lib/razorpay/duplicate-payment'
+import { getErrorMessage, parseJsonObject, validateCapturedPaymentAmounts } from '@/lib/utils'
 
 export function isCompanyCaPaymentOrder(orderNotes: unknown): boolean {
   return parseJsonObject(orderNotes).payment_kind === 'company_ca'
@@ -19,15 +21,17 @@ async function addToServiceRequestTotal(serviceRequestId: number, amountInr: num
 }
 
 export type CompanyCaSettlementResult =
-  | { ok: true; paidInr: number; creditedInr: number }
+  | { ok: true; paidInr: number; creditedInr: number; alreadyProcessed?: boolean }
   | { ok: false; status: number; error: string }
 
 /**
  * Marks a captured Company CA payment as paid and settles the attendance entries
  * and contributions it covers. Called from both the verify route and the Razorpay
- * webhook; the `.neq(..., 'paid')` guards make sure each entry is credited once.
+ * webhook: whichever moves the order to `paid` settles it, and a payment whose items
+ * were all settled by an earlier order is refunded.
  */
 export async function settleCompanyCaPayment(input: {
+  razorpay: Razorpay
   razorpayOrderId: string
   razorpayPaymentId: string
   razorpaySignature: string | null
@@ -61,10 +65,42 @@ export async function settleCompanyCaPayment(input: {
   const attendanceEntryIds = collectIds(notes.attendanceEntryId || notes.attendance_entry_id, notes.attendanceEntryIds)
   const contributionIds = collectIds(orderRow.contribution_id || notes.contributionId || notes.contribution_id, notes.contributionIds)
 
-  await supabase
+  const { data: claimedOrder, error: claimError } = await supabase
     .from('razorpay_payment_orders')
     .update({ order_status: 'paid', updated_at: nowIso })
     .eq('id', orderRow.id)
+    .neq('order_status', 'paid')
+    .select('id')
+    .maybeSingle()
+  if (claimError) throw claimError
+  if (!claimedOrder) {
+    return { ok: true, paidInr: amountCheck.paidInr, creditedInr: 0, alreadyProcessed: true }
+  }
+
+  const [{ data: unpaidContributions }, { data: unpaidEntries }] = await Promise.all([
+    contributionIds.length > 0
+      ? supabase.from('service_request_contributions').select('id').in('id', contributionIds).neq('status', 'paid')
+      : Promise.resolve({ data: [] as { id: string }[] }),
+    attendanceEntryIds.length > 0
+      ? supabase.from('service_attendance_entries').select('id').in('id', attendanceEntryIds).not('payment_status', 'in', '(paid,waived)')
+      : Promise.resolve({ data: [] as { id: string }[] }),
+  ])
+  if ((unpaidContributions || []).length === 0 && (unpaidEntries || []).length === 0) {
+    await supabase
+      .from('razorpay_payment_orders')
+      .update({ order_status: 'cancelled', updated_at: new Date().toISOString() })
+      .eq('id', orderRow.id)
+    try {
+      return await refundDuplicatePayment({
+        razorpay: input.razorpay,
+        razorpayPaymentId: input.razorpayPaymentId,
+        reason: 'company_ca_duplicate_payment',
+        itemLabel: 'attendance or contribution',
+      })
+    } catch (error) {
+      return { ok: false, status: 409, error: getErrorMessage(error) || 'These items were already paid for' }
+    }
+  }
 
   await supabase.from('razorpay_payments').upsert({
     order_id: orderRow.id,
@@ -106,7 +142,7 @@ export async function settleCompanyCaPayment(input: {
       .from('service_attendance_entries')
       .update({ payment_status: 'paid', paid_order_id: orderRow.id, updated_at: nowIso })
       .in('id', attendanceEntryIds)
-      .neq('payment_status', 'paid')
+      .not('payment_status', 'in', '(paid,waived)')
       .select('id, amount_due')
     if (error) throw error
 

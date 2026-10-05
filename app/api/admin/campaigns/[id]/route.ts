@@ -104,6 +104,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       updatePayload.milestones = parseJsonField(body.milestones, []);
     }
 
+    const becameCompleted =
+      updatePayload.status === 'completed' && String(existing.status || '') !== 'completed';
+    if (becameCompleted) {
+      updatePayload.impact_metrics = {
+        ...parseJsonObject(updatePayload.impact_metrics ?? existing.impact_metrics),
+        completed_at: updatePayload.updated_at,
+      };
+    }
+
     const { data, error } = await supabase
       .from('campaigns')
       .update(updatePayload)

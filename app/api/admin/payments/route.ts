@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
+import { refundPaymentKind, refundPaymentKindLabel } from '@/lib/refund-reversal';
 import { assertAdminUser } from '@/lib/server-auth';
 import { getErrorMessage } from '@/lib/utils';
 import type { Tables } from '@/lib/database.types';
@@ -7,6 +8,7 @@ import type { Tables } from '@/lib/database.types';
 type ServiceRequestSummary = Pick<Tables<'service_requests'>, 'id' | 'title' | 'status' | 'request_type' | 'category'> & {
   requester: Pick<Tables<'users'>, 'id' | 'name' | 'email'> | null;
 };
+type UserSummary = Pick<Tables<'users'>, 'id' | 'name' | 'email'>;
 
 export async function GET(request: NextRequest) {
   try {
@@ -34,9 +36,12 @@ export async function GET(request: NextRequest) {
         order:razorpay_payment_orders(
           id,
           service_request_id,
+          payer_user_id,
+          ngo_user_id,
           receipt,
           amount_inr,
-          razorpay_order_id
+          razorpay_order_id,
+          order_notes
         )
       `)
       .order('created_at', { ascending: false })
@@ -80,12 +85,27 @@ export async function GET(request: NextRequest) {
       requestById = Object.fromEntries((requests || []).map((row) => [Number(row.id), row]));
     }
 
+    const userIds = [
+      ...new Set(
+        (paymentRows || [])
+          .flatMap((row) => [Number(row.order?.payer_user_id || 0), Number(row.order?.ngo_user_id || 0)])
+          .filter((id) => id > 0)
+      ),
+    ];
+    let userById: Record<number, UserSummary> = {};
+    if (userIds.length > 0) {
+      const { data: users } = await supabase.from('users').select('id, name, email').in('id', userIds);
+      userById = Object.fromEntries((users || []).map((row) => [Number(row.id), row]));
+    }
+
     let payments = (paymentRows || []).map((row) => {
       const refunds = refundsByPaymentId[String(row.id)] || [];
       const latestRefund = refunds[0] || null;
       const serviceRequestId = Number(row.order?.service_request_id || 0);
-      const refundable = !['refunded'].includes(String(row.payment_status || '').toLowerCase())
-        && (!latestRefund || !['processed', 'pending'].includes(String(latestRefund.refund_status || '').toLowerCase()));
+      const refundedInr = refunds
+        .filter((refund) => ['processed', 'pending', 'initiated'].includes(String(refund.refund_status || '').toLowerCase()))
+        .reduce((sum, refund) => sum + Number(refund.amount_inr || 0), 0);
+      const paymentStatus = String(row.payment_status || '').toLowerCase();
 
       return {
         id: row.id,
@@ -97,11 +117,17 @@ export async function GET(request: NextRequest) {
         payment_method: row.payment_method,
         paid_at: row.paid_at,
         created_at: row.created_at,
+        payment_kind: refundPaymentKind(row.order?.order_notes),
+        payment_kind_label: refundPaymentKindLabel(row.order?.order_notes),
+        payer: userById[Number(row.order?.payer_user_id || 0)] || null,
+        payee: userById[Number(row.order?.ngo_user_id || 0)] || null,
         service_request_id: serviceRequestId > 0 ? serviceRequestId : null,
         service_request: serviceRequestId > 0 ? requestById[serviceRequestId] || null : null,
         refunds,
+        refunded_inr: Number(refundedInr.toFixed(2)),
         latest_refund_status: latestRefund?.refund_status || null,
-        refundable,
+        // Razorpay holds the running refund total, so anything short of a full refund can be refunded again.
+        refundable: ['captured', 'partially_refunded'].includes(paymentStatus),
       };
     });
 
@@ -120,6 +146,10 @@ export async function GET(request: NextRequest) {
           item.service_request?.title,
           item.service_request?.requester?.name,
           item.service_request?.requester?.email,
+          item.payer?.name,
+          item.payer?.email,
+          item.payee?.name,
+          item.payment_kind_label,
         ]
           .filter(Boolean)
           .join(' ')

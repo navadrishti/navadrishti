@@ -2,6 +2,7 @@
 
 import { useState, Suspense } from 'react';
 import { useIsClient } from '@/hooks/use-is-client';
+import { isFullyVerifiedAccount } from '@/lib/auth';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
@@ -38,11 +39,7 @@ function CompanyDashboardContent() {
   const [capabilityOffersTab, setCapabilityOffersTab] = useState<CapabilityOffersSubTab>('your-capabilities');
   const [offerRequestsTab, setOfferRequestsTab] = useState<OfferRequestsSubTab>('pending');
 
-  const allVerified = Boolean(
-    user?.email_verified &&
-    user?.phone_verified &&
-    user?.verification_status === 'verified'
-  );
+  const allVerified = isFullyVerifiedAccount(user);
 
   const companyCa = useCompanyCaAccounts(user?.id, activeTab === 'company-ca');
   const data = useCompanyDashboardData({
@@ -160,8 +157,8 @@ function CompanyDashboardContent() {
                     <PaymentHistoryPanel
                       role="sent"
                       title="Payment history"
-                      description="All Razorpay payments made from your company account on GRAM — financial needs, capability offers, NGO Network support, evidence verification, and engagement settlements."
-                      emptyMessage="No Razorpay payments recorded yet for your company account."
+                      description="All online payments made from your company account on GRAM — financial needs, capability offers, NGO Network support, evidence verification, and engagement settlements."
+                      emptyMessage="No online payments recorded yet for your company account."
                     />
                   </TabsContent>
                     </Tabs>

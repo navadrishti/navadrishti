@@ -120,7 +120,7 @@ export function InProgressOfferRequestCard({ request, onUpdated }: InProgressOff
       {isDailyRentalEngagementMeta(request.response_meta) ? (
         <InlineSkillServiceFulfillment
           application={toOfferRentalApplication(request)}
-          role="ngo"
+          role="payee"
           title="Capability offer rental"
           onUpdated={onUpdated}
         />

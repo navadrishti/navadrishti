@@ -1,4 +1,5 @@
 import { parseJsonObject } from '@/lib/utils';
+import { PHONE_VERIFICATION_ENABLED } from './session';
 
 export function getCaBadgeNumber(profileData: unknown): string | null {
   const value = String(parseJsonObject(profileData).ca_badge_number || '').trim().toUpperCase();
@@ -13,6 +14,18 @@ export function visibleCaBadgeNumber(verificationStatus: unknown, profileData: u
 /** True when CA has approved document verification (badge-eligible account). */
 export function isCaVerifiedAccount(verificationStatus: unknown): boolean {
   return String(verificationStatus || '').trim().toLowerCase() === 'verified';
+}
+
+/** Email confirmed, phone confirmed while phone checks are switched on, and CA-verified. */
+export function isFullyVerifiedAccount(
+  user: { email_verified?: boolean | null; phone_verified?: boolean | null; verification_status?: unknown } | null | undefined
+): boolean {
+  if (!user) return false;
+  return (
+    user.email_verified === true &&
+    (!PHONE_VERIFICATION_ENABLED || user.phone_verified === true) &&
+    isCaVerifiedAccount(user.verification_status)
+  );
 }
 
 export const CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE =

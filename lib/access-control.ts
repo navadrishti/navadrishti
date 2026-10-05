@@ -334,21 +334,13 @@ export const AGENT_FAQ = [
 export const PWA_API_PREFIX = '/api/pwa';
 
 export function getPwaAppUrl(): string {
-  const raw =
-    process.env.NEXT_PUBLIC_PWA_URL ??
-    process.env.PWA_APP_URL ??
-    process.env.FIELD_APP_URL ??
-    '';
+  const raw = process.env.NEXT_PUBLIC_PWA_URL ?? '';
   return String(raw).replace(/\/$/, '');
 }
 
 /** Upstream origin for /api/pwa/* gateway proxy (server-only). */
 export function getPwaUpstreamUrl(): string {
-  const raw =
-    process.env.PWA_UPSTREAM_URL ??
-    process.env.PWA_APP_URL ??
-    process.env.NEXT_PUBLIC_PWA_URL ??
-    '';
+  const raw = process.env.PWA_UPSTREAM_URL ?? '';
   return String(raw).replace(/\/$/, '');
 }
 

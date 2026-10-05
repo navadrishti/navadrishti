@@ -17,6 +17,7 @@ export type NgoLinkedAccountOnboardingInput = {
   email: string;
   phone?: string | null;
   ngoName: string;
+  userType?: string | null;
   city?: string | null;
   state?: string | null;
   pincode?: string | null;
@@ -103,6 +104,12 @@ function mapActivationToLinkStatus(activationStatus: string): NgoRazorpayLinkSta
   return 'pending';
 }
 
+export function razorpayBusinessType(userType?: string | null): string {
+  if (userType === 'company') return 'private_limited';
+  if (userType === 'individual') return 'individual';
+  return 'ngo';
+}
+
 async function createLinkedAccount(params: NgoLinkedAccountOnboardingInput): Promise<string> {
   const payout = sanitizePayoutAccountInput(params.payoutAccount);
   const ngoName = String(params.ngoName || payout.account_holder_name).trim().slice(0, 200);
@@ -117,7 +124,7 @@ async function createLinkedAccount(params: NgoLinkedAccountOnboardingInput): Pro
       reference_id: `nd_ngo_${params.userId}`.slice(0, 20),
       legal_business_name: ngoName,
       customer_facing_business_name: ngoName,
-      business_type: 'ngo',
+      business_type: razorpayBusinessType(params.userType),
       contact_name: contactName,
       profile: {
         category: 'others',

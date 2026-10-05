@@ -35,9 +35,15 @@ export function isPickedUpTrackingStatus(status: string | null | undefined): boo
   if (['manifested', 'not picked', 'pending pickup', 'pickup pending', 'pickup scheduled'].some((token) => normalized.includes(token))) {
     return false
   }
-  return ['picked', 'pickup', 'in transit', 'dispatched', 'out for delivery', 'shipped'].some(
+  if (isCancelledTrackingStatus(status)) return false
+  return ['picked', 'pickup', 'in transit', 'pending', 'dispatched', 'out for delivery', 'shipped'].some(
     (token) => normalized.includes(token)
   )
+}
+
+export function isCancelledTrackingStatus(status: string | null | undefined): boolean {
+  const normalized = normalizeTrackingStatus(status)
+  return normalized.includes('cancel')
 }
 
 export function formatDeliveryTrackingStatus(meta: unknown): string {

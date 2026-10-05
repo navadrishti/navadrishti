@@ -7,6 +7,7 @@ import {
   buildPricingResponse,
   createPlatformPricedOrder,
   isRazorpayRouteEnabled,
+  PayeeNotConnectedError,
 } from '@/lib/razorpay-route';
 
 export async function POST(
@@ -62,9 +63,13 @@ export async function POST(
     }
 
     const responseMeta = parseJsonObject(application.response_meta);
-    const linkedServiceRequestId = Number(application.service_request_id || responseMeta.service_request_id || 0);
-    if (!Number.isFinite(linkedServiceRequestId) || linkedServiceRequestId <= 0) {
-      return NextResponse.json({ error: 'This application is not linked to a service request, so payment cannot be created' }, { status: 400 });
+    const linkedServiceRequestId = Number(application.service_request_id || responseMeta.service_request_id || 0) || null;
+
+    if (String(responseMeta.payment_mode || '').toLowerCase() === 'daily_due') {
+      return NextResponse.json(
+        { error: 'Rentals are paid from attendance when the engagement is completed, not upfront' },
+        { status: 400 }
+      );
     }
 
     if (responseMeta.payment_required === false) {
@@ -96,11 +101,11 @@ export async function POST(
       receipt: `so_${offerId}_${payerUserId}_${Date.now()}`,
       paymentKind: 'service_offer',
       beneficiaryUserId: ngoUserId > 0 ? ngoUserId : undefined,
-      beneficiaryName: offer.ngo?.name || 'NGO',
+      beneficiaryName: offer.ngo?.name || 'The provider',
       notes: {
         service_offer_id: String(offerId),
         service_client_id: String(application.id),
-        service_request_id: String(linkedServiceRequestId),
+        ...(linkedServiceRequestId ? { service_request_id: String(linkedServiceRequestId) } : {}),
         payer_user_id: String(payerUserId),
         target_type: 'service_offer',
       },
@@ -151,6 +156,9 @@ export async function POST(
       }
     });
   } catch (error) {
+    if (error instanceof PayeeNotConnectedError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     console.error('Error creating service-offer payment order:', error);
     return NextResponse.json({ error: getErrorMessage(error) || 'Failed to create payment order' }, { status: 500 });
   }

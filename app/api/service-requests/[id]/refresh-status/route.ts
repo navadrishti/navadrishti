@@ -52,8 +52,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `A ${previousStatus || 'closed'} request cannot be refreshed` }, { status: 409 });
     }
 
-    let newStatus = previousStatus === 'completed' ? 'active' : previousStatus;
-    if (workingVolunteers === 0 && completedCount > 0) {
+    let newStatus = previousStatus;
+    if (previousStatus === 'completed' && workingVolunteers > 0) {
+      newStatus = 'active';
+    } else if (workingVolunteers === 0 && completedCount > 0) {
       newStatus = 'completed';
     }
 

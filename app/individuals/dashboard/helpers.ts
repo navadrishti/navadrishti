@@ -18,19 +18,6 @@ export const formatDisplayDate = (value?: string | null): string => {
   });
 };
 
-export function formatDelhiveryEventTime(value: unknown) {
-  if (!value) return 'Time not available';
-  const date = new Date(String(value));
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString('en-IN', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 export function normalizeNgoRequestApplication(application: IndividualNgoRequestApplication) {
   return normalizeServiceRequestRecord(application.request);
 }
@@ -79,12 +66,12 @@ export function getNgoRequestFulfillmentStage(application: IndividualNgoRequestA
       return { label: 'In delivery', className: 'border-blue-300 bg-blue-50 text-blue-700' };
     }
     if (['accepted', 'active'].includes(status)) {
-      return { label: 'Awaiting Delhivery pickup', className: 'border-indigo-300 bg-indigo-50 text-indigo-700' };
+      return { label: 'Awaiting pickup', className: 'border-slate-300 bg-slate-100 text-slate-700' };
     }
   }
 
   if (mode === 'financial' && ['accepted', 'active'].includes(status)) {
-    return { label: 'Contribute via Razorpay', className: 'border-emerald-300 bg-emerald-50 text-emerald-700' };
+    return { label: 'Contribute online', className: 'border-slate-300 bg-slate-100 text-slate-700' };
   }
 
   if (mode === 'skill_service' && ['accepted', 'active'].includes(status)) {

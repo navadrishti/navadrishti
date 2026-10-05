@@ -1,5 +1,6 @@
 import { getProjectLeadNgoId } from '@/lib/db'
 import { getAdminModeration } from '@/lib/auth'
+import { parseJsonObject } from '@/lib/utils'
 import {
   actorFromUser,
   firstRecord,
@@ -167,7 +168,11 @@ function pushOutcomeItems(sources: NewsletterSources, lookups: NewsletterLookups
       title: `${actor.actorName} finished a CSR campaign`,
       summary: trimText(campaign.title || campaign.location || campaign.description || 'A CSR campaign has been completed on GRAM.'),
       href: `/csr-campaigns/${campaign.id}`,
-      createdAt: isoOrNull(campaign.updated_at) || isoOrNull(campaign.end_date) || String(campaign.created_at),
+      // updated_at moves on any campaign write (volunteers, edits), which would resurface old events.
+      createdAt:
+        isoOrNull(parseJsonObject(campaign.impact_metrics).completed_at) ||
+        isoOrNull(campaign.end_date) ||
+        String(campaign.created_at),
     })
   }
 
@@ -201,7 +206,10 @@ function pushOutcomeItems(sources: NewsletterSources, lookups: NewsletterLookups
       title: `${actor.actorName} selected ${leadName} as lead NGO`,
       summary: trimText(campaign.title || 'The invite was accepted on GRAM.'),
       href: `/csr-campaigns/${campaign.id}`,
-      createdAt: isoOrNull(campaign.updated_at) || String(campaign.created_at),
+      createdAt:
+        isoOrNull(parseJsonObject(campaign.impact_metrics).lead_ngo_accepted_at) ||
+        isoOrNull(parseJsonObject(campaign.impact_metrics).published_at) ||
+        String(campaign.created_at),
     })
   }
 
@@ -217,7 +225,7 @@ function pushOutcomeItems(sources: NewsletterSources, lookups: NewsletterLookups
       title: `${actor.actorName} undertook ${ngoName}'s project as CSR`,
       summary: trimText(project.title || project.location || project.description || ''),
       href: `/service-requests/projects/${project.id}`,
-      createdAt: isoOrNull(project.updated_at) || String(project.created_at),
+      createdAt: lookups.assignedAtByProjectId[String(project.id)] || String(project.created_at),
     })
   }
 

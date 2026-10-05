@@ -10,17 +10,14 @@ import {
 } from '@/lib/server-auth';
 import { resolveFundingTargetInr } from '@/lib/service-request-allocation';
 import {
-  assertBeneficiaryRouteReady,
-  buildPricingOrderNotes,
   buildPricingResponse,
-  calculatePlatformCheckoutPricing,
   canContributeViaPlatform,
-  createRoutedRazorpayOrder,
-  createStandardRazorpayOrder,
+  createPlatformPricedOrder,
   isGeneralNgoNetworkNeed,
   isRazorpayRouteEnabled,
   NGO_NETWORK_GENERAL_SOURCE,
   NGO_NETWORK_MAX_CONTRIBUTION_INR,
+  PayeeNotConnectedError,
   type RoutePaymentKind,
 } from '@/lib/razorpay-route';
 
@@ -113,42 +110,20 @@ export async function POST(
     }
 
     const paymentKind: RoutePaymentKind = isGeneralNeed ? 'ngo_network' : 'financial_need';
-    const pricing = calculatePlatformCheckoutPricing(contributionInr);
-
-    let beneficiaryLinkedAccountId: string | null = null;
-    if (isRazorpayRouteEnabled()) {
-      const routeReady = await assertBeneficiaryRouteReady(
-        ngoUserId,
-        serviceRequest.requester?.name || 'NGO'
-      );
-      beneficiaryLinkedAccountId = routeReady.linkedAccountId;
-    }
-
-    const orderNotes = buildPricingOrderNotes(pricing, {
-      service_request_id: String(requestId),
-      contributor_id: String(decoded.id),
-      contributor_type: decoded.user_type,
-      beneficiary_user_id: String(ngoUserId),
-      payment_kind: paymentKind,
-      transfer_on_hold: paymentKind === 'financial_need',
-      ...(isGeneralNeed ? { source: NGO_NETWORK_GENERAL_SOURCE } : {}),
+    const { order, pricing, orderNotes } = await createPlatformPricedOrder({
+      razorpay,
+      baseAmountInr: contributionInr,
+      receipt: `sr_${requestId}_${Date.now()}`,
+      paymentKind,
+      beneficiaryUserId: ngoUserId > 0 ? ngoUserId : undefined,
+      beneficiaryName: serviceRequest.requester?.name || 'This NGO',
+      notes: {
+        service_request_id: String(requestId),
+        contributor_id: String(decoded.id),
+        contributor_type: decoded.user_type,
+        ...(isGeneralNeed ? { source: NGO_NETWORK_GENERAL_SOURCE } : {}),
+      },
     });
-
-    const order = beneficiaryLinkedAccountId
-      ? await createRoutedRazorpayOrder({
-          razorpay,
-          pricing,
-          receipt: `sr_${requestId}_${Date.now()}`,
-          notes: orderNotes,
-          beneficiaryLinkedAccountId,
-          paymentKind,
-        })
-      : await createStandardRazorpayOrder({
-          razorpay,
-          pricing,
-          receipt: `sr_${requestId}_${Date.now()}`,
-          notes: orderNotes,
-        });
 
     const { data: assignment } = await supabase
       .from('service_request_applications')
@@ -201,6 +176,9 @@ export async function POST(
       }
     });
   } catch (error) {
+    if (error instanceof PayeeNotConnectedError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     console.error('Error creating Razorpay order for service request:', error);
     return NextResponse.json({ error: 'Failed to create payment order' }, { status: 500 });
   }

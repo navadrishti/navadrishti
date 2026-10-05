@@ -12,7 +12,9 @@ export function getErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
     return error.message
   }
-  return ''
+  // Razorpay SDK rejects with { statusCode, error: { description } }.
+  const description = (error as { error?: { description?: unknown } } | null)?.error?.description
+  return typeof description === 'string' ? description : ''
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- jsonb payloads have no fixed shape and callers read nested fields ad hoc

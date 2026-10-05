@@ -46,6 +46,7 @@ export async function POST(request: NextRequest) {
     if (provPayment.status !== 'captured') return NextResponse.json({ error: 'Payment not captured' }, { status: 409 })
 
     const result = await settleCompanyCaPayment({
+      razorpay,
       razorpayOrderId: razorpay_order_id,
       razorpayPaymentId: razorpay_payment_id,
       razorpaySignature: razorpay_signature,

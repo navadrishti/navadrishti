@@ -1,5 +1,42 @@
 import { supabase } from '@/lib/db';
 import type { Database } from '@/lib/database.types';
+import { parseCsrCapabilityRentals } from '@/lib/service-engagement';
+
+export class CampaignDeleteBlockedError extends Error {
+  readonly code = 'CAMPAIGN_HAS_PAYMENTS';
+}
+
+/** Campaigns with money already moved must stay on record; they can be closed instead. */
+export async function assertCampaignDeletable(campaign: { id: string; impact_metrics?: unknown }) {
+  const paidRental = parseCsrCapabilityRentals(campaign.impact_metrics).some(
+    (rental) => String(rental.payment_status || '').toLowerCase() === 'paid'
+  );
+  if (paidRental) {
+    throw new CampaignDeleteBlockedError(
+      'This campaign has paid capability rentals. Refund them before deleting, or close the campaign instead.'
+    );
+  }
+
+  const { data: projects, error: projectsError } = await supabase
+    .from('csr_projects')
+    .select('id')
+    .eq('campaign_id', campaign.id);
+  if (projectsError) throw projectsError;
+  const projectIds = (projects ?? []).map((row) => String(row.id));
+  if (projectIds.length === 0) return;
+
+  const { count, error } = await supabase
+    .from('csr_payment_confirmations')
+    .select('id', { count: 'exact', head: true })
+    .in('project_id', projectIds)
+    .eq('payment_status', 'confirmed');
+  if (error) throw error;
+  if ((count ?? 0) > 0) {
+    throw new CampaignDeleteBlockedError(
+      'This campaign has confirmed milestone payments and cannot be deleted. Close the campaign instead.'
+    );
+  }
+}
 
 async function deleteIn(table: keyof Database['public']['Tables'], column: string, ids: string[]) {
   if (ids.length === 0) return;

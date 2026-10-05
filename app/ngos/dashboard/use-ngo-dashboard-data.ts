@@ -238,15 +238,18 @@ export function useNgoDashboardData(userId: number | undefined) {
         return;
       }
 
-      const response = await fetch('/api/campaigns/lead-assignments', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const headers = { Authorization: `Bearer ${token}` };
+      const [response, trackingResponse] = await Promise.all([
+        fetch('/api/campaigns/lead-assignments', { headers }),
+        fetch('/api/campaigns/tracking', { headers }),
+      ]);
 
       const payload = await response.json();
+      const trackingPayload = trackingResponse.ok ? await trackingResponse.json().catch(() => null) : null;
+      const tracking: Record<string, CampaignLeadAssignment['tracking']> = trackingPayload?.data || {};
       if (response.ok && payload?.success) {
-        setCampaignLeadAssignments(Array.isArray(payload.data) ? payload.data : []);
+        const rows: CampaignLeadAssignment[] = Array.isArray(payload.data) ? payload.data : [];
+        setCampaignLeadAssignments(rows.map((row) => ({ ...row, tracking: tracking[String(row.campaign_id)] ?? null })));
       } else {
         setCampaignLeadAssignments([]);
       }
@@ -414,13 +417,56 @@ export function useNgoDashboardData(userId: number | undefined) {
     const channel = realtime.channel('realtime-ngo-dashboard');
 
     const handleChange = (table: string) => {
-      if (table === 'service_request_projects') fetchCSRProjects();
-      else if (table === 'service_requests') fetchServiceRequests();
-      else if (table === 'service_offers') { fetchServiceOffers(); fetchOfferRequests(); }
-      else if (table === 'service_engagement_assignments') { fetchCSRTrackingAssignments(); }
+      if (table === 'service_request_projects') {
+        void fetchCSRProjects();
+        return;
+      }
+      if (table === 'service_requests') {
+        void fetchServiceRequests();
+        return;
+      }
+      if (table === 'service_offers') {
+        void fetchServiceOffers();
+        void fetchOfferRequests();
+        return;
+      }
+      if (['service_engagement_assignments', 'service_request_applications', 'service_clients'].includes(table)) {
+        void fetchCSRTrackingAssignments();
+        void fetchCampaignLeadAssignments();
+        void fetchCampaignVolunteerAssignments();
+        return;
+      }
+      if (
+        [
+          'service_attendance_entries',
+          'service_request_shipments',
+          'shipment_tracking_events',
+          'campaigns',
+          'csr_project_milestones',
+          'csr_payment_confirmations',
+        ].includes(table)
+      ) {
+        void fetchCampaignLeadAssignments();
+        void fetchCampaignVolunteerAssignments();
+        void fetchCsrCapabilityRentals();
+        void fetchCSRProjects();
+      }
     };
 
-    ['service_request_projects', 'service_requests', 'service_offers', 'service_engagement_assignments'].forEach((table) => {
+    [
+      'service_request_projects',
+      'service_requests',
+      'service_offers',
+      'service_engagement_assignments',
+      'service_request_applications',
+      'service_clients',
+      'service_attendance_entries',
+      'service_request_shipments',
+      'shipment_tracking_events',
+      'campaigns',
+      'csr_project_milestones',
+      'csr_payment_confirmations',
+    ].forEach((table) => {
       channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => handleChange(table));
     });
     void channel.subscribe();

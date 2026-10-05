@@ -136,8 +136,11 @@ export async function PUT(
       return NextResponse.json({ error: CSR_OWN_PROJECT_TIMELINE_MESSAGE }, { status: 403 })
     }
 
-    // Edits require live CSR-1 coverage, so keep the project open for CSR marketplace.
-    updates.csr_project_available_for_csr = true
+    const companyAccepted =
+      Number(existing.assigned_company_user_id || 0) > 0 &&
+      String(existing.assignment_status || '').toLowerCase() === 'accepted'
+    // Edits require live CSR-1 coverage, so keep an unassigned project open for the CSR marketplace.
+    if (!companyAccepted) updates.csr_project_available_for_csr = true
     updates.updated_at = new Date().toISOString()
 
     await db.requestProjects.update(projectId, updates)

@@ -1,5 +1,6 @@
 import { useEffect, useEffectEvent, useMemo, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { isFullyVerifiedAccount } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import type { ProjectDetailPayload } from './types';
 
@@ -10,7 +11,7 @@ export function useProjectDetail(projectId: string) {
   const [loading, setLoading] = useState(true);
   const [payload, setPayload] = useState<ProjectDetailPayload | null>(null);
   const [applyLoading, setApplyLoading] = useState(false);
-  const allVerified = Boolean(user?.email_verified && user?.phone_verified && user?.verification_status === 'verified');
+  const allVerified = isFullyVerifiedAccount(user);
 
   const fetchProjectDetail = async (options?: { silent?: boolean }) => {
     if (!projectId) return;

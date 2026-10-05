@@ -11,22 +11,33 @@ export type DelhiveryTrackingSnapshot = {
   provider: 'delhivery';
   trackingId: string;
   currentStatus: string | null;
+  statusType: string | null;
   lastEventAt: string | null;
   lastLocation: string | null;
   events: DelhiveryEvent[];
   raw: unknown;
 };
 
-const DEFAULT_DELHIVERY_API_BASE = 'https://track.delhivery.com';
+const DELHIVERY_BASE_URLS = {
+  production: 'https://track.delhivery.com',
+  staging: 'https://staging-express.dlv.one',
+};
 const DEFAULT_DELHIVERY_TIMEOUT_MS = 10000;
 
 function normalizeBaseUrl(url: string): string {
   return url.replace(/\/+$/, '');
 }
 
+function resolveBaseUrl(): string {
+  const override = String(process.env.DELHIVERY_API_BASE_URL || '').trim();
+  if (override) return normalizeBaseUrl(override);
+  return String(process.env.DELHIVERY_ENV || '').trim().toLowerCase() === 'staging'
+    ? DELHIVERY_BASE_URLS.staging
+    : DELHIVERY_BASE_URLS.production;
+}
+
 function getDelhiveryConfig() {
   const token = String(process.env.DELHIVERY_API_TOKEN || '').trim();
-  const baseUrl = normalizeBaseUrl(String(process.env.DELHIVERY_API_BASE_URL || DEFAULT_DELHIVERY_API_BASE).trim());
   const timeoutMs = Number(process.env.DELHIVERY_API_TIMEOUT_MS || DEFAULT_DELHIVERY_TIMEOUT_MS);
 
   if (!token) {
@@ -35,26 +46,71 @@ function getDelhiveryConfig() {
 
   return {
     token,
-    baseUrl,
+    baseUrl: resolveBaseUrl(),
     timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_DELHIVERY_TIMEOUT_MS,
   };
 }
 
-function buildHeaders(token: string): HeadersInit {
-  return {
-    Accept: 'application/json',
-    Authorization: `Token ${token}`,
-    'X-API-Key': token,
-    'x-api-key': token
-  };
+export function isDelhiveryConfigured(): boolean {
+  return Boolean(String(process.env.DELHIVERY_API_TOKEN || '').trim());
 }
 
+type DelhiveryResponse = { ok: boolean; status: number; raw: unknown; text: string };
+
+async function delhiveryRequest(
+  path: string,
+  init: { method?: 'GET' | 'POST'; body?: string; contentType?: string; action: string }
+): Promise<DelhiveryResponse> {
+  const { token, baseUrl, timeoutMs } = getDelhiveryConfig();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}${path}`, {
+      method: init.method || 'GET',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Token ${token}`,
+        ...(init.contentType ? { 'Content-Type': init.contentType } : {}),
+      },
+      body: init.body,
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+  } catch (error) {
+    throw new Error(
+      error instanceof Error && error.name === 'AbortError'
+        ? `Delhivery ${init.action} timed out after ${timeoutMs}ms`
+        : getErrorMessage(error) || `Delhivery ${init.action} request failed`
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const text = await response.text();
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    raw = { message: text };
+  }
+  return { ok: response.ok, status: response.status, raw, text };
+}
+
+const HAS_TIMEZONE = /(Z|[+-]\d{2}:?\d{2})$/i;
+const LOCAL_ISO_DATETIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
+
+// Delhivery reports scan times in IST without an offset.
 function parseDate(value: unknown): string | null {
   if (!value) return null;
   const text = String(value).trim();
   if (!text) return null;
 
-  const parsed = new Date(text);
+  const withZone = LOCAL_ISO_DATETIME.test(text) && !HAS_TIMEZONE.test(text)
+    ? `${text.replace(' ', 'T')}+05:30`
+    : text;
+  const parsed = new Date(withZone);
   if (!Number.isNaN(parsed.getTime())) {
     return parsed.toISOString();
   }
@@ -226,6 +282,7 @@ export type CreateDelhiveryShipmentInput = {
   consignee: DelhiveryPartyAddress;
   seller: DelhiveryPartyAddress;
   paymentMode?: 'Prepaid' | 'COD';
+  shippingMode?: 'Surface' | 'Express';
   weightGrams?: number;
   quantity?: number;
   productDescription?: string;
@@ -249,25 +306,46 @@ export function sanitizeDelhiveryText(value: string): string {
     .slice(0, 240);
 }
 
-function normalizeDelhiveryPhone(value: unknown): string {
-  const digits = String(value || '').replace(/\D/g, '');
-  if (digits.length >= 10) {
-    return digits.slice(-10);
-  }
-  return digits;
+/** Ten-digit Indian number with any +91 or trunk 0 removed, or '' when it isn't one. */
+export function normalizeDelhiveryPhone(value: unknown): string {
+  let digits = String(value || '').replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2);
+  if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
+  return digits.length === 10 ? digits : '';
 }
 
-function normalizeDelhiveryPincode(value: unknown): string {
-  return String(value || '').replace(/\D/g, '').slice(0, 6);
+export function normalizeDelhiveryPincode(value: unknown): string {
+  const digits = String(value || '').replace(/\D/g, '');
+  return digits.length === 6 ? digits : '';
+}
+
+function packageRemarks(firstPackage: unknown): string | null {
+  const remarks = readPath(firstPackage, 'remarks');
+  if (Array.isArray(remarks)) {
+    const text = remarks.map((item) => String(item || '').trim()).filter(Boolean).join('; ');
+    return text || null;
+  }
+  return firstString([remarks]);
+}
+
+/** Looks up the waybill Delhivery already assigned to one of our order ids. */
+export async function findDelhiveryWaybillByOrderId(orderId: string): Promise<string | null> {
+  const { ok, raw } = await delhiveryRequest(
+    `/api/v1/packages/json/?ref_ids=${encodeURIComponent(orderId)}`,
+    { action: 'order lookup' }
+  );
+  if (!ok) return null;
+  const shipment = findShipment(raw);
+  return firstString([readPath(shipment, 'AWB'), readPath(shipment, 'Waybill')]);
 }
 
 export async function createDelhiveryShipment(
   input: CreateDelhiveryShipmentInput
 ): Promise<DelhiveryShipmentResult> {
-  const { token, baseUrl, timeoutMs } = getDelhiveryConfig();
-  const pickupLocationName = String(input.pickupLocationName || process.env.DELHIVERY_PICKUP_LOCATION_NAME || '').trim();
+  getDelhiveryConfig();
+  const pickupLocationName = String(input.pickupLocationName || '').trim();
   if (!pickupLocationName) {
-    throw new Error('DELHIVERY_PICKUP_LOCATION_NAME is not configured');
+    throw new Error('Delhivery pickup location is required');
   }
 
   const consigneePhone = normalizeDelhiveryPhone(input.consignee.phone);
@@ -275,16 +353,17 @@ export async function createDelhiveryShipment(
   const consigneePin = normalizeDelhiveryPincode(input.consignee.pincode);
   const sellerPin = normalizeDelhiveryPincode(input.seller.pincode);
 
-  if (consigneePhone.length < 10) throw new Error('Consignee phone number is required for Delhivery booking');
-  if (sellerPhone.length < 10) throw new Error('Pickup contact phone number is required for Delhivery booking');
-  if (consigneePin.length !== 6) throw new Error('Consignee pincode must be 6 digits');
-  if (sellerPin.length !== 6) throw new Error('Pickup pincode must be 6 digits');
+  if (!consigneePhone) throw new Error('Consignee phone number is required for Delhivery booking');
+  if (!sellerPhone) throw new Error('Pickup contact phone number is required for Delhivery booking');
+  if (!consigneePin) throw new Error('Consignee pincode must be 6 digits');
+  if (!sellerPin) throw new Error('Pickup pincode must be 6 digits');
 
   const payload = {
     pickup_location: { name: pickupLocationName },
     shipments: [
       {
         order: sanitizeDelhiveryText(input.orderId),
+        order_date: new Date().toISOString(),
         name: sanitizeDelhiveryText(input.consignee.name),
         add: sanitizeDelhiveryText(input.consignee.address),
         city: sanitizeDelhiveryText(input.consignee.city),
@@ -293,134 +372,190 @@ export async function createDelhiveryShipment(
         pin: consigneePin,
         phone: consigneePhone,
         payment_mode: input.paymentMode || 'Prepaid',
+        shipping_mode: input.shippingMode || 'Surface',
         weight: String(Math.max(100, Number(input.weightGrams || 500))),
         quantity: Math.max(1, Number(input.quantity || 1)),
         seller_name: sanitizeDelhiveryText(input.seller.name),
         seller_add: sanitizeDelhiveryText(input.seller.address),
+        return_name: sanitizeDelhiveryText(input.seller.name),
         return_add: sanitizeDelhiveryText(input.seller.address),
         return_city: sanitizeDelhiveryText(input.seller.city),
         return_state: sanitizeDelhiveryText(input.seller.state),
         return_pin: sellerPin,
         return_phone: sellerPhone,
         return_country: sanitizeDelhiveryText(input.seller.country || 'India'),
-        products_desc: sanitizeDelhiveryText(input.productDescription || 'CSR capability material'),
+        products_desc: sanitizeDelhiveryText(input.productDescription || 'Donated material'),
         total_amount: Math.max(1, Number(input.totalAmountInr || 1)),
       },
     ],
   };
 
-  const requestBody = `format=json&data=${JSON.stringify(payload)}`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  let response: Response;
-  try {
-    response = await fetch(`${baseUrl}/api/cmu/create.json`, {
-      method: 'POST',
-      headers: {
-        ...buildHeaders(token),
-        'Content-Type': 'application/json',
-      },
-      body: requestBody,
-      signal: controller.signal,
-    });
-  } catch (error) {
-    clearTimeout(timeout);
-    throw new Error(
-      error instanceof Error && error.name === 'AbortError'
-        ? `Delhivery booking timed out after ${timeoutMs}ms`
-        : getErrorMessage(error) || 'Delhivery booking request failed'
-    );
-  }
-  clearTimeout(timeout);
-
-  const rawText = await response.text();
-  let raw: unknown;
-  try {
-    raw = JSON.parse(rawText);
-  } catch {
-    raw = { message: rawText };
-  }
-
-  if (!response.ok) {
-    throw new Error(String(readPath(raw, 'rmk') || readPath(raw, 'message') || rawText || `HTTP ${response.status}`));
-  }
+  const { ok, status, raw, text } = await delhiveryRequest('/api/cmu/create.json', {
+    method: 'POST',
+    contentType: 'application/x-www-form-urlencoded',
+    body: `format=json&data=${encodeURIComponent(JSON.stringify(payload))}`,
+    action: 'booking',
+  });
 
   const packages = readPath(raw, 'packages');
   const firstPackage: unknown = Array.isArray(packages) ? packages[0] : undefined;
+  const remarks = packageRemarks(firstPackage);
+
+  if (!ok) {
+    throw new Error(String(remarks || readPath(raw, 'rmk') || readPath(raw, 'message') || text || `HTTP ${status}`));
+  }
+
   const waybill = firstString([
     readPath(firstPackage, 'waybill'),
     readPath(firstPackage, 'Waybill'),
     readPath(raw, 'waybill'),
     readPath(raw, 'awb'),
   ]);
-  const success = Boolean(readPath(raw, 'success')) && Boolean(waybill);
 
-  if (!success) {
-    throw new Error(String(readPath(raw, 'rmk') || readPath(raw, 'error') || 'Delhivery did not return a waybill'));
+  if (!(readPath(raw, 'success') && waybill)) {
+    if (remarks && /duplicate/i.test(remarks)) {
+      const existing = await findDelhiveryWaybillByOrderId(input.orderId);
+      if (existing) {
+        return { success: true, waybill: existing, orderId: input.orderId, status: 'booked', remark: remarks, raw };
+      }
+    }
+    throw new Error(String(remarks || readPath(raw, 'rmk') || readPath(raw, 'error') || 'Delhivery did not return a waybill'));
   }
 
   return {
     success: true,
-    waybill: waybill || null,
+    waybill,
     orderId: input.orderId,
     status: firstString([readPath(firstPackage, 'status'), readPath(raw, 'status')]) || 'booked',
-    remark: firstString([readPath(raw, 'rmk'), readPath(raw, 'remark')]),
+    remark: remarks || firstString([readPath(raw, 'rmk'), readPath(raw, 'remark')]),
     raw,
   };
 }
 
-async function fetchTrackingPayload(trackingId: string): Promise<unknown> {
-  const { token, baseUrl, timeoutMs } = getDelhiveryConfig();
+export type DelhiveryWarehouseInput = {
+  name: string;
+  phone: string;
+  email?: string | null;
+  address: string;
+  city: string;
+  state: string;
+  pincode: string;
+  country?: string;
+};
 
-  const endpoints = [
-    `${baseUrl}/api/v1/packages/json/?waybill=${encodeURIComponent(trackingId)}`,
-    `${baseUrl}/api/v1/packages/json/?verbose=2&waybill=${encodeURIComponent(trackingId)}`
-  ];
+function warehouseErrorText(raw: unknown, fallback: string): string {
+  const error = readPath(raw, 'error');
+  if (Array.isArray(error)) return error.map(String).join('; ') || fallback;
+  return String(error || readPath(raw, 'message') || readPath(raw, 'rmk') || fallback);
+}
 
-  let lastError: string | null = null;
+/**
+ * Registers (or refreshes) a pickup warehouse on the Delhivery account. Delhivery collects
+ * every shipment from the warehouse named in pickup_location, so each sender needs their own.
+ */
+export async function upsertDelhiveryWarehouse(warehouse: DelhiveryWarehouseInput): Promise<void> {
+  const phone = normalizeDelhiveryPhone(warehouse.phone);
+  const pin = normalizeDelhiveryPincode(warehouse.pincode);
+  if (!phone) throw new Error('A 10-digit phone number is required to register a Delhivery pickup address');
+  if (!pin) throw new Error('A 6-digit pincode is required to register a Delhivery pickup address');
 
-  for (const url of endpoints) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const address = sanitizeDelhiveryText(warehouse.address);
+  const city = sanitizeDelhiveryText(warehouse.city);
+  const state = sanitizeDelhiveryText(warehouse.state);
+  const country = sanitizeDelhiveryText(warehouse.country || 'India');
 
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        method: 'GET',
-        headers: buildHeaders(token),
-        cache: 'no-store',
-        signal: controller.signal,
-      });
-    } catch (error) {
-      clearTimeout(timeout);
-      lastError = error instanceof Error && error.name === 'AbortError'
-        ? `Delhivery tracking timed out after ${timeoutMs}ms`
-        : (getErrorMessage(error) || 'Delhivery request failed');
-      continue;
-    }
-    clearTimeout(timeout);
+  const created = await delhiveryRequest('/api/backend/clientwarehouse/create/', {
+    method: 'POST',
+    contentType: 'application/json',
+    body: JSON.stringify({
+      name: warehouse.name,
+      registered_name: warehouse.name,
+      email: warehouse.email || undefined,
+      phone,
+      address,
+      city,
+      country,
+      pin,
+      return_address: address,
+      return_pin: pin,
+      return_city: city,
+      return_state: state,
+      return_country: country,
+    }),
+    action: 'warehouse registration',
+  });
 
-    if (!response.ok) {
-      const text = await response.text();
-      lastError = text || `HTTP ${response.status}`;
-      continue;
-    }
+  if (created.ok && readPath(created.raw, 'success') !== false) return;
 
-    const contentType = response.headers.get('content-type') || '';
-    if (contentType.includes('application/json')) {
-      return response.json();
-    }
-
-    const text = await response.text();
-    try {
-      return JSON.parse(text);
-    } catch {
-      return { message: text };
-    }
+  const createError = warehouseErrorText(created.raw, created.text || `HTTP ${created.status}`);
+  if (!/already exist/i.test(createError)) {
+    throw new Error(`Delhivery could not register the pickup address: ${createError}`);
   }
 
-  throw new Error(lastError || 'Unable to fetch Delhivery tracking details');
+  const edited = await delhiveryRequest('/api/backend/clientwarehouse/edit/', {
+    method: 'POST',
+    contentType: 'application/json',
+    body: JSON.stringify({ name: warehouse.name, registered_name: warehouse.name, address, pin, phone }),
+    action: 'warehouse update',
+  });
+  if (!edited.ok || readPath(edited.raw, 'success') === false) {
+    throw new Error(
+      `Delhivery could not update the pickup address: ${warehouseErrorText(edited.raw, edited.text || `HTTP ${edited.status}`)}`
+    );
+  }
+}
+
+export type DelhiveryPincodeService = {
+  pincode: string;
+  serviceable: boolean | null;
+  prepaid: boolean;
+  pickup: boolean;
+};
+
+/** Delhivery serviceability for a pincode; serviceable is null when Delhivery couldn't be asked. */
+export async function checkDelhiveryPincode(pincodeInput: string): Promise<DelhiveryPincodeService> {
+  const pincode = normalizeDelhiveryPincode(pincodeInput);
+  if (!pincode) return { pincode: String(pincodeInput || ''), serviceable: false, prepaid: false, pickup: false };
+
+  let response: DelhiveryResponse;
+  try {
+    response = await delhiveryRequest(`/c/api/pin-codes/json/?filter_codes=${pincode}`, { action: 'pincode check' });
+  } catch {
+    return { pincode, serviceable: null, prepaid: false, pickup: false };
+  }
+  if (!response.ok) return { pincode, serviceable: null, prepaid: false, pickup: false };
+
+  const codes = readPath(response.raw, 'delivery_codes');
+  const postal = Array.isArray(codes) ? readPath(codes[0], 'postal_code') : undefined;
+  if (!postal) return { pincode, serviceable: false, prepaid: false, pickup: false };
+
+  const flag = (key: string) => String(readPath(postal, key) || '').toUpperCase() !== 'N';
+  return { pincode, serviceable: true, prepaid: flag('pre_paid'), pickup: flag('pickup') };
+}
+
+/** Throws a readable error when Delhivery says it can't collect from or deliver to these pincodes. */
+export async function assertDelhiveryRouteServiceable(pickupPincode: string, deliveryPincode: string): Promise<void> {
+  const [pickup, delivery] = await Promise.all([
+    checkDelhiveryPincode(pickupPincode),
+    checkDelhiveryPincode(deliveryPincode),
+  ]);
+  if (pickup.serviceable === false || (pickup.serviceable && !pickup.pickup)) {
+    throw new Error(`Delhivery does not collect from pincode ${pickup.pincode}`);
+  }
+  if (delivery.serviceable === false || (delivery.serviceable && !delivery.prepaid)) {
+    throw new Error(`Delhivery does not deliver to pincode ${delivery.pincode}`);
+  }
+}
+
+async function fetchTrackingPayload(trackingId: string): Promise<unknown> {
+  const { ok, status, raw, text } = await delhiveryRequest(
+    `/api/v1/packages/json/?waybill=${encodeURIComponent(trackingId)}`,
+    { action: 'tracking' }
+  );
+  if (!ok) {
+    throw new Error(text || `HTTP ${status}` || 'Unable to fetch Delhivery tracking details');
+  }
+  return raw;
 }
 
 export async function getDelhiveryTrackingSnapshot(trackingIdInput: string): Promise<DelhiveryTrackingSnapshot> {
@@ -430,6 +565,11 @@ export async function getDelhiveryTrackingSnapshot(trackingIdInput: string): Pro
   }
 
   const payload = await fetchTrackingPayload(trackingId);
+  const shipment = findShipment(payload);
+  if (readPath(payload, 'Error') || (!shipment && readPath(payload, 'ShipmentData') === undefined)) {
+    const message = firstString([readPath(payload, 'Error'), readPath(payload, 'message')]);
+    if (message) throw new Error(message);
+  }
 
   const rawScans = extractCandidateScans(payload);
   const events = sortEventsDesc(
@@ -445,6 +585,7 @@ export async function getDelhiveryTrackingSnapshot(trackingIdInput: string): Pro
     provider: 'delhivery',
     trackingId: extractTrackingId(payload, trackingId),
     currentStatus,
+    statusType: firstString([readPath(shipment, 'Status', 'StatusType')]),
     lastEventAt: lastEvent?.timestamp || null,
     lastLocation: lastEvent?.location || null,
     events,

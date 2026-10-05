@@ -1,4 +1,5 @@
 import { getProjectLeadNgoId, supabase } from '@/lib/db'
+import { parseJsonObject } from '@/lib/utils'
 import { firstRecord, isoOrNull, resolveActorName, type ActorSource } from './actors'
 
 const USER_FIELDS = 'id, name, user_type, profile_image, profile_data, verification_status'
@@ -294,7 +295,66 @@ export async function fetchNewsletterLookups(sources: NewsletterSources) {
     fulfillersByNeedId[needId] = [...(fulfillersByNeedId[needId] || []), name]
   }
 
-  return { verificationDateByUserId, usersById, fulfillersByNeedId }
+  const assignedAtByProjectId = await fetchProjectAssignmentDates(sources.assignedProjects)
+
+  return { verificationDateByUserId, usersById, fulfillersByNeedId, assignedAtByProjectId }
+}
+
+/**
+ * When a company took on each project, from the need's csr_assignment or the NGO's review of
+ * the company's contribution. Project updated_at is not usable: any later edit would move it.
+ */
+async function fetchProjectAssignmentDates(projects: NewsletterSources['assignedProjects']) {
+  const assignedAtByProjectId: Record<string, string> = {}
+  const companyByProjectId = new Map<string, number>()
+  for (const project of projects) {
+    const projectId = String(project.id || '')
+    const companyId = Number(project.assigned_company_user_id || 0)
+    if (projectId && companyId > 0) companyByProjectId.set(projectId, companyId)
+  }
+  if (companyByProjectId.size === 0) return assignedAtByProjectId
+
+  const needs = await safeSelect(
+    supabase
+      .from('service_requests')
+      .select('id, project_id, project_context')
+      .in('project_id', Array.from(companyByProjectId.keys()))
+  )
+
+  const projectIdByNeedId = new Map<number, string>()
+  for (const need of needs) {
+    const projectId = String(need.project_id || '')
+    const needId = Number(need.id || 0)
+    if (!projectId || needId <= 0) continue
+    projectIdByNeedId.set(needId, projectId)
+    const assignedAt = isoOrNull(parseJsonObject(parseJsonObject(need.project_context).csr_assignment).assigned_at)
+    if (assignedAt && !assignedAtByProjectId[projectId]) assignedAtByProjectId[projectId] = assignedAt
+  }
+
+  const needIdsWithoutDate = Array.from(projectIdByNeedId.entries())
+    .filter(([, projectId]) => !assignedAtByProjectId[projectId])
+    .map(([needId]) => needId)
+  if (needIdsWithoutDate.length === 0) return assignedAtByProjectId
+
+  const contributions = await safeSelect(
+    supabase
+      .from('service_request_contributions')
+      .select('service_request_id, contributor_id, meta, created_at')
+      .in('service_request_id', needIdsWithoutDate)
+      .in('status', ['accepted', 'in_progress', 'completed'])
+      .order('created_at', { ascending: true })
+  )
+
+  for (const contribution of contributions) {
+    const projectId = projectIdByNeedId.get(Number(contribution.service_request_id || 0))
+    if (!projectId || assignedAtByProjectId[projectId]) continue
+    if (Number(contribution.contributor_id || 0) !== companyByProjectId.get(projectId)) continue
+    const assignedAt =
+      isoOrNull(parseJsonObject(contribution.meta).ngo_reviewed_at) || isoOrNull(contribution.created_at)
+    if (assignedAt) assignedAtByProjectId[projectId] = assignedAt
+  }
+
+  return assignedAtByProjectId
 }
 
 export type NewsletterLookups = Awaited<ReturnType<typeof fetchNewsletterLookups>>

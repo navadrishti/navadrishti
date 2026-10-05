@@ -2,7 +2,6 @@ import { NextRequest } from 'next/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { POST as settle } from '@/app/api/service-assignments/[id]/settle/route'
 import { POST as verifyOfferPayment } from '@/app/api/service-offers/[id]/clients/[clientId]/payments/verify/route'
-import { finalizeEngagementSettlement } from '@/lib/engagement-settlement'
 import { razorpaySignature, tokenFor } from './support/requests'
 import { createSupabaseFake, fakeAdjustProgress, hasCall, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
@@ -25,11 +24,6 @@ vi.mock('razorpay', () => ({
     return mocks.razorpay
   }),
 }))
-vi.mock('@/lib/engagement-settlement', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/lib/engagement-settlement')>()),
-  finalizeEngagementSettlement: vi.fn(async () => ({ settled: true })),
-}))
-
 function useSupabase(respond: (query: FakeQuery) => FakeResult | undefined) {
   const fake = createSupabaseFake(respond)
   mocks.supabase.from.mockImplementation(fake.from)
@@ -83,13 +77,19 @@ describe('engagement settlement verify', () => {
   const assignment = {
     id: 'asg_1',
     owner_user_id: 12,
+    assignee_user_id: 14,
+    application_table: null,
+    target_type: 'service_request',
     billing_cycle: 'daily',
     payment_mode: 'daily_due',
     meta: { attendance_summary: { total_due: 1000, paid_total: 400, days_attended: 4 } },
   }
+  const completedUpdates = (fake: ReturnType<typeof useSupabase>) =>
+    fake.writes('service_engagement_assignments').filter((query) => (query.payload as { status?: string }).status === 'completed')
 
   function setup(orderNotes: Record<string, unknown> = {}) {
     return useSupabase((query) => {
+      if (query.table === 'service_engagement_assignments' && query.op === 'update') return { data: assignment }
       if (query.table === 'service_engagement_assignments') return { data: assignment }
       if (query.table === 'razorpay_payment_orders' && hasCall(query, 'maybeSingle')) {
         return { data: { order_notes: { assignment_id: 'asg_1', ...orderNotes }, payer_user_id: 12, order_status: 'created' } }
@@ -104,33 +104,33 @@ describe('engagement settlement verify', () => {
     })
 
   it('checks the paid amount against the Razorpay order when notes have no total', async () => {
-    setup()
+    const fake = setup()
     mockProvider({ paidPaise: 100, orderPaise: 63000 })
     const res = await run()
     expect(res.status).toBe(400)
     expect(await res.json()).toEqual({ error: 'Paid amount does not match checkout total' })
     expect(mocks.razorpay.orders.fetch).toHaveBeenCalledWith('order_1')
-    expect(finalizeEngagementSettlement).not.toHaveBeenCalled()
+    expect(fake.writes('service_engagement_assignments')).toHaveLength(0)
   })
 
   it('rejects a payment captured against a different order', async () => {
-    setup()
+    const fake = setup()
     mockProvider({ paidPaise: 63000, orderPaise: 63000, paymentOrderId: 'order_other' })
     const res = await run()
     expect(res.status).toBe(400)
-    expect(finalizeEngagementSettlement).not.toHaveBeenCalled()
+    expect(fake.writes('service_engagement_assignments')).toHaveLength(0)
   })
 
   it('settles when the paid amount matches the order amount', async () => {
-    setup({ base_amount_inr: 600 })
+    const fake = setup({ base_amount_inr: 600 })
     mockProvider({ paidPaise: 63000, orderPaise: 63000 })
     const res = await run()
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({ data: { settled: true, settledAmount: 600, paidInr: 630 } })
-    expect(finalizeEngagementSettlement).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'asg_1' }),
-      expect.objectContaining({ settledAmount: 600, razorpayOrderId: 'order_1', razorpayPaymentId: 'pay_1' })
-    )
+    const [finalized] = completedUpdates(fake)
+    expect(finalized.payload).toMatchObject({
+      meta: expect.objectContaining({ settled_amount: 600, razorpay_order_id: 'order_1', razorpay_payment_id: 'pay_1' }),
+    })
   })
 })
 

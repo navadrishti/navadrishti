@@ -8,6 +8,7 @@ import {
   UpdateSelectedCampaignSchema
 } from "@/lib/csr-agent/campaign";
 import { parseLeadNgoInvites } from "@/lib/campaign-volunteer-attendance";
+import { PayeeNotConnectedError } from "@/lib/razorpay-route";
 import { assertUserType, authErrorResponse, getAuthUserFromRequest } from "@/lib/server-auth";
 import { getErrorMessage, parseJsonObject } from "@/lib/utils";
 
@@ -85,6 +86,7 @@ export async function POST(req: NextRequest) {
     const message = getErrorMessage(error) || 'Internal Server Error';
     const lower = message.toLowerCase();
     const status =
+      error instanceof PayeeNotConnectedError ? 409 :
       lower.includes('not found') ? 404 :
       lower.includes('lead ngo') || lower.includes('not captured') || lower.includes('concurrently') || lower.includes('already paid') ? 409 :
       /invalid|does not match|mismatch|only inr|unable to fetch payment/.test(lower) ? 400 :

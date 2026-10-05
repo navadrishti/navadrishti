@@ -132,16 +132,16 @@ export function SupportTicketDetailCard({ state }: { state: SupportPanelState })
             </div>
 
             <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
-              <p className="text-sm font-semibold text-slate-900">Delhivery Tracking Lookup</p>
+              <p className="text-sm font-semibold text-slate-900">Delivery tracking lookup</p>
               <p className="text-xs text-slate-600">Use this to fetch live shipment status for donor-to-NGO deliveries.</p>
               <div className="grid gap-3 md:grid-cols-[1fr_auto]">
-                <Input value={trackingLookupId} onChange={(e) => setTrackingLookupId(e.target.value)} placeholder="Enter Delhivery tracking ID" className="border-slate-200 bg-white" />
+                <Input value={trackingLookupId} onChange={(e) => setTrackingLookupId(e.target.value)} placeholder="Enter tracking ID" className="border-slate-200 bg-white" />
                 <Button onClick={lookupDeliveryTracking} disabled={trackingLookupLoading} className="bg-udaan-blue text-white hover:bg-udaan-blue/90">{trackingLookupLoading ? 'Checking...' : 'Track Shipment'}</Button>
               </div>
 
               {trackingSnapshot ? (
                 <div className="space-y-2 rounded-md border border-slate-200 bg-white p-3 text-sm">
-                  <p><span className="font-medium text-gray-600">Provider:</span> {trackingSnapshot.provider || 'delhivery'}</p>
+                  <p><span className="font-medium text-gray-600">Provider:</span> {trackingSnapshot.provider || 'Delivery partner'}</p>
                   <p><span className="font-medium text-gray-600">Tracking ID:</span> {trackingSnapshot.trackingId || 'N/A'}</p>
                   <p><span className="font-medium text-gray-600">Current Status:</span> {trackingSnapshot.currentStatus || 'N/A'}</p>
                   <p><span className="font-medium text-gray-600">Last Location:</span> {trackingSnapshot.lastLocation || 'N/A'}</p>

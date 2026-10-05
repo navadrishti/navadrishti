@@ -1,6 +1,7 @@
 import Razorpay from "razorpay";
 import { supabase } from "@/lib/db";
-import { createPlatformPricedOrder } from "@/lib/razorpay-route";
+import { createPlatformPricedOrder, refundDuplicatePayment } from "@/lib/razorpay-route";
+import { recordCapturedPaymentFromProvider } from "@/lib/razorpay/payment-records";
 import { parseJsonObject, validateCapturedPaymentAmounts } from "@/lib/utils";
 import {
   addDaysIso,
@@ -78,6 +79,7 @@ export async function createCsrCapabilityRentalOrder(input: {
   if (rental.payment_status === "paid") {
     return { paymentRequired: false, rental };
   }
+  await assertOfferAvailableForRental(input.offerId, input.campaignId);
 
   const baseAmountInr = rental.rental_amount_inr;
   if (baseAmountInr <= 0) {
@@ -89,12 +91,14 @@ export async function createCsrCapabilityRentalOrder(input: {
   if (!keyId || !keySecret) throw new Error("Razorpay is not configured");
 
   const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
-  const { order, pricing } = await createPlatformPricedOrder({
+  const receipt = `csr_cap_${input.offerId}_${Date.now()}`;
+  const { order, pricing, orderNotes } = await createPlatformPricedOrder({
     razorpay,
     baseAmountInr,
-    receipt: `csr_cap_${input.offerId}_${Date.now()}`,
+    receipt,
     paymentKind: "csr_capability_rental",
     beneficiaryUserId: rental.provider_user_id,
+    beneficiaryName: "The capability provider",
     notes: {
       campaign_id: input.campaignId,
       service_offer_id: String(input.offerId),
@@ -102,6 +106,26 @@ export async function createCsrCapabilityRentalOrder(input: {
       payer_user_id: String(input.companyId),
     },
   });
+
+  const { error: orderRecordError } = await supabase.from("razorpay_payment_orders").upsert(
+    {
+      service_request_id: null,
+      application_id: null,
+      contribution_id: null,
+      payer_user_id: input.companyId,
+      ngo_user_id: rental.provider_user_id,
+      razorpay_order_id: String(order.id),
+      receipt,
+      amount_inr: Number(pricing.totalChargeInr.toFixed(2)),
+      amount_paise: pricing.totalChargePaise,
+      currency: String(order.currency || "INR"),
+      order_status: "created",
+      order_notes: orderNotes,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "razorpay_order_id" }
+  );
+  if (orderRecordError) throw orderRecordError;
 
   const rentals = await getCsrCapabilityRentals(input.campaignId, input.companyId);
   const updated = upsertCsrCapabilityRental(rentals, {
@@ -121,6 +145,32 @@ export async function createCsrCapabilityRentalOrder(input: {
   };
 }
 
+function rentalLockCampaignId(offer: { offer_details?: unknown } | null | undefined): string {
+  return String(parseJsonObject(parseJsonObject(offer?.offer_details).csr_rental_lock).campaign_id || "");
+}
+
+/** A capability serves one engagement at a time: another campaign's rental or an accepted client blocks it. */
+async function assertOfferAvailableForRental(offerId: number, campaignId: string) {
+  const [{ data: offer, error: offerError }, { data: clients, error: clientsError }] = await Promise.all([
+    supabase.from("service_offers").select("id, status, offer_details").eq("id", offerId).maybeSingle(),
+    supabase.from("service_clients").select("id, response_meta").eq("service_offer_id", offerId).eq("status", "accepted"),
+  ]);
+  if (offerError) throw offerError;
+  if (clientsError) throw clientsError;
+  if (!offer) throw new Error("Capability offer not found");
+
+  const lockedBy = rentalLockCampaignId(offer);
+  if (lockedBy && lockedBy !== campaignId) {
+    throw new Error("This capability is already rented to another campaign.");
+  }
+  const busyElsewhere = (clients || []).some(
+    (client) => String(parseJsonObject(client.response_meta).campaign_id || "") !== campaignId
+  );
+  if (busyElsewhere || (!lockedBy && String(offer.status || "").toLowerCase() !== "active")) {
+    throw new Error("This capability is not available for rent right now.");
+  }
+}
+
 type RentalPaymentInput = {
   campaignId: string;
   companyId: number;
@@ -129,16 +179,16 @@ type RentalPaymentInput = {
   razorpayPaymentId: string;
 };
 
-const DUPLICATE_PAYMENT_REFUNDED =
-  "This capability was already paid for, so this duplicate payment has been refunded.";
-const DUPLICATE_PAYMENT_REFUND_FAILED =
-  "This capability was already paid for. The duplicate payment could not be refunded automatically; please contact support.";
-
 function createRazorpayClient() {
   const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
   if (!keyId || !keySecret) throw new Error("Razorpay is not configured");
   return new Razorpay({ key_id: keyId, key_secret: keySecret });
+}
+
+export function isCsrCapabilityRentalOrder(orderNotes: unknown): boolean {
+  const notes = parseJsonObject(orderNotes);
+  return notes.payment_kind === "csr_capability_rental" || notes.target_type === "csr_capability_rental";
 }
 
 /** Order notes are written by createCsrCapabilityRentalOrder, so they identify the rental the order was created for. */
@@ -188,24 +238,14 @@ async function fetchRentalPayment(razorpay: Razorpay, rental: CsrCapabilityRenta
 /** Refunds a second captured payment for a rental that another payment already settled, then reports it. */
 async function refundDuplicateRentalPayment(rental: CsrCapabilityRentalRecord, input: RentalPaymentInput): Promise<never> {
   const razorpay = createRazorpayClient();
-  const { providerPayment } = await fetchRentalPayment(razorpay, rental, input);
-  const providerStatus = String(providerPayment.status || "").toLowerCase();
-
-  if (providerStatus === "captured") {
-    try {
-      await razorpay.payments.refund(input.razorpayPaymentId, {
-        amount: Number(providerPayment.amount || 0),
-        notes: { reason: "csr_capability_duplicate_payment", campaign_id: input.campaignId },
-      });
-    } catch (refundError) {
-      console.error("CSR capability duplicate payment refund failed:", refundError);
-      throw new Error(DUPLICATE_PAYMENT_REFUND_FAILED);
-    }
-  } else if (providerStatus !== "refunded") {
-    throw new Error(`Payment not captured yet (status: ${providerStatus || "unknown"})`);
-  }
-
-  throw new Error(DUPLICATE_PAYMENT_REFUNDED);
+  await fetchRentalPayment(razorpay, rental, input);
+  return refundDuplicatePayment({
+    razorpay,
+    razorpayPaymentId: input.razorpayPaymentId,
+    razorpayOrderId: input.razorpayOrderId,
+    reason: "csr_capability_duplicate_payment",
+    itemLabel: "capability",
+  });
 }
 
 async function assertCsrRentalPaymentCaptured(rental: CsrCapabilityRentalRecord, input: RentalPaymentInput) {
@@ -249,6 +289,11 @@ export async function attachCsrCapabilityAfterPayment(input: RentalPaymentInput)
   }
 
   await assertCsrRentalPaymentCaptured(rental, input);
+
+  const lockedBy = rentalLockCampaignId(offer);
+  if (lockedBy && lockedBy !== input.campaignId) {
+    return refundDuplicateRentalPayment(rental, input);
+  }
 
   const paidAt = new Date().toISOString();
   const leadNgoId = Number(campaign.lead_ngo_user_id || 0) || null;
@@ -392,6 +437,15 @@ export async function attachCsrCapabilityAfterPayment(input: RentalPaymentInput)
       assignment_id: assignment?.id ? String(assignment.id) : null,
     },
   });
+
+  await supabase
+    .from("razorpay_payment_orders")
+    .update({ order_status: "paid", updated_at: new Date().toISOString() })
+    .eq("razorpay_order_id", input.razorpayOrderId);
+
+  await recordCapturedPaymentFromProvider(createRazorpayClient(), input.razorpayPaymentId).catch((error) =>
+    console.error("Failed to record CSR capability rental payment:", error)
+  );
 
   if (shouldUseDelhiveryForCsrCapabilityRental(attachedRental)) {
     return autoBookCsrCapabilityDelhivery({

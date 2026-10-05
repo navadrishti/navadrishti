@@ -7,7 +7,7 @@ import { POST as verifyPayment } from '@/app/api/service-offers/[id]/clients/[cl
 import { PUT as decideRequest } from '@/app/api/service-offers/requests/[requestId]/route'
 import { buildOfferRow, coerceOfferBody } from '@/lib/service-offer-payload'
 import { jsonRequest, razorpaySignature, tokenFor } from './support/requests'
-import { argOf, fakeAdjustProgress, hasCall, supabaseFake, unknownColumns, type FakeQuery, type FakeResult } from './support/supabase-fake'
+import { argOf, eqValue, fakeAdjustProgress, hasCall, supabaseFake, unknownColumns, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => ({
   users: { findById: vi.fn() },
@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
   adjustProgress: vi.fn(),
   verification: vi.fn(),
   createPlatformPricedOrder: vi.fn(),
-  razorpay: { orders: { fetch: vi.fn() }, payments: { fetch: vi.fn() } },
+  razorpay: { orders: { fetch: vi.fn() }, payments: { fetch: vi.fn(), refund: vi.fn() } },
 }))
 
 vi.mock('@/lib/db', async () => {
@@ -71,17 +71,33 @@ describe('service offer payment verify', () => {
     razorpay_signature: razorpaySignature('order_1', 'pay_1', 'rzp_secret'),
   }
 
-  function setup(options: { claimed?: boolean; orderNotes?: Record<string, unknown>; requestStatus?: string; responseMeta?: Record<string, unknown> } = {}) {
+  function setup(options: {
+    claimed?: boolean
+    orderNotes?: Record<string, unknown>
+    requestStatus?: string
+    responseMeta?: Record<string, unknown>
+    serviceRequestId?: number | null
+  } = {}) {
+    const serviceRequestId = options.serviceRequestId === undefined ? 20 : options.serviceRequestId
     mocks.serviceOffers.getById.mockResolvedValue({ id: 3, creator_id: OWNER })
     mocks.serviceRequests.getById.mockResolvedValue({ target_amount: 5000, current_amount: 1000, status: options.requestStatus ?? 'active' })
     mocks.razorpay.payments.fetch.mockResolvedValue({ id: 'pay_1', order_id: 'order_1', status: 'captured', amount: 50000, method: 'upi', created_at: 1780000000 })
+    mocks.razorpay.payments.refund.mockResolvedValue({ id: 'rfnd_1' })
     mocks.razorpay.orders.fetch.mockResolvedValue({ id: 'order_1', amount: 50000, notes: {}, receipt: 'rcpt_1' })
     respond((query) => {
       if (query.table === 'service_clients' && query.op === 'select') {
-        return { data: { id: 7, status: 'accepted', service_request_id: 20, response_meta: options.responseMeta ?? {} } }
+        return { data: { id: 7, status: 'accepted', service_request_id: serviceRequestId, response_meta: options.responseMeta ?? {} } }
       }
+      if (query.table === 'service_clients' && query.op === 'update') return { data: { id: 7 } }
       if (query.table === 'razorpay_payment_orders' && query.op === 'select') {
-        return { data: { id: 'ord-uuid', service_request_id: 20, payer_user_id: NGO, order_notes: options.orderNotes ?? { service_client_id: 7, extra: 'kept' } } }
+        return {
+          data: {
+            id: 'ord-uuid',
+            service_request_id: serviceRequestId,
+            payer_user_id: NGO,
+            order_notes: options.orderNotes ?? { service_client_id: 7, extra: 'kept' },
+          },
+        }
       }
       if (query.table === 'razorpay_payment_orders' && query.op === 'update') {
         return { data: options.claimed === false ? null : { id: 'ord-uuid' } }
@@ -99,7 +115,13 @@ describe('service offer payment verify', () => {
     expect(res.status).toBe(200)
     expect(supabaseFake.writes('service_request_contributions', 'insert')).toHaveLength(1)
     const [claim] = supabaseFake.writes('razorpay_payment_orders')
-    expect(claim.payload).toMatchObject({ order_status: 'paid', order_notes: { extra: 'kept', service_client_id: 7 } })
+    expect(claim.payload).toMatchObject({
+      order_status: 'paid',
+      order_notes: { extra: 'kept', service_client_id: 7, service_offer_payment_id: 'pay_1' },
+    })
+    const [applicationClaim] = supabaseFake.writes('service_clients')
+    expect(applicationClaim.payload).toMatchObject({ response_meta: { payment_status: 'paid', payment_id: 'pay_1', payment_amount_inr: 500 } })
+    expect(hasCall(applicationClaim, 'is', 'response_meta->>payment_id', null)).toBe(true)
     expect(hasCall(claim, 'is', 'order_notes->>service_offer_credited_at', null)).toBe(true)
     expect(supabaseFake.writes('razorpay_payment_orders', 'upsert')).toHaveLength(0)
     expect(mocks.adjustProgress).toHaveBeenCalledWith(expect.anything(), { amount: 500 }, { targetAmount: 5000 })
@@ -116,12 +138,36 @@ describe('service offer payment verify', () => {
     expect(mocks.adjustProgress).not.toHaveBeenCalled()
   })
 
-  it('does not re-claim an order already recorded on the application', async () => {
-    setup({ responseMeta: { payment_status: 'paid', payment_order_id: 'order_1' } })
+  it('does not credit an order that was already credited', async () => {
+    setup({
+      orderNotes: { service_client_id: 7, service_offer_credited_at: '2026-09-01T00:00:00Z' },
+      responseMeta: { payment_status: 'paid', payment_id: 'pay_1' },
+    })
     const res = await run()
     expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ data: { alreadyProcessed: true } })
     expect(supabaseFake.writes('razorpay_payment_orders')).toHaveLength(0)
     expect(supabaseFake.writes('service_request_contributions', 'insert')).toHaveLength(0)
+  })
+
+  it('refunds a second payment for an application another order already paid', async () => {
+    setup({ responseMeta: { payment_status: 'paid', payment_id: 'pay_0', payment_order_id: 'order_0' } })
+    const res = await run()
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toContain('duplicate payment has been refunded')
+    expect(mocks.razorpay.payments.refund).toHaveBeenCalledWith('pay_1', expect.objectContaining({ amount: 50000 }))
+    expect(supabaseFake.writes('service_request_contributions', 'insert')).toHaveLength(0)
+    expect(mocks.adjustProgress).not.toHaveBeenCalled()
+  })
+
+  it('records a payment for an application that is not tied to a need', async () => {
+    setup({ serviceRequestId: null })
+    const res = await run()
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ data: { serviceRequestId: null } })
+    expect(supabaseFake.writes('service_clients')[0].payload).toMatchObject({ response_meta: { payment_status: 'paid' } })
+    expect(supabaseFake.writes('service_request_contributions', 'insert')).toHaveLength(0)
+    expect(mocks.adjustProgress).not.toHaveBeenCalled()
   })
 
   it('rejects an order created for a different application', async () => {
@@ -191,10 +237,47 @@ describe('service offer payment create-order', () => {
     setup({ payment_amount_inr: 900 }, { message: 'boom' })
     expect((await run()).status).toBe(500)
   })
+
+  it('pays the offer provider', async () => {
+    setup({ payment_amount_inr: 900 })
+    await run()
+    expect(mocks.createPlatformPricedOrder).toHaveBeenCalledWith(expect.objectContaining({
+      paymentKind: 'service_offer',
+      beneficiaryUserId: OWNER,
+    }))
+  })
+
+  it('refuses an upfront payment for a daily rental', async () => {
+    setup({ payment_mode: 'daily_due', payment_amount_inr: 900 })
+    const res = await run()
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('paid from attendance')
+    expect(mocks.createPlatformPricedOrder).not.toHaveBeenCalled()
+  })
+
+  it('returns a clear 409 when the provider has not connected Razorpay', async () => {
+    setup({ payment_amount_inr: 900 })
+    const { PayeeNotConnectedError } = await import('@/lib/razorpay-route')
+    mocks.createPlatformPricedOrder.mockRejectedValue(
+      new PayeeNotConnectedError('The provider has not connected a Razorpay payout account, so they cannot receive payments yet.')
+    )
+    const res = await run()
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toContain('has not connected a Razorpay payout account')
+  })
 })
 
 describe('service offer request decisions', () => {
-  function setup(options: { status?: string; responseMeta?: Record<string, unknown>; validUntil?: string | null; rejectError?: unknown; proposed?: number } = {}) {
+  function setup(options: {
+    status?: string
+    responseMeta?: Record<string, unknown>
+    validUntil?: string | null
+    rejectError?: unknown
+    proposed?: number
+    otherAccepted?: boolean
+    lostRace?: boolean
+    offerDetails?: Record<string, unknown>
+  } = {}) {
     respond((query) => {
       if (query.table === 'service_clients' && query.op === 'select' && hasCall(query, 'single')) {
         return {
@@ -204,10 +287,15 @@ describe('service offer request decisions', () => {
           },
         }
       }
-      if (query.table === 'service_clients' && query.op === 'select') return { data: [{ id: 6, response_meta: {} }] }
+      if (query.table === 'service_clients' && query.op === 'select') {
+        return eqValue(query, 'status') === 'accepted' ? { data: options.otherAccepted ? [{ id: 9 }] : [] } : { data: [{ id: 6, response_meta: {} }] }
+      }
       if (query.table === 'service_clients' && query.op === 'update' && argOf(query, 'eq', 1) === 6) return { error: options.rejectError ?? null }
+      if (query.table === 'service_clients' && query.op === 'update' && argOf(query, 'eq', 1) === 5 && eqValue(query, 'status')) {
+        return { data: options.lostRace ? null : { id: 5 } }
+      }
       if (query.table === 'service_offers') {
-        return { data: { id: 3, creator_id: OWNER, valid_until: options.validUntil ?? null, transaction_type: 'sell', price_amount: 700, unit_rate: null, offer_details: {} } }
+        return { data: { id: 3, creator_id: OWNER, valid_until: options.validUntil ?? null, transaction_type: 'sell', price_amount: 700, unit_rate: null, offer_details: options.offerDetails ?? {} } }
       }
       if (query.table === 'service_requests' && query.op === 'select') {
         return { data: { id: 20, status: 'in_progress', current_amount: 500, current_quantity: 0, target_amount: 10000, target_quantity: 0, project_id: null } }
@@ -245,6 +333,31 @@ describe('service offer request decisions', () => {
     expect(res.status).toBe(200)
     const metaUpdate = supabaseFake.writes('service_clients').find((query) => argOf(query, 'eq', 1) === 5 && (query.payload as { assigned_at?: string }).assigned_at && !(query.payload as { status?: string }).status)
     expect(metaUpdate?.payload).toMatchObject({ response_meta: { rate_per_unit: 700, payment_amount_inr: 700, payment_required: true } })
+  })
+
+  it('refuses to accept a second client for the same offer', async () => {
+    setup({ otherAccepted: true })
+    expect((await run({ status: 'accepted' })).status).toBe(409)
+    expect(supabaseFake.writes('service_clients')).toHaveLength(0)
+  })
+
+  it('refuses to accept while the capability is rented to a CSR campaign', async () => {
+    setup({ offerDetails: { csr_rental_lock: { campaign_id: 'c1' } } })
+    expect((await run({ status: 'accepted' })).status).toBe(409)
+    expect(supabaseFake.writes('service_clients')).toHaveLength(0)
+  })
+
+  it('refuses to complete an offer the client has not paid for', async () => {
+    setup({ status: 'accepted', responseMeta: { payment_required: true } })
+    const res = await run({ status: 'completed' })
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toContain('has not paid')
+  })
+
+  it('returns 409 when another reviewer changed the request first', async () => {
+    setup({ lostRace: true })
+    expect((await run({ status: 'accepted' })).status).toBe(409)
+    expect(supabaseFake.writes('service_engagement_assignments', 'insert')).toHaveLength(0)
   })
 
   it('fails when rejecting the other applicants fails', async () => {

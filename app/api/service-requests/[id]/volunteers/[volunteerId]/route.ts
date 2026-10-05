@@ -48,7 +48,7 @@ export async function PUT(
     const requestId = parseInt(id);
     const volId = parseInt(volunteerId);
     const body = await request.json();
-    const { status, decisionComment, allocationAmount, allocationQuantity, receiptUrl, completionNote, deliveryTrackingId } = body;
+    const { status, decisionComment, allocationAmount, allocationQuantity, receiptUrl, completionNote } = body;
 
     const validStatuses = ['pending', 'accepted', 'rejected', 'active', 'completed', 'cancelled'];
     if (!validStatuses.includes(status)) {
@@ -109,15 +109,19 @@ export async function PUT(
       return NextResponse.json({ error: 'Decision comment must be 500 characters or fewer' }, { status: 400 });
     }
 
-    if (userType === 'ngo' && status === 'accepted') {
-      const requestTarget = getServiceRequestTarget(request_data);
-      const resolvedAllocationAmount = allocationAmount != null
-        ? Number(allocationAmount)
-        : parseAmountToInr(volunteerApplication.fulfillment_amount || volunteerApplication.assigned_amount);
-      const resolvedAllocationQuantity = allocationQuantity != null
+    const requestTarget = getServiceRequestTarget(request_data);
+    // A skill volunteer fills one slot; the dashboards would otherwise allocate everything that is left.
+    const isSkillSlotNeed = getNgoNeedFulfillmentMode(request_data) === 'skill_service';
+    const resolvedAllocationAmount = allocationAmount != null
+      ? Number(allocationAmount)
+      : parseAmountToInr(volunteerApplication.fulfillment_amount || volunteerApplication.assigned_amount);
+    const resolvedAllocationQuantity = isSkillSlotNeed
+      ? 1
+      : allocationQuantity != null
         ? Number(allocationQuantity)
         : parseAmountToInr(volunteerApplication.fulfillment_quantity || volunteerApplication.assigned_quantity);
 
+    if (userType === 'ngo' && status === 'accepted') {
       const allocationError = validateAcceptanceAllocation(request_data, {
         amount: requestTarget.isFinancial ? resolvedAllocationAmount : 0,
         quantity: requestTarget.isFinancial ? 0 : resolvedAllocationQuantity,
@@ -137,19 +141,6 @@ export async function PUT(
       ngo_decision_at: new Date().toISOString()
     };
 
-    const trackingId = typeof deliveryTrackingId === 'string' ? deliveryTrackingId.trim() : '';
-    if (trackingId) {
-      nextMeta.delivery_tracking_id = trackingId;
-      nextMeta.delivery_provider = 'delhivery';
-      nextMeta.delivery_tracking_updated_at = new Date().toISOString();
-      nextMeta.delivery_tracking_last_status = nextMeta.delivery_tracking_last_status || null;
-      nextMeta.delivery_tracking_last_location = nextMeta.delivery_tracking_last_location || null;
-      nextMeta.delivery_tracking_last_event_at = nextMeta.delivery_tracking_last_event_at || null;
-      nextMeta.delivery_tracking_events = Array.isArray(nextMeta.delivery_tracking_events)
-        ? nextMeta.delivery_tracking_events
-        : [];
-    }
-
     const updatePayload: TablesUpdate<'service_request_applications'> & TablesUpdate<'service_request_fulfillments'> = {
       status,
       response_meta: nextMeta,
@@ -157,8 +148,8 @@ export async function PUT(
     }
 
     if (userType === 'ngo' && status === 'accepted') {
-      updatePayload.assigned_amount = allocationAmount != null ? Number(allocationAmount) : parseAmountToInr(volunteerApplication.fulfillment_amount || volunteerApplication.assigned_amount)
-      updatePayload.assigned_quantity = allocationQuantity != null ? Number(allocationQuantity) : parseAmountToInr(volunteerApplication.fulfillment_quantity || volunteerApplication.assigned_quantity)
+      updatePayload.assigned_amount = resolvedAllocationAmount
+      updatePayload.assigned_quantity = resolvedAllocationQuantity
       updatePayload.fulfilled_amount = volunteerApplication.fulfilled_amount || 0
       updatePayload.fulfilled_quantity = volunteerApplication.fulfilled_quantity || 0
     }
@@ -202,10 +193,13 @@ export async function PUT(
       ['rejected', 'cancelled'].includes(status);
 
     if (releasesAllocation) {
-      await releaseVolunteerAllocation(request_data, {
-        amount: parseAmountToInr(volunteerApplication.assigned_amount),
-        quantity: parseAmountToInr(volunteerApplication.assigned_quantity),
-      });
+      // Financial needs only count money actually received, so an accepted pledge never added anything.
+      if (!requestTarget.isFinancial) {
+        await releaseVolunteerAllocation(request_data, {
+          amount: 0,
+          quantity: parseAmountToInr(volunteerApplication.assigned_quantity),
+        });
+      }
 
       const { error: assignmentCloseError } = await supabase
         .from('service_engagement_assignments')
@@ -217,12 +211,15 @@ export async function PUT(
     }
 
     if (userType === 'ngo' && status === 'accepted') {
-      let refreshedRequest: Awaited<ReturnType<typeof applyVolunteerAcceptanceAllocation>>;
+      let refreshedRequest: Awaited<ReturnType<typeof applyVolunteerAcceptanceAllocation>> = request_data;
       try {
-        refreshedRequest = await applyVolunteerAcceptanceAllocation(request_data, {
-          amount: Number(updatePayload.assigned_amount || 0),
-          quantity: Number(updatePayload.assigned_quantity || 0),
-        });
+        // Pledged money is credited when it is paid, so accepting a financial pledge reserves nothing.
+        if (!requestTarget.isFinancial) {
+          refreshedRequest = await applyVolunteerAcceptanceAllocation(request_data, {
+            amount: 0,
+            quantity: Number(updatePayload.assigned_quantity || 0),
+          });
+        }
       } catch (allocationError) {
         await supabase
           .from('service_request_applications')
@@ -306,7 +303,7 @@ export async function PUT(
       }
 
       const remaining = getNeedRemainingQuantity(refreshedRequest);
-      if (remaining <= 0) {
+      if (!requestTarget.isFinancial && remaining <= 0) {
         const { data: pendingApplicants, error: pendingError } = await supabase
           .from('service_request_applications')
           .select('id, response_meta')

@@ -10,13 +10,10 @@ import {
 } from '@/lib/server-auth';
 import { parseAmountToInr, getErrorMessage } from '@/lib/utils';
 import {
-  assertBeneficiaryRouteReady,
-  buildPricingOrderNotes,
   buildPricingResponse,
-  calculatePlatformCheckoutPricing,
-  createRoutedRazorpayOrder,
-  createStandardRazorpayOrder,
+  createPlatformPricedOrder,
   isRazorpayRouteEnabled,
+  PayeeNotConnectedError,
 } from '@/lib/razorpay-route';
 
 export async function POST(
@@ -102,45 +99,26 @@ export async function POST(
       return NextResponse.json({ error: 'Razorpay is not configured' }, { status: 500 });
     }
 
-    const pricing = calculatePlatformCheckoutPricing(baseAmountInr);
     const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
-
-    let beneficiaryLinkedAccountId: string | null = null;
-    if (isRazorpayRouteEnabled()) {
-      const routeReady = await assertBeneficiaryRouteReady(leadNgoUserId, leadNgo?.name || 'Lead NGO');
-      beneficiaryLinkedAccountId = routeReady.linkedAccountId;
-    }
-
-    const orderNotes = buildPricingOrderNotes(pricing, {
-      source: 'csr_milestone_payment',
-      payment_kind: 'csr_milestone',
-      milestone_id: String(milestoneId),
-      project_id: String(project.id),
-      beneficiary_user_id: String(leadNgoUserId),
-      company_user_id: String(project.company_user_id),
-      transfer_on_hold: false,
+    const receipt = `csr_ms_${String(milestoneId).slice(0, 8)}_${Date.now()}`;
+    const { order, pricing, orderNotes } = await createPlatformPricedOrder({
+      razorpay,
+      baseAmountInr,
+      receipt,
+      paymentKind: 'csr_milestone',
+      beneficiaryUserId: leadNgoUserId,
+      beneficiaryName: leadNgo?.name || 'The lead NGO',
+      onHold: false,
+      notes: {
+        source: 'csr_milestone_payment',
+        milestone_id: String(milestoneId),
+        project_id: String(project.id),
+        company_user_id: String(project.company_user_id),
+      },
     });
 
-    const receipt = `csr_ms_${milestoneId}_${Date.now()}`;
-    const order = beneficiaryLinkedAccountId
-      ? await createRoutedRazorpayOrder({
-          razorpay,
-          pricing,
-          receipt,
-          notes: orderNotes,
-          beneficiaryLinkedAccountId,
-          paymentKind: 'csr_milestone',
-          onHold: false,
-        })
-      : await createStandardRazorpayOrder({
-          razorpay,
-          pricing,
-          receipt,
-          notes: orderNotes,
-        });
-
     const nowIso = new Date().toISOString();
-    await supabase.from('razorpay_payment_orders').upsert(
+    const { error: orderRecordError } = await supabase.from('razorpay_payment_orders').upsert(
       {
         service_request_id: null,
         contribution_id: null,
@@ -158,6 +136,7 @@ export async function POST(
       },
       { onConflict: 'razorpay_order_id' }
     );
+    if (orderRecordError) throw orderRecordError;
 
     return NextResponse.json({
       success: true,
@@ -173,6 +152,9 @@ export async function POST(
       },
     });
   } catch (error) {
+    if (error instanceof PayeeNotConnectedError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     console.error('Milestone payment create-order error:', error);
     return NextResponse.json({ error: getErrorMessage(error) || 'Failed to create milestone payment order' }, { status: 500 });
   }

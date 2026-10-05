@@ -121,10 +121,10 @@ describe('delivery tracking', () => {
 })
 
 describe('skill service helpers', () => {
-  it('prefers the fulfilment amount, then meta rates, then quantity', () => {
+  it('prefers the fulfilment amount, then meta rates, and never bills the quantity as a rate', () => {
     expect(getSkillServiceDailyRate({ fulfillment_amount: 900, response_meta: { rate_per_unit: 500 } })).toBe(900)
     expect(getSkillServiceDailyRate({ response_meta: { assignment_meta: { rate_per_unit: 700 } } })).toBe(700)
-    expect(getSkillServiceDailyRate({ proposed_amount: 0, assigned_quantity: 3 })).toBe(3)
+    expect(getSkillServiceDailyRate({ proposed_amount: 0, assigned_quantity: 3 })).toBe(0)
   })
 
   it('detects daily rentals from billing cycle or payment mode', () => {
