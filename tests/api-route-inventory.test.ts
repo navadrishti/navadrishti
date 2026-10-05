@@ -53,8 +53,6 @@ const PUBLIC_ROUTES = new Set([
   'ca/auth/logout',
   'evidence-verification/auth',
   'evidence-verification/logout',
-  'government-admin/auth',
-  'government-admin/logout',
   'health',
   'platform-newsletter',
   'pwa/[...path]',

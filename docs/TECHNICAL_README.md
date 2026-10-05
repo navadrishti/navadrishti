@@ -29,7 +29,7 @@ Last reviewed: September 2026.
 **Navadrishti**
 
 ## Purpose
-Full-stack social-impact platform connecting NGOs, individuals, and companies for CSR execution, volunteer coordination, capability exchange, identity verification, and government oversight of development projects.
+Full-stack social-impact platform connecting NGOs, individuals, and companies for CSR execution, volunteer coordination, capability exchange, identity verification, and evidence-backed delivery.
 
 ## Problem Solved
 - Fragmented CSR planning and NGO matching
@@ -37,7 +37,7 @@ Full-stack social-impact platform connecting NGOs, individuals, and companies fo
 - No unified marketplace for NGO needs (service requests) and capabilities (service offers)
 - Manual CSR campaign design and milestone/evidence tracking
 - Absence of payment, shipment, and attendance-based fulfillment rails for diverse need types
-- Limited auditability for CA/government stakeholders
+- Limited auditability for CA and platform stakeholders
 
 ## Primary Stakeholders
 
@@ -50,10 +50,6 @@ Full-stack social-impact platform connecting NGOs, individuals, and companies fo
 | Navadrishti Platform Admin | Moderates users, offers, posts, tickets, campaigns |
 | Navadrishti CA (ICAI) | Reviews NGO/company verification documents |
 | Company CA | Reviews CSR milestone evidence and payment confirmations |
-| Government Admin | Creates/monitors government projects; manages subordinate officers |
-| State Officer | State-level analytics dashboard |
-| District Officer | District-level analytics dashboard |
-| Field Officer | Project-scoped government access |
 | AI Engineers / Architects | Navadrishti AI Suite (Atlas, Catalyst, Pulse), embeddings, OCR pipeline |
 | Auditors | CSR audit logs, evidence chains, payment confirmations |
 
@@ -68,7 +64,7 @@ Full-stack social-impact platform connecting NGOs, individuals, and companies fo
 ┌───────────────────────────────────▼─────────────────────────────────────┐
 │                    APPLICATION LAYER (Next.js Monolith)                   │
 │  app/api/** (140 route handlers) │ lib/** (business logic)                │
-│  5 auth domains: Platform JWT, Admin, Platform CA, Company CA, Govt     │
+│  4 auth domains: Platform JWT, Admin, Platform CA, Company CA           │
 └───────┬─────────────┬──────────────┬──────────────┬───────────────────────┘
         │             │              │              │
         ▼             ▼              ▼              ▼
@@ -103,7 +99,6 @@ Full-stack social-impact platform connecting NGOs, individuals, and companies fo
 | CSR Project Execution | `/api/csr-projects/*`, `/api/milestones/*` | Implemented |
 | Volunteer Management | `/service-requests/applicants/*`, `/api/service-requests/[id]/volunteers` | Implemented |
 | Donations / Payments | Razorpay routes, `/api/webhooks/razorpay` | Implemented |
-| Government Monitoring | `/government-admin/*` | Paused (redirected to `/` by `proxy.ts`) |
 | Evidence Management | `/api/milestones/[id]/evidence`, Company CA review | Partial |
 | Platform newsletter | `/`, `/api/platform-newsletter` | Implemented |
 | Reporting | `/companies/impact-reports`, `/companies/csr-health` | Partial |
@@ -143,7 +138,7 @@ Full-stack social-impact platform connecting NGOs, individuals, and companies fo
 
 **Actions Allowed:** Sign up/login; individual verification; apply to service requests; create/edit capability offers; CSR campaign volunteering; support tickets
 
-**Actions Restricted:** Create service requests; create CSR campaigns; admin/CA/government consoles; evidence review; Lead NGO invitation
+**Actions Restricted:** Create service requests; create CSR campaigns; admin/CA consoles; evidence review; Lead NGO invitation
 
 ---
 
@@ -165,7 +160,7 @@ Full-stack social-impact platform connecting NGOs, individuals, and companies fo
 
 **Actions Allowed:** Create projects/needs; manage applicants; publish offers; **Atlas** (AI need drafting); accept Lead NGO invites; submit milestone evidence; lead NGO assignment workflows
 
-**Actions Restricted:** Apply to service requests as volunteer; create CSR campaigns; CA/government/admin consoles
+**Actions Restricted:** Apply to service requests as volunteer; create CSR campaigns; CA/admin consoles
 
 ---
 
@@ -200,7 +195,7 @@ Full-stack social-impact platform connecting NGOs, individuals, and companies fo
 
 **Actions Allowed:** **Catalyst** (CSR campaign AI); campaign CRUD; Lead NGO invites; capability offers; Company CA account management; CSR evidence viewing
 
-**Actions Restricted:** Volunteer for service requests; apply to CSR campaigns as volunteer; CA/government consoles
+**Actions Restricted:** Volunteer for service requests; apply to CSR campaigns as volunteer; CA consoles
 
 ---
 
@@ -245,51 +240,9 @@ Full-stack social-impact platform connecting NGOs, individuals, and companies fo
 
 **Accessible Pages:** `/admin/login`, `/admin`, `/admin/announcements`
 
-**Actions Allowed:** User CRUD; content moderation; support tickets; government admin provisioning; CA credentials; announcements; payments; delivery tracking; audit
+**Actions Allowed:** User CRUD; content moderation; support tickets; CA credentials; announcements; payments; delivery tracking; audit
 
 **Actions Restricted:** None within platform scope
-
----
-
-### Role Name: Government Admin (`government_admin`)
-
-**Purpose:** Department-level administrator for government projects and officer credentials.
-
-**Status:** All `/government-admin` pages are currently paused: `proxy.ts` and `isLaunchBlockedPath()` in `lib/access-control.ts` redirect them to `/`. The API routes remain in place.
-
-**Accessible Pages:** `/government-admin/login`, `/government-admin`, `/government-admin/change-password`
-
-**Actions Allowed:** Government project CRUD; create state/district/field officer credentials
-
----
-
-### Role Name: Government Super Admin (`super_admin`)
-
-Same auth system as Government Admin; top-level government portal account.
-
----
-
-### Role Name: State Officer
-
-**Accessible Pages:** `/government-admin/login`, `/government-admin/state-dashboard`, `/change-password`
-
-**Actions Allowed:** `GET /api/government-admin/state-analytics` (API-enforced)
-
----
-
-### Role Name: District Officer
-
-**Accessible Pages:** `/government-admin/login`, `/government-admin/district-dashboard`, `/change-password`
-
-**Actions Allowed:** `GET /api/government-admin/district-analytics` (API-enforced)
-
----
-
-### Role Name: Field Officer
-
-**Accessible Pages:** `/government-admin/login`, `/government-admin`
-
-**Actions Allowed:** Authenticate; project-scoped operations (partially implemented)
 
 ---
 
@@ -319,7 +272,6 @@ Same auth system as Government Admin; top-level government portal account.
 | CSR Projects | Execution, milestones, evidence, payments | NGO, Company, CAs | Partial |
 | Volunteer Management | Applications, allocation, receipts | Individual, NGO | Implemented |
 | Donations/Payments | Razorpay orders, webhooks, refunds | All payment actors | Implemented |
-| Government Monitoring | Projects, officer dashboards | Govt roles | Paused |
 | Evidence Management | GPS/device evidence, CA review | NGO, Company CA | Partial |
 | Reporting | Impact reports, analytics | Company, Govt, Admin | Partial |
 | Notifications | In-app notifications | Platform users | Implemented |
@@ -339,7 +291,6 @@ Same auth system as Government Admin; top-level government portal account.
 - **Payments:** Razorpay routes, `/api/webhooks/razorpay`
 - **Newsletter:** `/api/platform-newsletter`
 - **Admin:** `/api/admin/*`
-- **Government:** `/api/government-admin/*`
 
 ### Key Database Entities per Module
 
@@ -514,7 +465,7 @@ Large pages keep their sub-components next to them, e.g. `app/companies/csr-agen
 
 ```
 RootLayout → ThemeProvider → AuthProvider → PageTransition → children → Toaster → AIAgentCTA → Analytics → SpeedInsights
-Nested: ca/layout, evidence-verification/layout, government-admin/layout, admin/layout
+Nested: ca/layout, evidence-verification/layout, admin/layout
 ```
 
 ## Authentication Guards
@@ -524,7 +475,6 @@ Nested: ca/layout, evidence-verification/layout, government-admin/layout, admin/
 | ProtectedRoute | `components/protected-route.tsx` |
 | CA layout | `app/ca/layout.tsx` |
 | Company CA layout | `app/evidence-verification/layout.tsx` |
-| Govt layout | `app/government-admin/layout.tsx` |
 
 `proxy.ts` (the Next.js 16 replacement for `middleware.ts`) only redirects paused routes; it does no auth. Auth is enforced per page by the guards above and per API handler.
 
@@ -592,7 +542,6 @@ ocr-service/                       # Python OCR microservice
 | getAuthUserFromRequest / getCAFromRequest / getCompanyCAFromRequest | `lib/server-auth.ts` |
 | getPlatformCAFromRequest | `lib/platform-ca-auth.ts` |
 | getAdminUser | `lib/server-auth.ts` |
-| getGovernmentAdminFromRequest | `lib/government-admin-auth.ts` |
 
 ## Authentication Mechanisms
 
@@ -602,13 +551,11 @@ ocr-service/                       # Python OCR microservice
 | Admin | `admin-token` | Session cookie; JWT 7d |
 | Navadrishti CA | `navadrishti-ca-token` | 12h (`CA_JWT_EXPIRES_IN`) |
 | Company CA | `evidence-verification-token` | Session cookie; JWT 7d |
-| Govt Admin | `govt-admin-token` | 12h (`GOVT_ADMIN_JWT_EXPIRES_IN`) |
 
 ## Authorization
 
 - `user_type` + `verification_status` matrix (`lib/access-control.ts`)
 - 9 boolean `AccessPermissions`
-- Government role API scoping
 - Resource ownership checks inline
 
 ## Business Logic Layers
@@ -638,7 +585,6 @@ erDiagram
     campaigns ||--o{ csr_projects : activates
     csr_projects ||--o{ csr_project_milestones : plans
     csr_project_milestones ||--o{ csr_milestone_evidence : verifies
-    government_bodies ||--o{ government_admin_accounts : employs
 ```
 
 ## Core Entities
@@ -681,9 +627,6 @@ erDiagram
 
 ### service_engagement_invitations / assignments / attendance_entries
 **Purpose:** Unified engagement lifecycle.
-
-### government_bodies / government_admin_accounts / government_projects
-**Purpose:** Government monitoring domain.
 
 ### service_offer_embeddings
 **Purpose:** One vector per service offer (`service_offer_id` PK, cascades on offer delete) with a `content_hash` so unchanged offers are not re-embedded. RPC: `match_service_offers`.
@@ -752,13 +695,11 @@ Product codenames (UI only). Source of truth: `lib/ai-agent-sessions.ts`.
 | OCR microservice | Built in Python; not connected to verification API |
 | evidence_validation_results | Schema exists; not populated on evidence submit |
 | Reference-point geo validation | No runtime distance check |
-| Government project evidence | Not modelled; analytics report zero evidence (portal paused) |
 
 ## Planned
 
 - OCR async integration into verification flow
 - ICAI membership verification, UDIN certificate generation
-- Government database cross-reference
 - Mobile React Native field PWA (the web app already proxies it through `/api/pwa/*`)
 - Full geo-fencing validation pipeline
 - Sentry / performance monitoring
@@ -791,7 +732,7 @@ Product codenames (UI only). Source of truth: `lib/ai-agent-sessions.ts`.
 See `.env.example` for committed variables. Key groups:
 
 - **Supabase:** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`
-- **Auth:** `JWT_SECRET` (required; tokens are rejected when empty), `JWT_EXPIRES_IN`, `CA_JWT_EXPIRES_IN`, `GOVT_ADMIN_JWT_EXPIRES_IN`
+- **Auth:** `JWT_SECRET` (required; tokens are rejected when empty), `JWT_EXPIRES_IN`, `CA_JWT_EXPIRES_IN`
 - **Admin:** `ADMIN_USERNAME`, `ADMIN_PASSWORD`
 - **Cloudinary:** `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`
 - **Payments:** `NEXT_PUBLIC_RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, `RAZORPAY_ROUTE_ENABLED`, `NEXT_PUBLIC_PLATFORM_FEE_PERCENT`, `NEXT_PUBLIC_PLATFORM_FEE_MIN_INR`, `NEXT_PUBLIC_PLATFORM_GST_PERCENT`
@@ -908,16 +849,13 @@ Health: GET /api/health
 `/api/payments/pending`, `/api/webhooks/razorpay`, `/api/uploads/receipt`
 
 ### Platform Admin (30 route files)
-`/api/admin/auth`, `logout`, `verify`, `overview`, `analytics`, `audit`, `settings`, `users`, `users/[id]`, `users/[id]/reverification`, `reverifications`, `campaigns`, `[id]`, `service-offers`, `[offerId]/review`, `auto-reject`, `service-requests`, `[id]`, `service-request-projects`, `[id]`, `support-tickets`, `[ticketId]`, `announcements`, `payments`, `payments/discover`, `payments/refund`, `delivery/track`, `ca-credentials`, `government-admins`, `[id]`
+`/api/admin/auth`, `logout`, `verify`, `overview`, `analytics`, `audit`, `settings`, `users`, `users/[id]`, `users/[id]/reverification`, `reverifications`, `campaigns`, `[id]`, `service-offers`, `[offerId]/review`, `auto-reject`, `service-requests`, `[id]`, `service-request-projects`, `[id]`, `support-tickets`, `[ticketId]`, `announcements`, `payments`, `payments/discover`, `payments/refund`, `delivery/track`, `ca-credentials`
 
 ### Navadrishti CA (7 route files)
 `/api/ca/auth`, `auth/verify`, `auth/logout`, `auth/change-password`, `queue`, `review`, `verification-action`
 
 ### Company CA (evidence review)
 `/api/evidence-verification/auth`, `verify`, `logout`, `change-password`, `accounts`, `[identityId]`, `payments/create-order`, `payments/verify`, `volunteer-attendance` (legacy `/api/companies/ca/*` redirects here)
-
-### Government Admin (8 route files; portal paused)
-`/api/government-admin/auth`, `verify`, `logout`, `change-password`, `credentials`, `projects`, `state-analytics`, `district-analytics`
 
 ### Upload, Support & Gateway
 `/api/upload` | `/api/help-support`, `help-support/tickets`, `tickets/[ticketId]` | `/api/pwa/[...path]` (CORS gateway to the field app upstream)
@@ -1036,25 +974,12 @@ Health: GET /api/health
 | `/evidence-verification/history` | Company CA |
 | `/evidence-verification/review/[milestoneId]` | Company CA |
 
-## Government Admin (5, paused)
-
-| Route | Roles |
-|-------|-------|
-| `/government-admin/login` | Guest |
-| `/government-admin` | Govt admin (any role) |
-| `/government-admin/change-password` | Govt admin |
-| `/government-admin/state-dashboard` | state_officer (API) |
-| `/government-admin/district-dashboard` | district_officer (API) |
-
----
-
 # Known gaps
 
 ## Placeholder Features
 
 | Feature | Location |
 |---------|----------|
-| Government evidence counts | state/district analytics return 0; no evidence table links to `government_projects` |
 | Evidence geo validation | Schema only |
 | Admin analytics email stats | Always an empty list |
 
@@ -1092,9 +1017,7 @@ Health: GET /api/health
 
 ## Future Planned Features
 
-**Verification:** ICAI verification, UDIN generation, OCR integration, re-verification workflow, government DB cross-reference
-
-**Service Exchange:** attendance entries table, validity windows, standardized billing fields
+**Verification:** ICAI verification, UDIN generation, OCR integration, and re-verification workflow
 
 **Database:** PK standardization, naming drift cleanup, drop legacy service_offers columns
 
@@ -1124,8 +1047,6 @@ Health: GET /api/health
 | `docs/VERIFICATION_FLOW.md` | Verification workflow detail |
 | `docs/DEPLOYMENT.md` | Deployment guides |
 | `docs/ENVIRONMENT.md` | Environment variable reference |
-| `docs/SERVICE_EXCHANGE_MODEL.md` | Service lifecycle schema |
-| `docs/TABLE_ORDER_AND_MERGE_GUIDE.md` | DB cleanup guide |
 
 ---
 

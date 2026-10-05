@@ -2,7 +2,7 @@
 
 ## Overview
 
-Navadrishti is a Next.js App Router application with a PostgreSQL database on Supabase. Platform users, Navadrishti CAs, company evidence reviewers, government admins, and platform admins each have their own JWT cookie/session domain.
+Navadrishti is a Next.js App Router application with a PostgreSQL database on Supabase. Platform users, Navadrishti CAs, company evidence reviewers, and platform admins each have their own JWT cookie/session domain.
 
 ## Frontend
 
@@ -27,7 +27,6 @@ app/                    Next.js App Router
   admin/                Platform admin console
   ca/                   Navadrishti CA console
   evidence-verification Company CA / evidence review (legacy /companies/ca redirects here)
-  government-admin/     Government console
   service-offers/       Capability marketplace
   service-requests/     NGO needs
 components/

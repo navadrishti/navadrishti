@@ -26,7 +26,6 @@ import { parseJsonObject } from '@/lib/utils';
 
 export const AUTH_TOKEN_COOKIE = 'token';
 export const ADMIN_TOKEN_COOKIE = 'admin-token';
-export const GOVT_ADMIN_TOKEN_COOKIE = 'govt-admin-token';
 export const EVIDENCE_VERIFICATION_TOKEN_COOKIE = 'evidence-verification-token';
 
 type CookieCarrier = Pick<NextResponse, 'cookies' | 'headers'>;
@@ -125,14 +124,6 @@ export function setPlatformCaTokenCookie(
 
 export function clearPlatformCaTokenCookie(response: CookieCarrier) {
   clearSessionCookieNames(response, [PLATFORM_CA_COOKIE, 'ca-token']);
-}
-
-export function setGovtAdminTokenCookie(response: CookieCarrier, token: string) {
-  writeSessionCookie(response, GOVT_ADMIN_TOKEN_COOKIE, token);
-}
-
-export function clearGovtAdminTokenCookie(response: CookieCarrier) {
-  clearSessionCookieNames(response, [GOVT_ADMIN_TOKEN_COOKIE]);
 }
 
 export function setEvidenceVerificationTokenCookie(response: CookieCarrier, token: string) {

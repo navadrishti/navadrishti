@@ -87,11 +87,6 @@ const assertAdminRoutes: Array<[string, Method]> = [
   ['admin/campaigns/[id]', 'GET'],
   ['admin/campaigns/[id]', 'PATCH'],
   ['admin/campaigns/[id]', 'DELETE'],
-  ['admin/government-admins', 'GET'],
-  ['admin/government-admins', 'POST'],
-  ['admin/government-admins', 'PUT'],
-  ['admin/government-admins', 'DELETE'],
-  ['admin/government-admins/[id]', 'DELETE'],
   ['admin/overview', 'GET'],
   ['admin/service-request-projects/[id]', 'GET'],
   ['admin/service-request-projects/[id]', 'PATCH'],
@@ -342,23 +337,6 @@ describe('role checks', () => {
   it('ignores the session cookie where only bearer auth is supported', async () => {
     const res = await call('csr-agent/update-campaign', 'POST', buildRequest('POST', { cookies: { token: company } }))
     expect(res.status).toBe(401)
-  })
-})
-
-describe('government admin routes', () => {
-  it.each<[string, Method]>([
-    ['government-admin/change-password', 'POST'],
-    ['government-admin/verify', 'GET'],
-    ['government-admin/credentials', 'GET'],
-    ['government-admin/credentials', 'POST'],
-    ['government-admin/district-analytics', 'GET'],
-    ['government-admin/projects', 'GET'],
-    ['government-admin/projects', 'POST'],
-    ['government-admin/state-analytics', 'GET'],
-  ])('%s %s rejects anonymous requests with 401', async (route, method) => {
-    const res = await call(route, method, buildRequest(method))
-    expect(res.status).toBe(401)
-    expect(dbCalls).toEqual([])
   })
 })
 

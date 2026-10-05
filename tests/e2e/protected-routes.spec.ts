@@ -24,12 +24,4 @@ test.describe('anonymous visitors are kept out of protected pages', () => {
     })
   }
 
-  test('/government-admin is redirected by the proxy', async ({ request }) => {
-    for (const path of ['/government-admin', '/government-admin/state-dashboard']) {
-      const response = await request.get(path, { maxRedirects: 0 })
-      expect(response.status(), path).toBeGreaterThanOrEqual(300)
-      expect(response.status(), path).toBeLessThan(400)
-      expect(new URL(response.headers()['location'], 'http://localhost').pathname, path).toBe('/')
-    }
-  })
 })

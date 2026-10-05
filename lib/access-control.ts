@@ -361,30 +361,10 @@ export function isAllowedPwaOrigin(origin: string | null): boolean {
   return getPwaAllowedOrigins().includes(origin.replace(/\/$/, ''));
 }
 
-/** Surfaces that are paused and redirect to `/` (see also `proxy.ts`). */
-const BLOCKED_ROUTE_PREFIXES = [
-  '/government-admin',
-] as const;
-
-function matchesRoutePrefix(pathname: string, prefix: string): boolean {
-  return pathname === prefix || pathname.startsWith(`${prefix}/`);
-}
-
 export function getSiteDocumentTitle(): string {
   return `${PRODUCT_NAME} | Digital OS for Social Impact`;
 }
 
-export function isPermanentlyBlockedPath(pathname: string): boolean {
-  return BLOCKED_ROUTE_PREFIXES.some((prefix) => matchesRoutePrefix(pathname, prefix));
-}
-
-export function isLaunchBlockedPath(pathname: string): boolean {
-  return isPermanentlyBlockedPath(pathname);
-}
-
-export function getLaunchBlockedRedirectPath(_pathname?: string): string {
-  return '/';
-}
 
 export function getLaunchHeaderNavItems(items: LaunchHeaderNavItem[]): LaunchHeaderNavItem[] {
   return items;
