@@ -514,12 +514,6 @@ export const CONSOLE_TAB_SESSION_ROUTES = [
     loginPath: '/ca/login',
   },
   {
-    prefix: '/government-admin',
-    publicPaths: ['/government-admin/login', '/government-admin/change-password'],
-    tabSessionKey: 'govt_admin_tab_session',
-    loginPath: '/government-admin/login',
-  },
-  {
     prefix: '/evidence-verification',
     publicPaths: ['/evidence-verification/login', '/evidence-verification/change-password'],
     tabSessionKey: 'evidence_verification_tab_session',

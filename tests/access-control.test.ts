@@ -27,7 +27,6 @@ vi.mock('@/lib/db', () => ({
 import {
   canAccessRoute,
   getDashboardSidebarItemCount,
-  getLaunchBlockedRedirectPath,
   getPermissionErrorMessage,
   getPwaAllowedOrigins,
   getPwaAppUrl,
@@ -36,8 +35,6 @@ import {
   getUserPermissions,
   hasPermission,
   isAllowedPwaOrigin,
-  isLaunchBlockedPath,
-  isPermanentlyBlockedPath,
   isPlatformLoginRequiredPath,
   shouldShowDashboardSidebarSkeleton,
   shouldShowPayoutAccountPanel,
@@ -146,36 +143,17 @@ describe('routes', () => {
     expect(canAccessRoute(type, path)).toBe(expected)
   })
 
-  it.each([
-    ['/government-admin', true],
-    ['/government-admin/login', true],
-    ['/government-administration', false],
-    ['/admin', false],
-  ])('blocks %s -> %s', (path, expected) => {
-    expect(isPermanentlyBlockedPath(path)).toBe(expected)
-    expect(isLaunchBlockedPath(path)).toBe(expected)
-  })
-
-  it('redirects blocked paths home', () => {
-    expect(getLaunchBlockedRedirectPath('/government-admin')).toBe('/')
-  })
 })
 
 describe('proxy', () => {
-  it.each(['/government-admin', '/government-admin/accounts'])('redirects %s to /', async (path) => {
-    const response = await proxy(new NextRequest(`https://app.example.com${path}`))
-    expect(response.status).toBe(307)
-    expect(response.headers.get('location')).toBe('https://app.example.com/')
-  })
-
   it('lets other paths through', async () => {
-    const response = await proxy(new NextRequest('https://app.example.com/government-administration'))
+    const response = await proxy(new NextRequest('https://app.example.com/removed-admin-area'))
     expect(response.headers.get('location')).toBeNull()
     expect(response.headers.get('x-middleware-next')).toBe('1')
   })
 
-  it('matches government-admin pages and API routes', () => {
-    expect(config.matcher).toEqual(['/government-admin', '/government-admin/:path*', '/api/:path*'])
+  it('matches API routes', () => {
+    expect(config.matcher).toEqual(['/api/:path*'])
   })
 
   const apiRequest = (userId: number, path = '/api/service-requests') =>

@@ -66,7 +66,6 @@ export function PlatformCAManagement() {
     }
   };
 
-  // showForm removed: create form is always visible to match government-admin layout
 
   const fetchAccounts = async () => {
     try {
