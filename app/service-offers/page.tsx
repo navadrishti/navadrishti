@@ -306,16 +306,16 @@ function ServiceOffersPageContent() {
           </div>
         ) : canCreateOffers ? (
           <div className="mb-8 rounded-md border border-gram-border bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-black">Connect Razorpay to list capabilities</h2>
+            <h2 className="text-lg font-semibold text-black">Connect payout account to list capabilities</h2>
             <p className="mt-1 text-sm text-gray-700">
-              Connect Razorpay payout before listing capabilities so you can receive merchant payments.
+              Connect your payout account before listing capabilities so you can receive merchant payments.
             </p>
             <Link href={payoutHref} className="mt-4 inline-block">
               <Button
                 variant="outline"
                 className="border border-gram-border bg-white text-black hover:bg-gram-page"
               >
-                Connect Razorpay payout
+                Connect payout account
               </Button>
             </Link>
           </div>

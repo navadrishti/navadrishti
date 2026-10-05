@@ -50,7 +50,7 @@ export function NgoRequestsSection({ data, tab, onTabChange }: NgoRequestsSectio
           ) : data.inProgressNgoRequests.length === 0 ? (
             <EmptyState
               title="No active fulfillments"
-              description="Accepted NGO needs appear here with tracking based on need type: Delhivery, Razorpay, daily service rental, or infrastructure assignment."
+              description="Accepted NGO needs appear here with tracking based on need type: delivery, online payment, daily service rental, or infrastructure assignment."
               browseHref="/service-requests"
               browseLabel="Browse NGO Requests"
             />

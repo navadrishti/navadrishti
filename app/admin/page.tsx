@@ -47,9 +47,9 @@ export default function AdminPage() {
 
   const verifyAdmin = async () => {
     if (!hasConsoleTabSession('admin_tab_session')) {
-      setIsAdmin(false);
-      router.push('/admin/login');
-      return false;
+        setIsAdmin(false);
+        router.push('/admin/login');
+        return false;
     }
 
     const response = await fetch('/api/admin/verify', { credentials: 'include', cache: 'no-store' });
@@ -260,7 +260,7 @@ export default function AdminPage() {
             )}
             </CardContent>
             </Card>
-        </div>
+          </div>
       </DashboardBodyLayout>
     </AdminPortalShell>
   );

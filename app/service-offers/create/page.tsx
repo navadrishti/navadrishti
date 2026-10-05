@@ -92,19 +92,19 @@ export default function CreateServiceOfferPage() {
 
           {payoutLoading ? (
             <Card>
-              <CardContent className="py-8 text-sm text-muted-foreground">Checking Razorpay payout connection...</CardContent>
+              <CardContent className="py-8 text-sm text-muted-foreground">Checking payout connection...</CardContent>
             </Card>
           ) : payoutBlocked ? (
             <Card>
               <CardHeader>
-                <CardTitle>Connect Razorpay to list capabilities</CardTitle>
+                <CardTitle>Connect payout account to list capabilities</CardTitle>
                 <CardDescription>
-                  You must connect Razorpay payout before listing capabilities so you can receive merchant payments.
+                  You must connect your payout account before listing capabilities so you can receive merchant payments.
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <Button asChild>
-                  <Link href={payoutHref}>Connect Razorpay payout</Link>
+                  <Link href={payoutHref}>Connect payout account</Link>
                 </Button>
               </CardContent>
             </Card>

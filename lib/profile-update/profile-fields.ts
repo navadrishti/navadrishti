@@ -34,6 +34,8 @@ const SERVER_OWNED_PROFILE_KEYS = [
   'razorpay_link_status',
   'razorpay_link_error',
   'razorpay_link_updated_at',
+  'delhivery_pickup_location',
+  'delhivery_pickup_fingerprint',
 ];
 
 export function stripServerOwnedProfileKeys<T extends Record<string, unknown>>(profileData: T): T {

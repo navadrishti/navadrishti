@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   sendEmail: vi.fn(),
   autoBook: vi.fn(),
   refund: vi.fn(),
+  fetchPayment: vi.fn(),
 }))
 
 vi.mock('@/lib/db', async () => {
@@ -22,7 +23,7 @@ vi.mock('@/lib/email', () => ({ emailService: { sendEmail: mocks.sendEmail } }))
 vi.mock('@/lib/csr-agent/campaign/delhivery-booking', () => ({ autoBookCsrCapabilityDelhivery: mocks.autoBook }))
 vi.mock('razorpay', () => ({
   default: vi.fn(function () {
-    return { payments: { refund: mocks.refund } }
+    return { payments: { refund: mocks.refund, fetch: mocks.fetchPayment } }
   }),
 }))
 
@@ -52,10 +53,17 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(NOW)
   db = createCampaignStore()
-  db.store.users[3] = { id: 3, email: 'csr@acme.com', name: 'Acme', verification_status: 'verified', profile_data: { city: 'Pune' } }
+  db.store.users[3] = { id: 3, email: 'csr@acme.com', name: 'Acme', account_status: 'active', profile_data: { city: 'Pune' } }
   supabaseFake.reset()
   supabaseFake.respondWith(db.respond)
+  vi.stubEnv('RAZORPAY_KEY_SECRET', 'secret')
+  vi.stubEnv('NEXT_PUBLIC_RAZORPAY_KEY_ID', 'key')
+  mocks.fetchPayment.mockResolvedValue({ id: 'pay_1', order_id: 'order_1', amount: 100000, amount_refunded: 0 })
+  mocks.refund.mockResolvedValue({ id: 'rfnd_1' })
 })
+
+const missedDispatch = (overrides: Partial<CsrCapabilityRentalRecord> = {}) =>
+  rental({ outbound_dispatch_due_at: hoursFrom(-1), razorpay_payment_id: 'pay_1', ...overrides })
 
 afterEach(() => {
   vi.useRealTimers()
@@ -64,10 +72,64 @@ afterEach(() => {
 
 describe('processCsrCapabilityDailyCompliance', () => {
   it('refunds rentals whose outbound dispatch deadline passed', async () => {
-    seed(rental({ outbound_dispatch_due_at: hoursFrom(-1) }))
+    seed(missedDispatch())
     await expect(processCsrCapabilityDailyCompliance()).resolves.toEqual({ refunds: 1, fines: 0, reminders: 0, suspended: 0 })
-    expect(db.rentals()[0]).toMatchObject({ status: 'refunded', payment_status: 'refunded' })
+    expect(db.rentals()[0]).toMatchObject({ status: 'refunded', payment_status: 'refunded', refund_id: 'rfnd_1', refunded_at: NOW.toISOString() })
     expect(db.store.campaigns[0].impact_metrics).toMatchObject({ note: 'keep' })
+  })
+
+  it('keeps the rental open and records the reason when Razorpay rejects the refund', async () => {
+    mocks.refund.mockRejectedValue({ statusCode: 400, error: { description: 'Insufficient balance' } })
+    seed(missedDispatch())
+    await expect(processCsrCapabilityDailyCompliance()).resolves.toMatchObject({ refunds: 0 })
+    expect(db.rentals()[0]).toMatchObject({ status: 'paid', payment_status: 'paid', refund_error: 'Insufficient balance' })
+    expect(supabaseFake.find('service_offers', 'update')).toHaveLength(0)
+  })
+
+  it('does not claim a refund for a rental without a Razorpay payment', async () => {
+    seed(rental({ outbound_dispatch_due_at: hoursFrom(-1) }))
+    await expect(processCsrCapabilityDailyCompliance()).resolves.toMatchObject({ refunds: 0 })
+    expect(db.rentals()[0]).toMatchObject({ status: 'paid', refund_error: expect.stringContaining('no Razorpay payment') })
+    expect(mocks.refund).not.toHaveBeenCalled()
+  })
+
+  it('only refunds what is left on a partly refunded payment', async () => {
+    mocks.fetchPayment.mockResolvedValue({ id: 'pay_1', order_id: 'order_1', amount: 100000, amount_refunded: 30000 })
+    seed(missedDispatch())
+    await processCsrCapabilityDailyCompliance()
+    expect(mocks.refund).toHaveBeenCalledWith('pay_1', expect.objectContaining({ amount: 70000 }))
+  })
+
+  it('marks an already fully refunded payment refunded without refunding again', async () => {
+    mocks.fetchPayment.mockResolvedValue({ id: 'pay_1', order_id: 'order_1', amount: 100000, amount_refunded: 100000 })
+    seed(missedDispatch())
+    await expect(processCsrCapabilityDailyCompliance()).resolves.toMatchObject({ refunds: 1 })
+    expect(mocks.refund).not.toHaveBeenCalled()
+    expect(db.rentals()[0]).toMatchObject({ status: 'refunded' })
+  })
+
+  it('reverses the provider transfer on a routed payment', async () => {
+    supabaseFake.respondWith((query) =>
+      query.table === 'razorpay_payment_orders' ? { data: { order_notes: { route_transfer: { account: 'acc_1' } } } } : db.respond(query)
+    )
+    seed(missedDispatch())
+    await processCsrCapabilityDailyCompliance()
+    expect(mocks.refund).toHaveBeenCalledWith('pay_1', expect.objectContaining({ reverse_all: 1 }))
+  })
+
+  it('does not record the refund over a concurrent campaign edit', async () => {
+    db.store.campaigns = [{ id: 'c1', company_id: 3, updated_at: '2026-09-26T00:00:00Z', impact_metrics: { csr_capability_rentals: [missedDispatch()] } }]
+    supabaseFake.respondWith((query) => {
+      if (query.table === 'campaigns' && query.op === 'update') return { data: [] }
+      return db.respond(query)
+    })
+    await expect(processCsrCapabilityDailyCompliance()).resolves.toMatchObject({ refunds: 0 })
+    expect(supabaseFake.find('service_offers', 'update')).toHaveLength(0)
+  })
+
+  it('never refunds service rentals, which have no dispatch', async () => {
+    seed(missedDispatch({ offer_type: 'service' }))
+    await expect(processCsrCapabilityDailyCompliance()).resolves.toMatchObject({ refunds: 0 })
     expect(mocks.refund).not.toHaveBeenCalled()
   })
 
@@ -83,14 +145,12 @@ describe('processCsrCapabilityDailyCompliance', () => {
   })
 
   it('refunds the Razorpay payment and releases the offer lock', async () => {
-    vi.stubEnv('RAZORPAY_KEY_SECRET', 'secret')
-    vi.stubEnv('NEXT_PUBLIC_RAZORPAY_KEY_ID', 'key')
+    mocks.fetchPayment.mockResolvedValue({ id: 'pay_1', order_id: 'order_1', amount: 123450, amount_refunded: 0 })
     db.store.offers[7] = { id: 7, offer_details: { quantity: 2, csr_rental_lock: { campaign_id: 'c1' } } }
-    seed(rental({ outbound_dispatch_due_at: hoursFrom(-1), razorpay_payment_id: 'pay_1', rental_amount_inr: 1234.5 }))
+    seed(missedDispatch({ rental_amount_inr: 1234.5 }))
     await processCsrCapabilityDailyCompliance()
-    await vi.waitFor(() => expect(supabaseFake.find('service_offers', 'update')).toHaveLength(1))
-    expect(mocks.refund).toHaveBeenCalledWith('pay_1', { amount: 123450, notes: { reason: 'csr_outbound_dispatch_sla_missed' } })
-    expect(supabaseFake.find('service_offers', 'update')[0].payload).toEqual({ status: 'active', offer_details: { quantity: 2 } })
+    expect(mocks.refund).toHaveBeenCalledWith('pay_1', { amount: 123450, notes: { reason: 'csr_outbound_dispatch_sla_missed', campaign_id: 'c1' } })
+    expect(supabaseFake.find('service_offers', 'update')[0].payload).toMatchObject({ status: 'active', offer_details: { quantity: 2 } })
   })
 
   it('opens a fine when a material return is late', async () => {
@@ -151,7 +211,7 @@ describe('processCsrCapabilityDailyCompliance', () => {
   })
 
   it('refunds a rental whose shipment was only manifested', async () => {
-    seed(rental({ outbound_dispatch_due_at: hoursFrom(-1), outbound_delivery: { tracking_id: 'AWB9', last_status: 'Manifested' } }))
+    seed(missedDispatch({ outbound_delivery: { tracking_id: 'AWB9', last_status: 'Manifested' } }))
     await expect(processCsrCapabilityDailyCompliance()).resolves.toMatchObject({ refunds: 1 })
     expect(db.rentals()[0]).toMatchObject({ status: 'refunded', payment_status: 'refunded' })
   })
@@ -190,14 +250,14 @@ describe('processCsrCapabilityDailyCompliance', () => {
     const [update] = supabaseFake.find('users', 'update')
     expect(eqValue(update, 'id')).toBe(3)
     expect(update.payload).toMatchObject({
-      verification_status: 'suspended',
+      account_status: 'suspended',
       profile_data: { city: 'Pune', csr_capability_account: { status: 'suspended', suspended_at: NOW.toISOString() } },
     })
     expect(mocks.sendEmail).toHaveBeenCalledWith(expect.objectContaining({ subject: 'GRAM account suspended — CSR capability penalty overdue' }))
   })
 
   it.each([
-    ['already suspended companies', { verification_status: 'suspended' }, daysFrom(-11)],
+    ['already suspended companies', { account_status: 'suspended' }, daysFrom(-11)],
     ['fines inside the clearance window', {}, daysFrom(-3)],
   ])('does not suspend %s', async (_label, user, dueClearedBy) => {
     db.store.users[3] = { ...db.store.users[3], ...user }
@@ -222,12 +282,14 @@ describe('processCsrCapabilityDailyCompliance', () => {
 describe('markCsrProjectCompleted', () => {
   const completedAt = '2026-09-01T00:00:00.000Z'
 
-  it('moves paid rentals to return and fines material ones', async () => {
+  it('starts the return window for delivered goods and closes service rentals', async () => {
+    db.store.offers[8] = { id: 8, offer_details: { csr_rental_lock: { campaign_id: 'c1' } } }
     seed(
-      rental({ service_offer_id: 7 }),
-      rental({ service_offer_id: 8, offer_type: 'service' }),
+      rental({ service_offer_id: 7, status: 'project_active' }),
+      rental({ service_offer_id: 8, offer_type: 'service', status: 'project_active' }),
       rental({ service_offer_id: 9, payment_status: 'pending', status: 'pending_payment' }),
-      rental({ service_offer_id: 10, status: 'completed' })
+      rental({ service_offer_id: 10, status: 'completed' }),
+      rental({ service_offer_id: 11, status: 'paid' })
     )
     await markCsrProjectCompleted({ campaignId: 'c1', completedAt })
     const byOffer = new Map(db.rentals().map((row) => [row.service_offer_id, row]))
@@ -235,21 +297,40 @@ describe('markCsrProjectCompleted', () => {
       status: 'return_pending',
       project_completed_at: completedAt,
       return_dispatch_due_at: '2026-09-03T00:00:00.000Z',
-      fine: { base_amount_inr: 10000, pending_total_inr: 10000, status: 'pending', due_cleared_by: '2026-09-11T00:00:00.000Z' },
     })
-    expect(byOffer.get(8)).toMatchObject({ status: 'return_pending' })
-    expect(byOffer.get(8)?.fine).toBeUndefined()
+    expect(byOffer.get(7)?.fine).toBeUndefined()
+    expect(byOffer.get(8)).toMatchObject({ status: 'completed', project_completed_at: completedAt })
     expect(byOffer.get(9)?.status).toBe('pending_payment')
     expect(byOffer.get(10)?.status).toBe('completed')
+    expect(byOffer.get(11)?.status).toBe('paid')
+    expect(db.store.campaigns[0]).toMatchObject({ status: 'completed', impact_metrics: { note: 'keep', completed_at: completedAt } })
+    const offerUpdates = supabaseFake.find('service_offers', 'update')
+    expect(offerUpdates).toHaveLength(1)
+    expect(eqValue(offerUpdates[0], 'id')).toBe(8)
     expect(mocks.autoBook).toHaveBeenCalledTimes(1)
     expect(mocks.autoBook).toHaveBeenCalledWith({ campaignId: 'c1', offerId: 7, leg: 'return', bookedByUserId: 12, companyId: 3 })
+  })
+
+  it('leaves a rental that is already returning untouched when re-run', async () => {
+    const returning = rental({ status: 'return_pending', return_dispatch_due_at: '2026-08-30T00:00:00.000Z', return_delivery: { tracking_id: 'AWB1' } })
+    seed(returning)
+    await markCsrProjectCompleted({ campaignId: 'c1', completedAt })
+    expect(db.rentals()[0]).toEqual(returning)
+  })
+
+  it('gives up after repeated concurrent edits instead of overwriting them', async () => {
+    seed(rental({ status: 'project_active' }))
+    supabaseFake.respondWith((query) => (query.table === 'campaigns' && query.op === 'update' ? { data: [] } : db.respond(query)))
+    await expect(markCsrProjectCompleted({ campaignId: 'c1', completedAt })).rejects.toThrow('updated concurrently')
+    expect(supabaseFake.find('campaigns', 'update')).toHaveLength(3)
+    expect(mocks.autoBook).not.toHaveBeenCalled()
   })
 
   it.each([
     ['a return tracking id exists', { return_delivery: { tracking_id: 'AWB1' } }],
     ['there is no lead NGO', { lead_ngo_user_id: null }],
   ])('skips return booking when %s', async (_label, overrides) => {
-    seed(rental(overrides))
+    seed(rental({ status: 'project_active', ...overrides }))
     await markCsrProjectCompleted({ campaignId: 'c1', completedAt })
     expect(mocks.autoBook).not.toHaveBeenCalled()
   })

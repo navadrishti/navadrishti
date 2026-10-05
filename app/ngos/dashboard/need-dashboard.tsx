@@ -18,7 +18,7 @@ import {
 } from '@/lib/service-request-allocation';
 import { InlineInfrastructureAssignment, InlineSkillServiceFulfillment } from '@/components/engagement-fulfillment';
 import type { NgoNeedAssignment, NgoNeedDashboardItem } from './types';
-import { InlineDelhiveryFulfillment } from './delhivery-fulfillment';
+import { DelhiveryFulfillment } from '@/components/delhivery-fulfillment';
 
 export function NgoNeedCardSkeleton() {
   return (
@@ -271,12 +271,11 @@ export function NgoNeedDashboardInline({
                 </div>
 
                 {shouldUseDelhiveryForNeed(need) && inFulfillment ? (
-                  <InlineDelhiveryFulfillment
+                  <DelhiveryFulfillment
                     serviceRequestId={need.id}
                     volunteerApplicationId={assignment.id}
                     responseMeta={assignment.response_meta || {}}
-                    canEditTrackingId={false}
-                    canVerifyPickup={false}
+                    role="ngo"
                     onUpdated={onUpdated}
                   />
                 ) : null}
@@ -284,7 +283,7 @@ export function NgoNeedDashboardInline({
                 {shouldUseNgoMarkedDailyAttendance(need) && inFulfillment ? (
                   <InlineSkillServiceFulfillment
                     application={assignment}
-                    role="ngo"
+                    role="payer"
                     onUpdated={onUpdated}
                   />
                 ) : null}

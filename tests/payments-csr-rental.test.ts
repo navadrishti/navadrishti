@@ -45,7 +45,8 @@ function matchesUpdatedAtGuard(query: FakeQuery, campaign: Row) {
   return !nullGuard || campaign.updated_at == null
 }
 
-function useCampaignDb(initial: Row, offer: Row = { id: 7, creator_id: 40, offer_type: 'service', unit_rate: 2000 }) {
+function useCampaignDb(initial: Row, offerOverrides: Row = { id: 7, creator_id: 40, offer_type: 'service', unit_rate: 2000 }) {
+  const offer = { status: 'active', ...offerOverrides }
   const state = { campaign: { ...initial } }
   const fake = createSupabaseFake((query) => {
     if (query.table === 'campaigns') {
@@ -58,18 +59,25 @@ function useCampaignDb(initial: Row, offer: Row = { id: 7, creator_id: 40, offer
       return owned ? { data: state.campaign } : { data: null, error: { message: 'no rows' } }
     }
     if (query.table === 'service_offers') return { data: offer }
-    if (query.table === 'service_clients') return { data: { id: 81 } }
+    if (query.table === 'service_clients') {
+      const isAvailabilityCheck = eqValue(query, 'status') === 'accepted' && !hasCall(query, 'insert') && !hasCall(query, 'upsert')
+      return isAvailabilityCheck ? { data: acceptedClients } : { data: { id: 81 } }
+    }
     if (query.table === 'service_engagement_assignments') return { data: { id: 'asg_1' } }
+    if (query.table === 'users') return { data: { profile_data: { razorpay_linked_account_id: 'acc_provider', razorpay_link_status: 'active' } } }
     return undefined
   })
   mocks.supabase.from.mockImplementation(fake.from)
   return { fake, state }
 }
 
+let acceptedClients: Row[] = []
+
 const baseCampaign = { id: CAMPAIGN_ID, company_id: 3, title: 'Clean water', lead_ngo_user_id: 12, impact_metrics: {} }
 
 beforeEach(() => {
   vi.resetAllMocks()
+  acceptedClients = []
   mocks.razorpay.orders.create.mockImplementation(async (body: Row) => ({ id: 'order_rent', receipt: body.receipt, currency: 'INR' }))
   vi.stubEnv('NEXT_PUBLIC_RAZORPAY_KEY_ID', 'rzp_key')
   vi.stubEnv('RAZORPAY_KEY_SECRET', 'rzp_secret')
@@ -134,6 +142,24 @@ describe('createCsrCapabilityRentalOrder', () => {
     useCampaignDb({ ...baseCampaign, impact_metrics: { csr_capability_rentals: [paid] } })
     await expect(createCsrCapabilityRentalOrder(input)).resolves.toMatchObject({ paymentRequired: false, rental: paid })
     expect(mocks.razorpay.orders.create).not.toHaveBeenCalled()
+  })
+
+  it('refuses a capability already rented to another campaign', async () => {
+    useCampaignDb(baseCampaign, { id: 7, creator_id: 40, unit_rate: 2000, offer_details: { csr_rental_lock: { campaign_id: 'other-campaign' } } })
+    await expect(createCsrCapabilityRentalOrder(input)).rejects.toThrow('already rented to another campaign')
+    expect(mocks.razorpay.orders.create).not.toHaveBeenCalled()
+  })
+
+  it('refuses a capability with an accepted client elsewhere', async () => {
+    useCampaignDb(baseCampaign)
+    acceptedClients = [{ id: 5, response_meta: {} }]
+    await expect(createCsrCapabilityRentalOrder(input)).rejects.toThrow('not available for rent')
+    expect(mocks.razorpay.orders.create).not.toHaveBeenCalled()
+  })
+
+  it('refuses an offer that is not listed', async () => {
+    useCampaignDb(baseCampaign, { id: 7, creator_id: 40, unit_rate: 2000, status: 'inactive' })
+    await expect(createCsrCapabilityRentalOrder(input)).rejects.toThrow('not available for rent')
   })
 
   it('requires a rental rate', async () => {
@@ -416,7 +442,7 @@ describe('update-campaign route', () => {
         expect(body.error).toBe(DUPLICATE_REFUNDED)
         expect(mocks.razorpay.payments.refund).toHaveBeenCalledWith('pay_2', {
           amount: 210000,
-          notes: { reason: 'csr_capability_duplicate_payment', campaign_id: CAMPAIGN_ID },
+          notes: expect.objectContaining({ reason: 'csr_capability_duplicate_payment' }),
         })
         expect(fake.find('campaigns', 'update')).toHaveLength(0)
       })

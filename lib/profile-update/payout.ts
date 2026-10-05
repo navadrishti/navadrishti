@@ -176,6 +176,7 @@ export async function connectPayoutAccount(user: PayoutUser) {
         user.name ||
         payoutAccount.account_holder_name
     ),
+    userType: user.user_type,
     city: user.city,
     state: user.state_province,
     pincode: user.pincode,

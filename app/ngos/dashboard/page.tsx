@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
+import { isFullyVerifiedAccount } from '@/lib/auth';
 import ProtectedRoute from '@/components/protected-route';
 import { Header } from '@/components/header';
 import { Card, CardContent } from '@/components/ui/card';
@@ -56,11 +57,7 @@ function NGODashboardContent() {
     setCsrProjectsTab('ongoing');
   });
 
-  const allVerified = Boolean(
-    user?.email_verified &&
-    user?.phone_verified &&
-    user?.verification_status === 'verified'
-  );
+  const allVerified = isFullyVerifiedAccount(user);
   const [acceptsPayments, setAcceptsPayments] = useState<boolean | null>(null);
   const [payoutDetailsSaved, setPayoutDetailsSaved] = useState<boolean | null>(null);
   const { connected: payoutConnected } = usePayoutConnection(Boolean(user));
@@ -146,7 +143,7 @@ function NGODashboardContent() {
                   Manage your NGO capability offers, service requests, and CSR projects
                 </p>
                                 </div>
-                                </div>
+                </div>
 
             {allVerified && acceptsPayments === false ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
@@ -157,8 +154,8 @@ function NGODashboardContent() {
                       <p className="font-medium text-amber-900">Connect account to receive donations</p>
                       <p className="mt-1 text-sm text-amber-800">
                         {payoutDetailsSaved
-                          ? 'Your NGO is listed on the NGO Network. Connect Razorpay payout below so donors and companies can pay you.'
-                          : 'Your NGO is listed on the NGO Network. Save payout bank details, then connect Razorpay to receive donations.'}
+                          ? 'Your NGO is listed on the NGO Network. Connect your payout account below so donors and companies can pay you.'
+                          : 'Your NGO is listed on the NGO Network. Save payout bank details, then connect your payout account to receive donations.'}
                       </p>
                                       </div>
                                         </div>
@@ -168,7 +165,7 @@ function NGODashboardContent() {
                     className="border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
                     onClick={scrollToPayoutBankSection}
                   >
-                    {payoutDetailsSaved ? 'Connect Razorpay payout' : 'Set up payout account'}
+                    {payoutDetailsSaved ? 'Connect payout account' : 'Set up payout account'}
                                   </Button>
                                 </div>
                               </div>
@@ -227,8 +224,8 @@ function NGODashboardContent() {
                     <PaymentHistoryPanel
                       role="received"
                       title="Received payments"
-                      description="All Razorpay payments received by your NGO on GRAM — direct support, financial needs, capability offers, and engagement settlements."
-                      emptyMessage="No Razorpay payments received yet on your NGO account."
+                      description="All online payments received by your NGO on GRAM — direct support, financial needs, capability offers, and engagement settlements."
+                      emptyMessage="No online payments received yet on your NGO account."
                     />
                   </TabsContent>
                     </Tabs>

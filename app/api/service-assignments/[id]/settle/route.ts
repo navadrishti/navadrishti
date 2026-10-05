@@ -4,13 +4,13 @@ import { supabase } from '@/lib/db'
 import { getTokenClaims } from '@/lib/auth'
 import {
   createEngagementSettlementOrder,
-  finalizeEngagementSettlement,
   getAssignmentOutstandingAmount,
   isDailyRentalAssignment,
+  resolveEngagementSettlementParties,
+  settleEngagementFromCapturedPayment,
   verifyRazorpaySignature,
 } from '@/lib/engagement-settlement'
-import { validateCapturedPaymentAmounts } from '@/lib/razorpay-route'
-import { parseJsonObject } from '@/lib/utils'
+import { PayeeNotConnectedError } from '@/lib/razorpay-route'
 
 export async function POST(
   request: NextRequest,
@@ -35,17 +35,16 @@ export async function POST(
       return NextResponse.json({ error: 'Assignment not found' }, { status: 404 })
     }
 
-    if (decoded.user_type !== 'ngo' || Number(assignment.owner_user_id) !== Number(decoded.id)) {
-      return NextResponse.json({ error: 'Only the owning NGO can settle this engagement' }, { status: 403 })
+    const parties = resolveEngagementSettlementParties(assignment)
+    if (!parties.settleable) {
+      return NextResponse.json({ error: parties.reason }, { status: 400 })
+    }
+    if (parties.payerUserId !== Number(decoded.id)) {
+      return NextResponse.json({ error: 'Only the paying party can settle this engagement' }, { status: 403 })
     }
 
     if (!isDailyRentalAssignment(assignment)) {
       return NextResponse.json({ error: 'Settlement is only available for daily rental engagements' }, { status: 400 })
-    }
-
-    const settlement = getAssignmentOutstandingAmount(assignment)
-    if (settlement.settlementStatus === 'settled') {
-      return NextResponse.json({ error: 'This engagement is already settled' }, { status: 409 })
     }
 
     if (action === 'verify') {
@@ -72,79 +71,52 @@ export async function POST(
         razorpay.payments.fetch(razorpay_payment_id),
         razorpay.orders.fetch(razorpay_order_id),
       ])
-      if (payment?.order_id !== razorpay_order_id || providerOrder?.id !== razorpay_order_id) {
+      if (
+        !payment ||
+        payment.id !== razorpay_payment_id ||
+        payment.order_id !== razorpay_order_id ||
+        providerOrder?.id !== razorpay_order_id
+      ) {
         return NextResponse.json({ error: 'Order and payment mismatch' }, { status: 400 })
       }
-      if (String(payment.status) !== 'captured') {
+      if (String(payment.status || '').toLowerCase() !== 'captured') {
         return NextResponse.json({ error: 'Payment not captured yet' }, { status: 409 })
       }
 
-      const { data: orderRow, error: orderLookupError } = await supabase
-        .from('razorpay_payment_orders')
-        .select('order_notes, payer_user_id, order_status')
-        .eq('razorpay_order_id', razorpay_order_id)
-        .maybeSingle()
-      if (orderLookupError) throw orderLookupError
-
-      if (!orderRow) {
-        return NextResponse.json({ error: 'Settlement order not found' }, { status: 404 })
-      }
-      const orderNotes = parseJsonObject(orderRow.order_notes)
-      if (String(orderNotes.assignment_id ?? '') !== String(assignment.id)) {
-        return NextResponse.json({ error: 'Payment is linked to a different engagement' }, { status: 403 })
-      }
-      if (Number(orderRow.payer_user_id) !== Number(decoded.id)) {
-        return NextResponse.json({ error: 'Payment belongs to a different payer' }, { status: 403 })
-      }
-      if (orderRow.order_status === 'paid') {
-        return NextResponse.json({ error: 'This payment has already been settled' }, { status: 409 })
-      }
-
-      const paidInr = Number((Number(payment.amount || 0) / 100).toFixed(2))
-      const amountCheck = validateCapturedPaymentAmounts({
-        orderNotes: parseJsonObject(orderRow.order_notes || providerOrder.notes),
+      const result = await settleEngagementFromCapturedPayment({
+        razorpay,
+        razorpayOrderId: razorpay_order_id,
+        razorpayPaymentId: razorpay_payment_id,
+        paidInr: Number((Number(payment.amount || 0) / 100).toFixed(2)),
+        orderNotes: providerOrder.notes && Object.keys(providerOrder.notes).length > 0 ? providerOrder.notes : undefined,
         orderAmountPaise: providerOrder.amount,
-        paidInr,
+        expected: { assignmentId: String(assignment.id), payerUserId: Number(decoded.id) },
       })
-      if (!amountCheck.ok) {
-        return NextResponse.json({ error: amountCheck.error }, { status: 400 })
-      }
-
-      const { data: claimedOrder, error: claimError } = await supabase
-        .from('razorpay_payment_orders')
-        .update({ order_status: 'paid', updated_at: new Date().toISOString() })
-        .eq('razorpay_order_id', razorpay_order_id)
-        .neq('order_status', 'paid')
-        .select('id')
-        .maybeSingle()
-      if (claimError) throw claimError
-      if (!claimedOrder) {
-        return NextResponse.json({ error: 'This payment has already been settled' }, { status: 409 })
-      }
-
-      let meta: Awaited<ReturnType<typeof finalizeEngagementSettlement>>
-      try {
-        meta = await finalizeEngagementSettlement(assignment, {
-          settledAmount: amountCheck.baseAmountInr,
-          settlementMode: 'razorpay',
-          razorpayOrderId: razorpay_order_id,
-          razorpayPaymentId: razorpay_payment_id,
-        })
-      } catch (finalizeError) {
-        await supabase
-          .from('razorpay_payment_orders')
-          .update({ order_status: String(orderRow.order_status || 'created'), updated_at: new Date().toISOString() })
-          .eq('razorpay_order_id', razorpay_order_id)
-        throw finalizeError
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: result.status })
       }
 
       return NextResponse.json({
         success: true,
-        data: { settled: true, settledAmount: amountCheck.baseAmountInr, paidInr, meta },
+        data: {
+          settled: true,
+          settledAmount: result.settledAmount,
+          paidInr: result.paidInr,
+          meta: result.meta,
+          ...(result.alreadyProcessed ? { alreadyProcessed: true } : {}),
+        },
       })
     }
 
-    const result = await createEngagementSettlementOrder(assignment, decoded.id)
+    const settlement = getAssignmentOutstandingAmount(assignment)
+    if (settlement.settlementStatus === 'settled') {
+      return NextResponse.json({ error: 'This engagement is already settled' }, { status: 409 })
+    }
+    if (!['active', 'in_progress'].includes(String(assignment.status || '').toLowerCase())) {
+      return NextResponse.json({ error: 'Only an active engagement can be settled' }, { status: 409 })
+    }
+
+    const result = await createEngagementSettlementOrder(assignment, parties)
     if (!result.paymentRequired) {
       return NextResponse.json({
         success: true,
@@ -174,6 +146,9 @@ export async function POST(
       },
     })
   } catch (error) {
+    if (error instanceof PayeeNotConnectedError) {
+      return NextResponse.json({ error: error.message }, { status: 409 })
+    }
     console.error('Engagement settlement error:', error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to settle engagement' },

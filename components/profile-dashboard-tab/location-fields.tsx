@@ -101,10 +101,20 @@ export function HeadquartersFields({ details, description, cityPlaceholder }: He
 }
 
 export function IndividualLocationFields({ details }: { details: ProfileDetails }) {
-  const { city, setCity, stateProvince, setStateProvince, pincode, setPincode, country, setCountry } = details
+  const { addressLine, setAddressLine, city, setCity, stateProvince, setStateProvince, pincode, setPincode, country, setCountry } = details
 
   return (
     <>
+      <div>
+        <Label>Street address</Label>
+        <Textarea
+          value={addressLine}
+          onChange={(e) => setAddressLine(e.target.value)}
+          placeholder="House, street, locality"
+          rows={2}
+        />
+        <p className="mt-1 text-xs text-muted-foreground">The delivery partner collects material donations from this address.</p>
+      </div>
       <div>
         <Label>City</Label>
         <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="e.g., Mumbai, Delhi" />

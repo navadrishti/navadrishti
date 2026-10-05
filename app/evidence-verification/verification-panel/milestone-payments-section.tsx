@@ -21,7 +21,7 @@ export function MilestonePaymentsSection({
     <EvidenceSectionCard
       className="h-full"
       title="Approved Milestone Payments"
-      description="Pay the lead NGO via Razorpay after milestone evidence is approved."
+      description="Pay the lead NGO online after milestone evidence is approved."
     >
       {items.length === 0 ? (
         <p className="text-sm text-slate-600">No approved milestones awaiting payment.</p>
@@ -45,7 +45,7 @@ export function MilestonePaymentsSection({
                 }
                 footer={
                   <Button onClick={() => onPay(item)} disabled={isPaying}>
-                    {isPaying ? 'Opening Razorpay...' : `Pay ${getTotalChargeLabel(amount)}`}
+                    {isPaying ? 'Opening payment...' : `Pay ${getTotalChargeLabel(amount)}`}
                   </Button>
                 }
               />

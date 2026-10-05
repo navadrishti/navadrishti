@@ -25,7 +25,7 @@ import {
 } from '@/lib/razorpay-route'
 import { POST as webhookPost } from '@/app/api/webhooks/razorpay/route'
 import { razorpaySignature } from './support/requests'
-import { argOf, createSupabaseFake, fakeAdjustProgress, type FakeQuery, type FakeResult } from './support/supabase-fake'
+import { argOf, callsOf, createSupabaseFake, fakeAdjustProgress, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
 const dbMock = vi.hoisted(() => ({
   supabase: { from: vi.fn() },
@@ -140,7 +140,7 @@ describe('createPlatformPricedOrder', () => {
   const activeProfile = { profile_data: { razorpay_linked_account_id: 'acc_live', razorpay_link_status: 'active' } }
 
   it('uses a standard order with pricing notes when Route is off', async () => {
-    useSupabase()
+    useSupabase((query) => (query.table === 'users' ? { data: activeProfile } : undefined))
     const { client, razorpay } = fakeRazorpay()
     const { pricing, orderNotes } = await createPlatformPricedOrder({
       razorpay,
@@ -165,20 +165,37 @@ describe('createPlatformPricedOrder', () => {
     const body = client.orders.create.mock.calls[0][0]
     expect(body.amount).toBe(105900)
     expect(body).not.toHaveProperty('transfers')
+    expect(orderNotes).not.toHaveProperty('route_transfer')
   })
 
   it('adds a Route transfer when enabled and the NGO is active', async () => {
     vi.stubEnv('RAZORPAY_ROUTE_ENABLED', 'true')
     useSupabase((query) => (query.table === 'users' ? { data: activeProfile } : undefined))
     const { client, razorpay } = fakeRazorpay()
-    await createPlatformPricedOrder({ razorpay, baseAmountInr: 500, receipt: 'r', paymentKind: 'service_offer', beneficiaryUserId: 9 })
+    const { orderNotes } = await createPlatformPricedOrder({
+      razorpay,
+      baseAmountInr: 500,
+      receipt: 'r',
+      paymentKind: 'service_offer',
+      beneficiaryUserId: 9,
+    })
     const body = client.orders.create.mock.calls[0][0]
     expect(body.amount).toBe(52500)
     expect(body.transfers).toMatchObject([{ account: 'acc_live', amount: 50000, on_hold: 0 }])
+    expect(orderNotes.route_transfer).toBe(true)
+    expect(body.notes).not.toHaveProperty('route_transfer')
   })
 
-  it('skips Route when requireRouteWhenEnabled is false', async () => {
-    vi.stubEnv('RAZORPAY_ROUTE_ENABLED', 'true')
+  it('refuses an order with no recipient', async () => {
+    useSupabase()
+    const { client, razorpay } = fakeRazorpay()
+    await expect(
+      createPlatformPricedOrder({ razorpay, baseAmountInr: 500, receipt: 'r', paymentKind: 'service_offer' })
+    ).rejects.toThrow('This payment has no recipient on file')
+    expect(client.orders.create).not.toHaveBeenCalled()
+  })
+
+  it('lets a payment without a recipient through when the caller opts out', async () => {
     useSupabase()
     const { client, razorpay } = fakeRazorpay()
     await createPlatformPricedOrder({
@@ -186,18 +203,16 @@ describe('createPlatformPricedOrder', () => {
       baseAmountInr: 500,
       receipt: 'r',
       paymentKind: 'service_offer',
-      beneficiaryUserId: 9,
-      requireRouteWhenEnabled: false,
+      requirePayeeConnection: false,
     })
     expect(client.orders.create.mock.calls[0][0]).not.toHaveProperty('transfers')
   })
 
   it.each([
-    [{ razorpay_linked_account_id: 'acc_1', razorpay_link_status: 'pending' }, /pending Razorpay activation/],
-    [{ bank_details: 'HDFC ****1234' }, /has bank details saved/],
-    [{}, /has not completed Razorpay payout setup/],
-  ])('refuses Route orders for NGOs that are not ready (%o)', async (profile, message) => {
-    vi.stubEnv('RAZORPAY_ROUTE_ENABLED', 'true')
+    [{ razorpay_linked_account_id: 'acc_1', razorpay_link_status: 'pending' }, /still pending activation/],
+    [{ bank_details: 'HDFC ****1234' }, /saved bank details but has not finished connecting Razorpay/],
+    [{}, /has not connected a Razorpay payout account/],
+  ])('refuses orders for payees that are not ready (%o)', async (profile, message) => {
     useSupabase((query) => (query.table === 'users' ? { data: { profile_data: profile } } : undefined))
     const { client, razorpay } = fakeRazorpay()
     await expect(
@@ -205,31 +220,57 @@ describe('createPlatformPricedOrder', () => {
     ).rejects.toThrow(message)
     expect(client.orders.create).not.toHaveBeenCalled()
   })
+
+  it('names the payee in the error when a name is given', async () => {
+    useSupabase((query) => (query.table === 'users' ? { data: { profile_data: {} } } : undefined))
+    const { razorpay } = fakeRazorpay()
+    await expect(
+      createPlatformPricedOrder({
+        razorpay,
+        baseAmountInr: 500,
+        receipt: 'r',
+        paymentKind: 'service_offer',
+        beneficiaryUserId: 9,
+        beneficiaryName: 'Ravi Kumar',
+      })
+    ).rejects.toThrow('Ravi Kumar has not connected a Razorpay payout account')
+  })
 })
 
 describe('releaseHeldTransfersForPayment', () => {
-  it('does nothing when Route is off', async () => {
+  function transferClient() {
     const { client, razorpay } = fakeRazorpay()
-    await releaseHeldTransfersForPayment({ razorpay, razorpayPaymentId: 'pay_1' })
-    expect(client.payments.fetch).not.toHaveBeenCalled()
+    const payments = client.payments as typeof client.payments & { fetchTransfer: ReturnType<typeof vi.fn> }
+    payments.fetchTransfer = vi.fn()
+    return { client, payments, razorpay }
+  }
+
+  it('does nothing when Route is off', async () => {
+    const { payments, razorpay } = transferClient()
+    await expect(releaseHeldTransfersForPayment({ razorpay, razorpayPaymentId: 'pay_1' })).resolves.toBe(true)
+    expect(payments.fetchTransfer).not.toHaveBeenCalled()
   })
 
-  it('releases the transfer attached to the payment', async () => {
+  it('releases every held transfer on the payment', async () => {
     vi.stubEnv('RAZORPAY_ROUTE_ENABLED', 'true')
-    const { client, razorpay } = fakeRazorpay()
-    client.payments.fetch.mockResolvedValue({ id: 'pay_1', transfer_id: 'trf_1' })
-    await releaseHeldTransfersForPayment({ razorpay, razorpayPaymentId: 'pay_1' })
+    const { client, payments, razorpay } = transferClient()
+    payments.fetchTransfer.mockResolvedValue({
+      items: [
+        { id: 'trf_1', on_hold: true },
+        { id: 'trf_2', on_hold: false },
+      ],
+    })
+    await expect(releaseHeldTransfersForPayment({ razorpay, razorpayPaymentId: 'pay_1' })).resolves.toBe(true)
+    expect(client.transfers.edit).toHaveBeenCalledTimes(1)
     expect(client.transfers.edit).toHaveBeenCalledWith('trf_1', { on_hold: false })
   })
 
-  it('skips payments without a transfer and swallows provider errors', async () => {
+  it('reports provider errors as not released', async () => {
     vi.stubEnv('RAZORPAY_ROUTE_ENABLED', 'true')
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    const { client, razorpay } = fakeRazorpay()
-    client.payments.fetch.mockResolvedValueOnce({ id: 'pay_1' })
-    await releaseHeldTransfersForPayment({ razorpay, razorpayPaymentId: 'pay_1' })
-    client.payments.fetch.mockRejectedValueOnce(new Error('down'))
-    await expect(releaseHeldTransfersForPayment({ razorpay, razorpayPaymentId: 'pay_1' })).resolves.toBeUndefined()
+    const { client, payments, razorpay } = transferClient()
+    payments.fetchTransfer.mockRejectedValueOnce(new Error('down'))
+    await expect(releaseHeldTransfersForPayment({ razorpay, razorpayPaymentId: 'pay_1' })).resolves.toBe(false)
     expect(client.transfers.edit).not.toHaveBeenCalled()
   })
 })
@@ -259,7 +300,11 @@ describe('NGO network helpers', () => {
     [2500, 2500],
     [50_000_000, 10_000_000],
   ])('clamps a %d donation to %d', async (amountInr, expected) => {
-    const fake = useSupabase()
+    const fake = useSupabase((query) =>
+      query.table === 'users'
+        ? { data: { profile_data: { razorpay_linked_account_id: 'acc_ngo', razorpay_link_status: 'active' } } }
+        : undefined
+    )
     const { client, razorpay } = fakeRazorpay()
     const result = await createNgoNetworkDonationOrder({
       razorpay,
@@ -565,20 +610,72 @@ describe('Razorpay webhook signature', () => {
   it('debits only the base share of a processed refund', async () => {
     const refundBody = JSON.stringify({
       event: 'refund.processed',
-      payload: { refund: { entity: { id: 'rfnd_1', payment_id: 'pay_1', amount: 52950, status: 'processed' } } },
+      payload: {
+        refund: { entity: { id: 'rfnd_1', payment_id: 'pay_1', amount: 52950, status: 'processed' } },
+        payment: { entity: { id: 'pay_1', amount: 105900, amount_refunded: 52950 } },
+      },
     })
     dbMock.db.serviceRequests.getById.mockResolvedValue({ status: 'in_progress', current_amount: 5000, target_amount: 10000, requirements: {} })
     dbMock.adjustProgress.mockImplementation(fakeAdjustProgress)
     useSupabase((query) => {
       if (query.table === 'provider_webhook_events' && argOf(query, 'insert')) return { data: { id: 'evt_row' } }
+      if (query.table === 'razorpay_refunds' && query.op === 'update') return { data: [{ id: 'r1' }] }
       if (query.table === 'razorpay_payments' && argOf(query, 'select')) return { data: { id: 9, order_id: 44, amount_inr: 1059 } }
       if (query.table === 'razorpay_payment_orders') {
-        return { data: { service_request_id: 12, order_notes: { base_amount_inr: 1000, total_charge_inr: 1059 } } }
+        return {
+          data: {
+            service_request_id: 12,
+            order_notes: { payment_kind: 'financial_need', service_request_id: '12', base_amount_inr: 1000, total_charge_inr: 1059 },
+          },
+        }
       }
       return undefined
     })
     expect((await webhookPost(request(hmac(refundBody), refundBody))).status).toBe(200)
     expect(dbMock.adjustProgress).toHaveBeenCalledWith(expect.anything(), { amount: -500 }, { targetAmount: 10000 })
+  })
+
+  it.each([
+    ['an engagement settlement', { payment_kind: 'engagement_settlement', assignment_id: 'a1', base_amount_inr: 1000 }],
+    ['a refunded duplicate service-offer payment', {
+      payment_kind: 'service_offer',
+      service_offer_credited_at: '2026-01-01T00:00:00Z',
+      service_offer_payment_id: 'pay_original',
+      base_amount_inr: 1000,
+    }],
+  ])('leaves the request total alone when refunding %s', async (_label, orderNotes) => {
+    const refundBody = JSON.stringify({
+      event: 'refund.processed',
+      payload: {
+        refund: { entity: { id: 'rfnd_2', payment_id: 'pay_1', amount: 105900, status: 'processed' } },
+        payment: { entity: { id: 'pay_1', amount: 105900, amount_refunded: 105900 } },
+      },
+    })
+    dbMock.adjustProgress.mockImplementation(fakeAdjustProgress)
+    const fake = useSupabase((query) => {
+      if (query.table === 'provider_webhook_events' && argOf(query, 'insert')) return { data: { id: 'evt_row' } }
+      if (query.table === 'razorpay_refunds' && query.op === 'update') return { data: [{ id: 'r1' }] }
+      if (query.table === 'razorpay_payments' && argOf(query, 'select')) return { data: { id: 9, order_id: 44, amount_inr: 1059 } }
+      if (query.table === 'razorpay_payment_orders') return { data: { service_request_id: 12, order_notes: orderNotes } }
+      return undefined
+    })
+    expect((await webhookPost(request(hmac(refundBody), refundBody))).status).toBe(200)
+    expect(dbMock.adjustProgress).not.toHaveBeenCalled()
+    expect(fake.find('razorpay_refunds', 'upsert')).toHaveLength(1)
+  })
+
+  it('marks the order failed on payment.failed without touching paid orders', async () => {
+    const failedBody = JSON.stringify({
+      event: 'payment.failed',
+      payload: { payment: { entity: { id: 'pay_9', order_id: 'order_9' } } },
+    })
+    const fake = useSupabase((query) =>
+      query.table === 'provider_webhook_events' && argOf(query, 'insert') ? { data: { id: 'evt_row' } } : undefined
+    )
+    expect((await webhookPost(request(hmac(failedBody), failedBody))).status).toBe(200)
+    const update = fake.find('razorpay_payment_orders', 'update')[0]
+    expect(argOf(update, 'update')).toMatchObject({ order_status: 'failed' })
+    expect(callsOf(update, 'in')[0]).toEqual(['order_status', ['created', 'attempted']])
   })
 
   it('accepts a valid signature and dedupes processed events', async () => {

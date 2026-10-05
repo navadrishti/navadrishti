@@ -148,7 +148,7 @@ export async function createNgoNetworkDonationOrder(params: {
   });
 
   const nowIso = new Date().toISOString();
-  await supabase.from('razorpay_payment_orders').upsert(
+  const { error: orderRecordError } = await supabase.from('razorpay_payment_orders').upsert(
     {
       service_request_id: null,
       application_id: null,
@@ -166,6 +166,7 @@ export async function createNgoNetworkDonationOrder(params: {
     },
     { onConflict: 'razorpay_order_id' }
   );
+  if (orderRecordError) throw orderRecordError;
 
   return { order, pricing, contributionInr };
 }
@@ -258,30 +259,37 @@ export async function verifyNgoNetworkDonation(params: {
   }
 
   const nowIso = new Date().toISOString();
-  await supabase.from('razorpay_payment_orders').upsert(
-    {
-      service_request_id: null,
-      application_id: null,
-      contribution_id: null,
-      payer_user_id: params.contributorId,
-      ngo_user_id: params.ngoUserId,
-      razorpay_order_id: params.razorpay_order_id,
-      receipt: String(providerOrder.receipt || `nn_${params.ngoUserId}`),
-      amount_inr: Number(paidInr.toFixed(2)),
-      amount_paise: Math.round(paidInr * 100),
-      currency: 'INR',
-      order_status: 'paid',
-      order_notes: providerNotes,
-      updated_at: nowIso,
-    },
-    { onConflict: 'razorpay_order_id' }
-  );
-
-  const { data: orderRow } = await supabase
+  const { data: updatedOrder } = await supabase
     .from('razorpay_payment_orders')
-    .select('id')
+    .update({ order_status: 'paid', updated_at: nowIso })
     .eq('razorpay_order_id', params.razorpay_order_id)
+    .select('id')
     .maybeSingle();
+
+  const orderRow = updatedOrder ?? (
+    await supabase
+      .from('razorpay_payment_orders')
+      .upsert(
+        {
+          service_request_id: null,
+          application_id: null,
+          contribution_id: null,
+          payer_user_id: params.contributorId,
+          ngo_user_id: params.ngoUserId,
+          razorpay_order_id: params.razorpay_order_id,
+          receipt: String(providerOrder.receipt || `nn_${params.ngoUserId}`),
+          amount_inr: Number(paidInr.toFixed(2)),
+          amount_paise: Math.round(paidInr * 100),
+          currency: 'INR',
+          order_status: 'paid',
+          order_notes: providerNotes,
+          updated_at: nowIso,
+        },
+        { onConflict: 'razorpay_order_id' }
+      )
+      .select('id')
+      .maybeSingle()
+  ).data;
 
   if (orderRow?.id) {
     const { error: paymentInsertError } = await supabase.from('razorpay_payments').insert({

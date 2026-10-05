@@ -30,9 +30,9 @@ const mocks = vi.hoisted(() => ({
   releaseAllocation: vi.fn(),
   verification: vi.fn(),
   snapshot: vi.fn(),
-  createStandardOrder: vi.fn(),
-  razorpay: { orders: { fetch: vi.fn() }, payments: { fetch: vi.fn() } },
-  finalizeSettlement: vi.fn(),
+  createShipment: vi.fn(),
+  upsertWarehouse: vi.fn(),
+  razorpay: { orders: { fetch: vi.fn(), create: vi.fn() }, payments: { fetch: vi.fn(), refund: vi.fn() } },
 }))
 
 vi.mock('@/lib/db', async () => {
@@ -62,15 +62,12 @@ vi.mock('@/lib/server-auth', () => ({
 vi.mock('@/lib/infrastructure-assignment-lock', () => ({
   canIndividualApplyToNeed: vi.fn(async () => ({ allowed: true, reason: null, blockingApplicationId: null })),
 }))
-vi.mock('@/lib/delhivery', () => ({ getDelhiveryTrackingSnapshot: mocks.snapshot }))
-vi.mock('@/lib/razorpay-route', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/lib/razorpay-route')>()),
-  isRazorpayRouteEnabled: () => false,
-  createStandardRazorpayOrder: mocks.createStandardOrder,
-}))
-vi.mock('@/lib/engagement-settlement', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/lib/engagement-settlement')>()),
-  finalizeEngagementSettlement: mocks.finalizeSettlement,
+vi.mock('@/lib/delhivery', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/delhivery')>()),
+  getDelhiveryTrackingSnapshot: mocks.snapshot,
+  createDelhiveryShipment: mocks.createShipment,
+  assertDelhiveryRouteServiceable: vi.fn(async () => undefined),
+  upsertDelhiveryWarehouse: mocks.upsertWarehouse,
 }))
 vi.mock('razorpay', () => ({
   default: vi.fn(function () {
@@ -275,27 +272,120 @@ describe('PUT volunteer status: NGO', () => {
 })
 
 describe('delivery sync', () => {
-  const sync = () =>
-    syncDelivery(jsonRequest('http://localhost/api/service-requests/5/volunteers/9/delivery/sync', { token: NGO, body: { trackingId: 'T1' } }), volunteerParams)
+  const sync = (token = NGO, body: Record<string, unknown> = {}) =>
+    syncDelivery(jsonRequest('http://localhost/api/service-requests/5/volunteers/9/delivery/sync', { token, body }), volunteerParams)
+  const booked = (status: string, meta: Record<string, unknown> = { delivery_tracking_id: 'T1' }) =>
+    application(status, { response_meta: meta })
 
   beforeEach(() => {
-    mocks.snapshot.mockResolvedValue({ provider: 'delhivery', trackingId: 'T1', currentStatus: 'In Transit', lastLocation: null, lastEventAt: null, events: [] })
+    mocks.snapshot.mockResolvedValue({ provider: 'delhivery', trackingId: 'T1', currentStatus: 'In Transit', statusType: 'UD', lastLocation: null, lastEventAt: null, events: [] })
   })
 
   it.each(['pending', 'rejected', 'completed'])('refuses to sync a %s application', async (status) => {
-    volunteerDb(application(status))
+    volunteerDb(booked(status))
     const res = await sync()
     expect(res.status).toBe(409)
     expect(mocks.snapshot).not.toHaveBeenCalled()
   })
 
-  it('fails when the shipment upsert fails', async () => {
-    volunteerDb(application('accepted'), (query) =>
-      query.table === 'service_request_shipments' && query.op === 'upsert' ? { error: { code: '500', message: 'nope' } } : undefined
+  it('fails when the shipment cannot be saved', async () => {
+    volunteerDb(booked('accepted'), (query) =>
+      query.table === 'service_request_shipments' && query.op === 'insert' ? { error: { code: '500', message: 'nope' } } : undefined
     )
     const res = await sync()
     expect(res.status).toBe(500)
     expect(mocks.db.serviceRequestApplications.update).not.toHaveBeenCalled()
+  })
+
+  it('ignores a tracking id typed into the request and only follows the booked shipment', async () => {
+    volunteerDb(booked('accepted', {}))
+    const res = await sync(INDIVIDUAL, { trackingId: 'SOMEONE-ELSES-AWB' })
+    expect(res.status).toBe(400)
+    expect(mocks.snapshot).not.toHaveBeenCalled()
+  })
+
+  it('records the status and completes the donation once delivered', async () => {
+    mocks.snapshot.mockResolvedValue({ provider: 'delhivery', trackingId: 'T1', currentStatus: 'Delivered', statusType: 'DL', lastLocation: 'Pune', lastEventAt: '2026-10-01T10:00:00.000Z', events: [] })
+    volunteerDb(booked('accepted'))
+    const res = await sync()
+    expect(res.status).toBe(200)
+    const [insert] = supabaseFake.find('service_request_shipments', 'insert')
+    expect(insert.payload).toMatchObject({ tracking_id: 'T1', shipment_status: 'delivered', application_id: 9 })
+    expect(mocks.db.serviceRequestApplications.update).toHaveBeenCalledWith(9, expect.objectContaining({ status: 'completed', fulfilled_quantity: 3 }))
+  })
+
+  describe('booking', () => {
+    const users: Record<number, Record<string, unknown>> = {
+      14: { id: 14, name: 'Ravi', phone: '9876543210', profile_data: { home_address: { address_line: '7 Park St', city: 'Pune', state: 'Maharashtra', pincode: '411001' } } },
+      12: { id: 12, name: 'Seva Trust', phone: '9123456789', profile_data: { ngo_headquarters: { address_line: 'NGO Office', city: 'Mumbai', state: 'Maharashtra', pincode: '400001' } } },
+    }
+    const bookingDb = (app: Record<string, unknown>, project: Record<string, unknown> | null = null) =>
+      volunteerDb(app, (query) => {
+        if (query.table === 'service_requests') return { data: { ...materialNeed, project } }
+        if (query.table === 'users' && query.op === 'select') return { data: users[Number(eqsOf(query).id)] ?? null }
+        return undefined
+      })
+
+    beforeEach(() => {
+      mocks.upsertWarehouse.mockResolvedValue(undefined)
+      mocks.createShipment.mockResolvedValue({ success: true, waybill: 'AWB55', orderId: 'sr_5_9', status: 'Success', remark: null, raw: {} })
+      mocks.snapshot.mockResolvedValue({ provider: 'delhivery', trackingId: 'AWB55', currentStatus: 'Manifested', statusType: 'UD', lastLocation: null, lastEventAt: null, events: [] })
+    })
+
+    it('books from the donor address to the project and stores the system-assigned AWB', async () => {
+      bookingDb(application('accepted'), { exact_address: JSON.stringify({ address_line: 'NGO Office', city: 'Mumbai', state: 'Maharashtra', pincode: '400001' }) })
+      const res = await sync(INDIVIDUAL, { action: 'book' })
+      expect(res.status).toBe(200)
+      expect(mocks.createShipment).toHaveBeenCalledWith(expect.objectContaining({
+        orderId: 'sr_5_9',
+        pickupLocationName: 'Navadrishti-14',
+        quantity: 3,
+        seller: expect.objectContaining({ name: 'Ravi', address: '7 Park St', pincode: '411001' }),
+        consignee: expect.objectContaining({ name: 'Seva Trust', address: 'NGO Office', pincode: '400001' }),
+      }))
+      expect(mocks.upsertWarehouse).toHaveBeenCalledWith(expect.objectContaining({ name: 'Navadrishti-14', pincode: '411001' }))
+      expect(mocks.db.serviceRequestApplications.update).toHaveBeenCalledWith(9, expect.objectContaining({
+        response_meta: expect.objectContaining({ delivery_tracking_id: 'AWB55', delivery_order_id: 'sr_5_9' }),
+      }))
+    })
+
+    it('refuses to book when the project delivery address is incomplete', async () => {
+      bookingDb(application('accepted'))
+      const res = await sync(INDIVIDUAL, { action: 'book' })
+      expect(res.status).toBe(409)
+      expect(mocks.createShipment).not.toHaveBeenCalled()
+    })
+
+    it('delivers to the project site when the need has a full address', async () => {
+      bookingDb(application('accepted'), { exact_address: JSON.stringify({ address_line: 'School, Ward 4', city: 'Nashik', state: 'Maharashtra', pincode: '422001' }) })
+      await sync(INDIVIDUAL, { action: 'book' })
+      expect(mocks.createShipment).toHaveBeenCalledWith(expect.objectContaining({
+        consignee: expect.objectContaining({ name: 'Seva Trust', phone: '9123456789', address: 'School, Ward 4', pincode: '422001' }),
+      }))
+    })
+
+    it('only lets the donor book', async () => {
+      bookingDb(application('accepted'))
+      const res = await sync(NGO, { action: 'book' })
+      expect(res.status).toBe(403)
+      expect(mocks.createShipment).not.toHaveBeenCalled()
+    })
+
+    it('refuses to book twice', async () => {
+      bookingDb(booked('accepted'))
+      const res = await sync(INDIVIDUAL, { action: 'book' })
+      expect(res.status).toBe(409)
+      expect(mocks.createShipment).not.toHaveBeenCalled()
+    })
+
+    it('asks the donor to complete their address first', async () => {
+      users[14] = { ...users[14], profile_data: {} }
+      bookingDb(application('accepted'))
+      const res = await sync(INDIVIDUAL, { action: 'book' })
+      expect(res.status).toBe(422)
+      expect((await res.json()).error).toBe('Add a street address to your profile before booking Delhivery')
+      expect(mocks.createShipment).not.toHaveBeenCalled()
+    })
   })
 })
 
@@ -405,15 +495,48 @@ describe('contribution payment verify', () => {
 })
 
 describe('create-order', () => {
-  it('fails instead of returning an order that was not recorded', async () => {
+  const connectedNgo = { profile_data: { razorpay_linked_account_id: 'acc_12', razorpay_link_status: 'active' } }
+  const create = () =>
+    createOrder(jsonRequest('http://localhost/api/service-requests/5/payments/create-order', { token: INDIVIDUAL, body: { amount: 1000 } }), idParams())
+
+  beforeEach(() => {
     mocks.db.serviceRequests.getById.mockResolvedValue(financialNeed)
-    mocks.createStandardOrder.mockResolvedValue({ id: 'order_1', currency: 'INR', receipt: 'r' })
-    useDb((query) =>
-      query.table === 'razorpay_payment_orders' && query.op === 'upsert' ? { error: { code: '500', message: 'nope' } } : undefined
-    )
-    const res = await createOrder(jsonRequest('http://localhost/api/service-requests/5/payments/create-order', { token: INDIVIDUAL, body: { amount: 1000 } }), idParams())
+    mocks.razorpay.orders.create.mockResolvedValue({ id: 'order_1', currency: 'INR', receipt: 'r' })
+  })
+
+  it('fails instead of returning an order that was not recorded', async () => {
+    useDb((query) => {
+      if (query.table === 'users') return { data: connectedNgo }
+      return query.table === 'razorpay_payment_orders' && query.op === 'upsert' ? { error: { code: '500', message: 'nope' } } : undefined
+    })
+    const res = await create()
     expect(res.status).toBe(500)
     expect(await res.json()).not.toHaveProperty('data')
+  })
+
+  it('refuses with a clear message when the NGO has not connected Razorpay', async () => {
+    useDb((query) => (query.table === 'users' ? { data: { profile_data: {} } } : undefined))
+    const res = await create()
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toContain('has not connected a Razorpay payout account')
+    expect(mocks.razorpay.orders.create).not.toHaveBeenCalled()
+  })
+
+  it('adds the platform fee and GST on top of the contribution', async () => {
+    useDb((query) => (query.table === 'users' ? { data: connectedNgo } : undefined))
+    const res = await create()
+    expect(res.status).toBe(200)
+    const body = mocks.razorpay.orders.create.mock.calls[0][0]
+    expect(body.amount).toBe(105900)
+    expect(body.notes).toMatchObject({
+      payment_kind: 'financial_need',
+      service_request_id: '5',
+      contributor_id: '14',
+      base_amount_inr: 1000,
+      gst_on_platform_fee_inr: 9,
+    })
+    const row = supabaseFake.find('razorpay_payment_orders', 'upsert')[0].payload as Record<string, unknown>
+    expect(row).toMatchObject({ amount_paise: 105900, payer_user_id: 14, ngo_user_id: 12 })
   })
 })
 
@@ -446,6 +569,24 @@ describe('refresh-status', () => {
     const [update] = supabaseFake.find('service_requests', 'update')
     expect(update.payload).toMatchObject({ status: 'completed' })
     expect(eqsOf(update)).toEqual({ id: 5, status: 'active' })
+  })
+
+  it('keeps a completed request completed when nobody is still working on it', async () => {
+    mocks.db.serviceRequests.getById.mockResolvedValue({ ...materialNeed, status: 'completed' })
+    useDb((query) => (query.table === 'service_request_applications' ? { data: [{ id: 1, status: 'rejected' }] } : undefined))
+    const res = await refresh()
+    expect(res.status).toBe(200)
+    expect((await res.json()).data.newStatus).toBe('completed')
+    expect(supabaseFake.find('service_requests', 'update')).toHaveLength(0)
+  })
+
+  it('reopens a completed request when a volunteer is still working', async () => {
+    mocks.db.serviceRequests.getById.mockResolvedValue({ ...materialNeed, status: 'completed' })
+    useDb((query) => (query.table === 'service_request_applications' ? { data: [{ id: 1, status: 'active' }] } : undefined))
+    const res = await refresh()
+    const [update] = supabaseFake.find('service_requests', 'update')
+    expect(res.status).toBe(200)
+    expect(update.payload).toMatchObject({ status: 'active' })
   })
 })
 
@@ -495,28 +636,42 @@ describe('engagement settlement verify', () => {
   const assignment = {
     id: 'asg_1',
     owner_user_id: 12,
+    assignee_user_id: 14,
+    application_table: 'service_request_applications',
+    application_id: '9',
+    target_type: 'service_request',
     billing_cycle: 'daily',
     payment_mode: 'daily_due',
     meta: { attendance_summary: { total_due: 1000, paid_total: 400, days_attended: 4 } },
   }
   const order = { order_notes: { assignment_id: 'asg_1', base_amount_inr: 600 }, payer_user_id: 12, order_status: 'created' }
 
-  function setup(orderRow: Record<string, unknown> | null, claim: FakeResult = { data: { id: 1 } }) {
+  function setup(
+    orderRow: Record<string, unknown> | null,
+    options: { claim?: FakeResult; current?: Record<string, unknown>; afterLostClaim?: Record<string, unknown> } = {}
+  ) {
     mocks.razorpay.payments.fetch.mockResolvedValue({ id: 'pay_1', order_id: 'order_1', status: 'captured', amount: 63000 })
+    mocks.razorpay.payments.refund.mockResolvedValue({ id: 'rfnd_1' })
     mocks.razorpay.orders.fetch.mockResolvedValue({ id: 'order_1', amount: 63000, notes: {} })
-    mocks.finalizeSettlement.mockResolvedValue({ settled: true })
+    let assignmentReads = 0
     useDb((query) => {
-      if (query.table === 'service_engagement_assignments') return { data: assignment }
+      if (query.table === 'service_engagement_assignments' && query.op === 'update') {
+        return options.claim ?? { data: { ...assignment, meta: { ...assignment.meta, settlement_payment_id: 'pay_1' } } }
+      }
+      if (query.table === 'service_engagement_assignments') {
+        assignmentReads += 1
+        const row = assignmentReads > 2 && options.afterLostClaim ? options.afterLostClaim : options.current ?? assignment
+        return { data: row }
+      }
       if (query.table === 'razorpay_payment_orders' && query.op === 'select') return { data: orderRow }
-      if (query.table === 'razorpay_payment_orders' && query.op === 'update') return claim
       return undefined
     })
   }
 
-  const settle = () =>
+  const settle = (token = NGO) =>
     settleAssignment(
       jsonRequest('http://localhost/api/service-assignments/asg_1/settle', {
-        token: NGO,
+        token,
         body: {
           action: 'verify',
           razorpay_order_id: 'order_1',
@@ -527,43 +682,167 @@ describe('engagement settlement verify', () => {
       { params: Promise.resolve({ id: 'asg_1' }) }
     )
 
+  const assignmentUpdates = () => supabaseFake.find('service_engagement_assignments', 'update')
+  const completedUpdates = () =>
+    assignmentUpdates().filter((query) => (query.payload as { status?: string }).status === 'completed')
+
   it.each([
     ['for another engagement', { ...order, order_notes: { assignment_id: 'asg_2', base_amount_inr: 600 } }, 403],
     ['paid by someone else', { ...order, payer_user_id: 13 }, 403],
-    ['already paid', { ...order, order_status: 'paid' }, 409],
     ['unknown', null, 404],
   ])('refuses an order %s', async (_label, orderRow, status) => {
     setup(orderRow)
     const res = await settle()
     expect(res.status).toBe(status)
-    expect(mocks.finalizeSettlement).not.toHaveBeenCalled()
-    expect(supabaseFake.find('razorpay_payment_orders', 'update')).toHaveLength(0)
+    expect(completedUpdates()).toHaveLength(0)
+    expect(assignmentUpdates()).toHaveLength(0)
   })
 
-  it('does not settle twice when a concurrent request claimed the order first', async () => {
-    setup(order, { data: null })
-    const res = await settle()
-    expect(res.status).toBe(409)
-    expect(mocks.finalizeSettlement).not.toHaveBeenCalled()
+  it('refuses the payee', async () => {
+    setup(order)
+    const res = await settle(INDIVIDUAL)
+    expect(res.status).toBe(403)
+    expect(completedUpdates()).toHaveLength(0)
   })
 
-  it('claims the order before finalizing', async () => {
+  it('claims the engagement for this payment before finalizing', async () => {
     setup(order)
     const res = await settle()
     expect(res.status).toBe(200)
-    const [claim] = supabaseFake.find('razorpay_payment_orders', 'update')
-    expect(claim.payload).toMatchObject({ order_status: 'paid' })
-    expect(hasCall(claim, 'neq', 'order_status', 'paid')).toBe(true)
-    expect(mocks.finalizeSettlement).toHaveBeenCalledOnce()
+    const [claim, finalized] = assignmentUpdates()
+    expect((claim.payload as { meta: Record<string, unknown> }).meta.settlement_payment_id).toBe('pay_1')
+    expect(hasCall(claim, 'is', 'meta->>settlement_payment_id', null)).toBe(true)
+    expect(finalized.payload).toMatchObject({
+      status: 'completed',
+      meta: expect.objectContaining({ settlement_status: 'settled', settlement_payment_id: 'pay_1', settled_amount: 600 }),
+    })
+    const [orderUpdate] = supabaseFake.find('razorpay_payment_orders', 'update')
+    expect(orderUpdate.payload).toMatchObject({ order_status: 'paid' })
+    expect(mocks.razorpay.payments.refund).not.toHaveBeenCalled()
   })
 
-  it('releases the claim when finalizing fails', async () => {
-    setup(order)
-    mocks.finalizeSettlement.mockRejectedValue(new Error('boom'))
+  it('reports success when the webhook already settled it with this payment', async () => {
+    setup(order, {
+      current: { ...assignment, meta: { ...assignment.meta, settlement_status: 'settled', settlement_payment_id: 'pay_1', settled_amount: 600 } },
+    })
+    const res = await settle()
+    expect(res.status).toBe(200)
+    expect((await res.json()).data).toMatchObject({ settled: true, alreadyProcessed: true, settledAmount: 600 })
+    expect(completedUpdates()).toHaveLength(0)
+    expect(mocks.razorpay.payments.refund).not.toHaveBeenCalled()
+  })
+
+  it('refunds a second payment for an engagement another payment settled', async () => {
+    setup(order, {
+      current: { ...assignment, meta: { ...assignment.meta, settlement_status: 'settled', settlement_payment_id: 'pay_0' } },
+    })
+    const res = await settle()
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toContain('duplicate payment has been refunded')
+    expect(mocks.razorpay.payments.refund).toHaveBeenCalledWith('pay_1', expect.objectContaining({ amount: 63000 }))
+    expect(completedUpdates()).toHaveLength(0)
+  })
+
+  it('refunds when a concurrent payment wins the claim', async () => {
+    setup(order, {
+      claim: { data: null },
+      afterLostClaim: { ...assignment, meta: { ...assignment.meta, settlement_payment_id: 'pay_0' } },
+    })
+    const res = await settle()
+    expect(res.status).toBe(409)
+    expect(mocks.razorpay.payments.refund).toHaveBeenCalledOnce()
+    expect(completedUpdates()).toHaveLength(0)
+  })
+
+  it('puts the engagement back as it was when finalizing fails', async () => {
+    setup(order, { current: { ...assignment, status: 'active', completed_at: null } })
+    mocks.db.serviceRequestApplications.update.mockRejectedValue(new Error('boom'))
     const res = await settle()
     expect(res.status).toBe(500)
-    const updates = supabaseFake.find('razorpay_payment_orders', 'update')
-    expect(updates.map((query) => (query.payload as { order_status: string }).order_status)).toEqual(['paid', 'created'])
+    const updates = assignmentUpdates()
+    const restored = updates[updates.length - 1].payload as Record<string, unknown>
+    expect(restored).toMatchObject({ status: 'active', completed_at: null })
+    expect(restored.meta).not.toHaveProperty('settlement_payment_id')
+    expect(restored.meta).not.toHaveProperty('settlement_status')
+    expect(supabaseFake.find('razorpay_payment_orders', 'update')).toHaveLength(0)
+  })
+
+  it('refuses to bill a CSR capability rental again', async () => {
+    setup(order, { current: { ...assignment, meta: { ...assignment.meta, flow: 'csr_capability_rental' } } })
+    const res = await settle()
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('paid upfront')
+  })
+})
+
+describe('engagement settlement start', () => {
+  const offerRental = {
+    id: 'asg_2',
+    status: 'active',
+    owner_user_id: 30,
+    assignee_user_id: 12,
+    application_table: 'service_clients',
+    application_id: '15',
+    target_type: 'service_offer',
+    target_id: '7',
+    billing_cycle: 'daily',
+    payment_mode: 'daily_due',
+    meta: { attendance_summary: { total_due: 1000, paid_total: 0, days_attended: 2 } },
+  }
+
+  const start = (token: string) =>
+    settleAssignment(
+      jsonRequest('http://localhost/api/service-assignments/asg_2/settle', { token, body: { action: 'start' } }),
+      { params: Promise.resolve({ id: 'asg_2' }) }
+    )
+
+  beforeEach(() => {
+    vi.stubEnv('NEXT_PUBLIC_RAZORPAY_KEY_ID', 'key')
+    vi.stubEnv('RAZORPAY_KEY_SECRET', 'rzp_secret')
+  })
+
+  it('refuses the provider who owns the offer', async () => {
+    useDb((query) => (query.table === 'service_engagement_assignments' ? { data: offerRental } : undefined))
+    const res = await start(tokenFor(30, 'company'))
+    expect(res.status).toBe(403)
+  })
+
+  it('refuses to settle an engagement that is no longer active', async () => {
+    useDb((query) => (query.table === 'service_engagement_assignments' ? { data: { ...offerRental, status: 'cancelled' } } : undefined))
+    const res = await start(NGO)
+    expect(res.status).toBe(409)
+    expect(mocks.razorpay.orders.create).not.toHaveBeenCalled()
+  })
+
+  it('returns a clear 409 when the provider has not connected Razorpay', async () => {
+    useDb((query) => {
+      if (query.table === 'service_engagement_assignments') return { data: offerRental }
+      if (query.table === 'users') return { data: { profile_data: {} } }
+      if (query.table === 'service_attendance_entries') return { data: [{ amount_due: 1000, payment_status: 'pending' }] }
+      return undefined
+    })
+    const res = await start(NGO)
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toContain('has not connected a Razorpay payout account')
+  })
+
+  it('lets the client who hired the capability pay the provider', async () => {
+    mocks.razorpay.orders.create.mockResolvedValue({ id: 'order_9', receipt: 'r', currency: 'INR' })
+    useDb((query) => {
+      if (query.table === 'service_engagement_assignments') return { data: offerRental }
+      if (query.table === 'users') {
+        return { data: { profile_data: { razorpay_linked_account_id: 'acc_30', razorpay_link_status: 'active' } } }
+      }
+      if (query.table === 'service_attendance_entries') {
+        return { data: [{ amount_due: 500, payment_status: 'pending' }, { amount_due: 500, payment_status: 'pending' }] }
+      }
+      return undefined
+    })
+    const res = await start(NGO)
+    expect(res.status).toBe(200)
+    expect((await res.json()).data).toMatchObject({ paymentRequired: true, orderId: 'order_9' })
+    const row = supabaseFake.find('razorpay_payment_orders', 'upsert')[0].payload as Record<string, unknown>
+    expect(row).toMatchObject({ payer_user_id: 12, ngo_user_id: 30 })
   })
 })
 

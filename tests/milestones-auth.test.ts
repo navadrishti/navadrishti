@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GET as getMilestone } from '@/app/api/milestones/[id]/route'
 import { POST as createOrder } from '@/app/api/milestones/[id]/payments/create-order/route'
 import { POST as verifyPayment } from '@/app/api/milestones/[id]/payments/verify/route'
-import { POST as recordPayment } from '@/app/api/milestones/[id]/payment/route'
 import { POST as reviewMilestone } from '@/app/api/milestones/[id]/review/route'
 import { createSupabaseFake, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
@@ -36,7 +35,6 @@ const routes: Array<[string, 'GET' | 'POST', Handler]> = [
   ['milestones/[id]', 'GET', getMilestone],
   ['milestones/[id]/payments/create-order', 'POST', createOrder],
   ['milestones/[id]/payments/verify', 'POST', verifyPayment],
-  ['milestones/[id]/payment', 'POST', recordPayment],
   ['milestones/[id]/review', 'POST', reviewMilestone],
 ]
 
@@ -133,7 +131,6 @@ describe('milestone routes authenticate before reading the record', () => {
     ['milestones/[id]/review', reviewMilestone, 'can_review_evidence'],
     ['milestones/[id]/payments/create-order', createOrder, 'can_confirm_payments'],
     ['milestones/[id]/payments/verify', verifyPayment, 'can_confirm_payments'],
-    ['milestones/[id]/payment', recordPayment, 'can_confirm_payments'],
   ])('%s returns 403 when the company CA has %s revoked', async (_route, handler, permission) => {
     const fake = useSupabase((query) =>
       query.table === 'company_ca_identities'

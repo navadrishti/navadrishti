@@ -69,7 +69,7 @@ export function FundingProgressCard({
       {canPayForRequest && fundingTargetInr > 0 && fundsRemainingInr > 0 && (
         <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div>
-            <p className="text-sm font-semibold text-slate-900">Contribute via Razorpay</p>
+            <p className="text-sm font-semibold text-slate-900">Contribute online</p>
             <p className="text-xs text-slate-500">
               Enter the amount the NGO should receive. Platform fee and GST are added on top at checkout.
             </p>
@@ -101,7 +101,7 @@ export function FundingProgressCard({
             className="h-11 w-full"
           >
             {paying
-              ? 'Opening Razorpay...'
+              ? 'Opening payment...'
               : parseAmountToInr(paymentAmount) <= 0
                 ? 'Enter amount to pay'
                 : `Pay ${getTotalChargeLabel(Math.min(parseAmountToInr(paymentAmount), fundsRemainingInr || 0))}`}

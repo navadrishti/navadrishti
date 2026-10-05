@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/db'
+import { isFullyVerifiedAccount } from '@/lib/auth'
 
 export async function isFullyVerifiedCompany(userId: number): Promise<boolean> {
   const { data, error } = await supabase
@@ -9,11 +10,7 @@ export async function isFullyVerifiedCompany(userId: number): Promise<boolean> {
 
   if (error || !data) return false
 
-  return Boolean(
-    data.email_verified === true &&
-    data.phone_verified === true &&
-    String(data.verification_status || '').toLowerCase() === 'verified'
-  )
+  return isFullyVerifiedAccount(data)
 }
 
 export const ongoingVolunteerStatuses = ['pending', 'accepted', 'active']

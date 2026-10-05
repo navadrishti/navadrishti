@@ -85,7 +85,7 @@ function MessageBox({ message, className }: { message: string; className: string
 function DeliveryStatus({ volunteer }: { volunteer: Volunteer }) {
   return (
     <p className="text-sm text-indigo-700">
-      Delhivery: {formatDeliveryTrackingStatus(
+      Delivery: {formatDeliveryTrackingStatus(
         parseJsonObject(volunteer.response_meta)
       )}
     </p>
@@ -162,7 +162,7 @@ export function AcceptedVolunteerCard({ request, volunteer, deliverableNeed, bus
               <MessageBox message={volunteer.message} className="bg-gray-50 p-3 rounded-lg" />
             )}
           </div>
-          {/* Deliverable needs advance through Delhivery tracking instead of manual status changes. */}
+          {/* Deliverable needs advance through delivery tracking instead of manual status changes. */}
           {!deliverableNeed ? (
             <div className="flex gap-2 ml-4">
               <ActionButton busy={busy} onClick={() => onStatusChange(volunteer, 'active')}>

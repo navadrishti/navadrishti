@@ -2,6 +2,7 @@ export * from './razorpay/config';
 export * from './razorpay/payout-profile';
 export * from './razorpay/payout-accounts';
 export * from './razorpay/orders';
+export * from './razorpay/duplicate-payment';
 export * from './razorpay/linked-account';
 export * from './razorpay/ngo-network';
 export * from './razorpay/payment-history';

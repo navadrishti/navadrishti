@@ -7,7 +7,18 @@ import type { CapabilityOfferSummary } from '@/lib/service-offers';
 import type { CSRTrackingAssignment } from '@/components/csr-tracking-project-details';
 import type { CompanyProjectOpportunity, NgoDirectoryItem, PublishedCsrCampaign } from './types';
 
-const REALTIME_TABLES = ['service_request_projects', 'service_engagement_assignments', 'campaigns'] as const;
+const REALTIME_TABLES = [
+  'service_request_projects',
+  'service_engagement_assignments',
+  'service_attendance_entries',
+  'service_request_applications',
+  'service_clients',
+  'service_request_shipments',
+  'shipment_tracking_events',
+  'campaigns',
+  'csr_project_milestones',
+  'csr_payment_confirmations',
+] as const;
 
 export function useCompanyDashboardData({
   userId,
@@ -109,10 +120,16 @@ export function useCompanyDashboardData({
         return;
       }
 
-      const response = await fetch(`/api/campaigns?company_id=${userId}`);
+      const [response, trackingResponse] = await Promise.all([
+        fetch(`/api/campaigns?company_id=${userId}`),
+        fetch('/api/campaigns/tracking', { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
       const payload = await response.json();
+      const trackingPayload = trackingResponse.ok ? await trackingResponse.json().catch(() => null) : null;
+      const tracking: Record<string, PublishedCsrCampaign['tracking']> = trackingPayload?.data || {};
       if (response.ok && payload?.success) {
-        setPublishedCsrCampaigns(Array.isArray(payload.data) ? payload.data : []);
+        const rows: PublishedCsrCampaign[] = Array.isArray(payload.data) ? payload.data : [];
+        setPublishedCsrCampaigns(rows.map((row) => ({ ...row, tracking: tracking[row.id] ?? null })));
       }
       reportLoad('CSR campaigns', response.ok && Boolean(payload?.success));
     } catch (error) {
@@ -197,9 +214,28 @@ export function useCompanyDashboardData({
   };
 
   const handleChange = useEffectEvent((table: (typeof REALTIME_TABLES)[number]) => {
-    if (table === 'service_request_projects') fetchProjectOpportunities();
-    else if (table === 'service_engagement_assignments') fetchCSRTrackingAssignments();
-    else if (table === 'campaigns') fetchPublishedCsrCampaigns();
+    if (table === 'service_request_projects') {
+      void fetchProjectOpportunities();
+      return;
+    }
+    if (['service_engagement_assignments', 'service_request_applications', 'service_clients'].includes(table)) {
+      void fetchCSRTrackingAssignments();
+      void fetchOfferRequests();
+      return;
+    }
+    if (
+      [
+        'service_attendance_entries',
+        'service_request_shipments',
+        'shipment_tracking_events',
+        'campaigns',
+        'csr_project_milestones',
+        'csr_payment_confirmations',
+      ].includes(table)
+    ) {
+      void fetchPublishedCsrCampaigns();
+      void fetchCSRTrackingAssignments();
+    }
   });
 
   const reloadDashboard = () =>

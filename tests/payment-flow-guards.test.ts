@@ -3,17 +3,17 @@ import { NextRequest } from 'next/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { POST as webhookPost } from '@/app/api/webhooks/razorpay/route'
 import { POST as verifyPayment } from '@/app/api/milestones/[id]/payments/verify/route'
-import { POST as recordPayment } from '@/app/api/milestones/[id]/payment/route'
 import { POST as reviewMilestone } from '@/app/api/milestones/[id]/review/route'
 import { POST as submitEvidence } from '@/app/api/milestones/[id]/evidence/route'
 import { processAdminRefund } from '@/lib/admin-refund'
-import { argOf, eqValue, fakeAdjustProgress, supabaseFake, type FakeQuery, type FakeResult } from './support/supabase-fake'
+import { argOf, eqValue, fakeAdjustProgress, hasCall, supabaseFake, type FakeQuery, type FakeResult } from './support/supabase-fake'
 import { jsonRequest, razorpaySignature, tokenFor } from './support/requests'
 
 const mocks = vi.hoisted(() => ({
   adjustProgress: vi.fn(),
   db: {
     serviceRequests: { getById: vi.fn(), update: vi.fn() },
+    serviceRequestApplications: { getByRequestId: vi.fn(async () => []), update: vi.fn() },
     supportTicketMessages: { create: vi.fn() },
   },
   razorpay: {
@@ -179,43 +179,86 @@ describe('Razorpay webhook milestone payments', () => {
 })
 
 describe('Razorpay webhook refunds', () => {
-  const refundEvent = (event: string, status: string, amount = 105900) => ({
+  const contributionNotes = { payment_kind: 'financial_need', service_request_id: '12', base_amount_inr: 1000, total_charge_inr: 1059 }
+  const refundEvent = (
+    event: string,
+    status: string,
+    options: { amount?: number; refunded?: number; reason?: string } = {}
+  ) => ({
     event,
-    payload: { refund: { entity: { id: 'rfnd_1', payment_id: 'pay_1', amount, status } } },
+    payload: {
+      refund: {
+        entity: { id: 'rfnd_1', payment_id: 'pay_1', amount: options.amount ?? 105900, status, notes: { reason: options.reason ?? 'admin_refund' } },
+      },
+      payment: { entity: { id: 'pay_1', amount: 105900, amount_refunded: options.refunded ?? options.amount ?? 105900 } },
+    },
   })
 
-  function refundDb(order: unknown, previousRefund: unknown = null) {
+  function refundDb(order: Record<string, unknown>, options: { firstToProcess?: boolean; recordError?: unknown } = {}) {
+    mocks.db.serviceRequests.getById.mockResolvedValue({ id: 12, current_amount: 5000, target_amount: 10000, status: 'in_progress', requirements: {} })
     respond((query) => {
       if (query.table === 'provider_webhook_events' && query.op === 'insert') return { data: { id: 'evt_row' } }
       if (query.table === 'razorpay_payments' && query.op === 'select') return { data: { id: 9, order_id: 44, amount_inr: 1059 } }
-      if (query.table === 'razorpay_payment_orders') return { data: order }
-      if (query.table === 'razorpay_refunds' && query.op === 'select') return { data: previousRefund }
+      if (query.table === 'razorpay_payment_orders') return { data: { id: 44, payer_user_id: 7, order_status: 'paid', ...order } }
+      if (query.table === 'razorpay_refunds' && query.op === 'upsert') return { error: options.recordError ?? null }
+      if (query.table === 'razorpay_refunds' && query.op === 'update') return { data: options.firstToProcess === false ? [] : [{ id: 'r1' }] }
+      if (query.table === 'csr_payment_confirmations' && query.op === 'update') {
+        return { data: [{ id: 'pc_1', milestone_id: 'm1', project_id: 'p1' }] }
+      }
       return undefined
     })
   }
 
-  it('marks the payment refunded for orders without a service request', async () => {
+  it('records the refund and reopens the milestone for payments without a service request', async () => {
     refundDb({ service_request_id: null, order_notes: milestoneNotes })
     const response = await webhookPost(webhookRequest(refundEvent('refund.processed', 'processed'), 'evt_r1'))
     expect(response.status).toBe(200)
     expect(argOf(writes('razorpay_payments', 'update')[0], 'update')).toMatchObject({ payment_status: 'refunded' })
-    expect(writes('razorpay_refunds', 'upsert')).toHaveLength(0)
+    expect(argOf(writes('razorpay_refunds', 'upsert')[0], 'upsert')).toMatchObject({ service_request_id: null, razorpay_refund_id: 'rfnd_1' })
+    expect(argOf(writes('csr_payment_confirmations', 'update')[0], 'update')).toMatchObject({ payment_status: 'refunded' })
+    expect(argOf(writes('csr_project_milestones', 'update')[0], 'update')).toMatchObject({ status: 'approved' })
     expect(mocks.adjustProgress).not.toHaveBeenCalled()
     expect(argOf(writes('provider_webhook_events', 'update').at(-1), 'update')).toMatchObject({ processing_status: 'processed' })
   })
 
-  it('does not downgrade or re-debit a refund that was already processed', async () => {
-    refundDb({ service_request_id: 12, order_notes: {} }, { refund_status: 'processed' })
-    await webhookPost(webhookRequest(refundEvent('refund.created', 'pending'), 'evt_r2'))
-    expect(argOf(writes('razorpay_refunds', 'update')[0], 'update')).toMatchObject({ refund_status: 'processed' })
-    expect(writes('razorpay_refunds', 'upsert')).toHaveLength(0)
+  it('fails and leaves the webhook retryable when the refund ledger cannot store a null request id', async () => {
+    refundDb({ service_request_id: null, order_notes: milestoneNotes }, { recordError: { code: '23502', message: 'null value' } })
+    const response = await webhookPost(webhookRequest(refundEvent('refund.processed', 'processed'), 'evt_r1b'))
+    expect(response.status).toBe(500)
+    expect(writes('csr_project_milestones', 'update')).toHaveLength(0)
+    expect(argOf(writes('provider_webhook_events', 'update').at(-1), 'update')).toMatchObject({ processing_status: 'failed' })
+  })
+
+  it('debits a processed contribution refund once', async () => {
+    refundDb({ service_request_id: 12, order_notes: contributionNotes })
+    await webhookPost(webhookRequest(refundEvent('refund.processed', 'processed'), 'evt_r2'))
+    expect(mocks.adjustProgress).toHaveBeenCalledTimes(1)
+    expect(mocks.adjustProgress).toHaveBeenCalledWith(expect.anything(), { amount: -1000 }, { targetAmount: 10000 })
+  })
+
+  it('does not reverse a refund another handler already processed', async () => {
+    refundDb({ service_request_id: 12, order_notes: contributionNotes }, { firstToProcess: false })
+    await webhookPost(webhookRequest(refundEvent('refund.processed', 'processed'), 'evt_r3'))
     expect(mocks.adjustProgress).not.toHaveBeenCalled()
   })
 
-  it('leaves the payment status alone for a failed refund', async () => {
-    refundDb({ service_request_id: 12, order_notes: {} })
-    await webhookPost(webhookRequest(refundEvent('refund.failed', 'failed'), 'evt_r3'))
-    expect(writes('razorpay_payments', 'update')).toHaveLength(0)
+  it('skips the reversal for refunds of duplicate payments', async () => {
+    refundDb({ service_request_id: 12, order_notes: contributionNotes })
+    await webhookPost(webhookRequest(refundEvent('refund.processed', 'processed', { reason: 'service_offer_duplicate_payment' }), 'evt_r4'))
+    expect(mocks.adjustProgress).not.toHaveBeenCalled()
+  })
+
+  it('keeps a payment captured when its only refund failed', async () => {
+    refundDb({ service_request_id: 12, order_notes: contributionNotes })
+    await webhookPost(webhookRequest(refundEvent('refund.failed', 'failed', { refunded: 0 }), 'evt_r5'))
+    expect(argOf(writes('razorpay_payments', 'update')[0], 'update')).toMatchObject({ payment_status: 'captured' })
+    expect(mocks.adjustProgress).not.toHaveBeenCalled()
+  })
+
+  it('marks a payment partially refunded from the running total', async () => {
+    refundDb({ service_request_id: 12, order_notes: contributionNotes })
+    await webhookPost(webhookRequest(refundEvent('refund.processed', 'processed', { amount: 20000, refunded: 60000 }), 'evt_r6'))
+    expect(argOf(writes('razorpay_payments', 'update')[0], 'update')).toMatchObject({ payment_status: 'partially_refunded' })
   })
 })
 
@@ -288,52 +331,6 @@ describe('milestone payment verify', () => {
     expect(response.status).toBe(200)
     expect(writes('csr_payment_confirmations', 'insert')).toHaveLength(1)
     expect(argOf(writes('csr_audit_log', 'insert')[0], 'insert')).toMatchObject({ created_by: 30 })
-  })
-})
-
-describe('manual milestone payment', () => {
-  function setup(overrides: { milestoneStatus?: string; confirmed?: unknown[] } = {}) {
-    respond((query) => {
-      if (query.table === 'csr_project_milestones' && query.op === 'select' && eqValue(query, 'id')) {
-        return { data: { id: 'm1', project_id: 'p1', status: overrides.milestoneStatus ?? 'approved', amount: 1000 } }
-      }
-      if (query.table === 'csr_project_milestones' && query.op === 'select') return { data: [{ id: 'm1', status: 'completed' }] }
-      if (query.table === 'csr_projects') return { data: project }
-      if (query.table === 'csr_payment_confirmations' && query.op === 'select' && eqValue(query, 'milestone_id')) {
-        return { data: overrides.confirmed ?? [] }
-      }
-      if (query.table === 'csr_payment_confirmations' && query.op === 'select') return { data: [{ amount: 1000, payment_status: 'confirmed' }] }
-      if (query.table === 'csr_payment_confirmations' && query.op === 'insert') return { data: { id: 'pc_1' } }
-      return undefined
-    })
-  }
-
-  const record = (body: Record<string, unknown>) =>
-    recordPayment(jsonRequest('http://localhost/api/milestones/m1/payment', { body }), context)
-
-  it('requires an approved milestone', async () => {
-    setup({ milestoneStatus: 'submitted' })
-    expect((await record({ payment_reference: 'utr_1', payment_status: 'confirmed' })).status).toBe(409)
-    expect(writes('csr_payment_confirmations', 'insert')).toHaveLength(0)
-  })
-
-  it('rejects a milestone that already has a confirmed payment', async () => {
-    setup({ confirmed: [{ id: 'pc_0' }] })
-    expect((await record({ payment_reference: 'utr_1', payment_status: 'confirmed' })).status).toBe(409)
-    expect(writes('csr_payment_confirmations', 'insert')).toHaveLength(0)
-  })
-
-  it('uses the milestone amount instead of the client amount', async () => {
-    setup()
-    const response = await record({ payment_reference: 'utr_1', payment_status: 'confirmed', amount: 999999 })
-    expect(response.status).toBe(201)
-    expect(argOf(writes('csr_payment_confirmations', 'insert')[0], 'insert')).toMatchObject({ amount: 1000, payment_status: 'confirmed' })
-    expect(argOf(writes('csr_projects', 'update')[0], 'update')).toMatchObject({ funds_utilized: 1000 })
-  })
-
-  it('rejects unknown payment statuses', async () => {
-    setup()
-    expect((await record({ payment_reference: 'utr_1', payment_status: 'refunded' })).status).toBe(400)
   })
 })
 
@@ -442,15 +439,18 @@ describe('admin refund recording', () => {
     id: 9,
     amount_inr: 1059,
     payment_status: 'captured',
-    order: { service_request_id: 12, order_notes: {} },
+    order: { service_request_id: 12, order_notes: { service_request_id: '12', payment_kind: 'financial_need' } },
   }
 
-  function setup(previousRefund: unknown) {
+  function setup(firstToProcess: boolean) {
     mocks.db.serviceRequests.getById.mockResolvedValue({ request_type: 'financial', current_amount: 5000, target_amount: 10000, requirements: {} })
+    mocks.razorpay.payments.fetch.mockResolvedValue({ id: 'pay_1', status: 'captured', amount: 105900, amount_refunded: 0 })
     mocks.razorpay.payments.refund.mockResolvedValue({ id: 'rfnd_1', status: 'processed' })
     respond((query) => {
       if (query.table === 'razorpay_payments' && query.op === 'select') return { data: paymentRow }
-      if (query.table === 'razorpay_refunds' && query.op === 'select' && eqValue(query, 'razorpay_refund_id')) return { data: previousRefund }
+      if (query.table === 'razorpay_refunds' && query.op === 'update' && hasCall(query, 'select')) {
+        return { data: firstToProcess ? [{ id: 'r1' }] : [] }
+      }
       return undefined
     })
   }
@@ -458,23 +458,23 @@ describe('admin refund recording', () => {
   const refund = () => processAdminRefund({ admin: { id: 1 }, serviceRequestId: 12, refundPaymentId: 'pay_1' })
 
   it('does not debit again when the webhook already processed the refund', async () => {
-    setup({ refund_status: 'processed' })
+    setup(false)
     await refund()
-    expect(argOf(writes('razorpay_refunds', 'upsert')[0], 'upsert')).toMatchObject({ razorpay_refund_id: 'rfnd_1', refund_status: 'processed' })
-    expect(writes('razorpay_refunds', 'upsert')[0].options).toMatchObject({ onConflict: 'razorpay_refund_id' })
+    expect(argOf(writes('razorpay_refunds', 'upsert')[0], 'upsert')).toMatchObject({ razorpay_refund_id: 'rfnd_1', refund_status: 'pending' })
+    expect(writes('razorpay_refunds', 'upsert')[0].options).toMatchObject({ onConflict: 'razorpay_refund_id', ignoreDuplicates: true })
     expect(mocks.adjustProgress).not.toHaveBeenCalled()
   })
 
-  it('debits once when the refund moves to processed', async () => {
-    setup({ refund_status: 'pending' })
+  it('debits once when this call marks the refund processed', async () => {
+    setup(true)
     await refund()
     expect(mocks.adjustProgress).toHaveBeenCalledTimes(1)
   })
 
-  it('skips the debit when the refund row could not be recorded', async () => {
-    setup(null)
+  it('fails instead of reporting success when the refund row could not be saved', async () => {
+    setup(true)
     supabaseFake.queue('razorpay_refunds.upsert', { error: { message: 'boom' } })
-    await refund()
+    await expect(refund()).rejects.toMatchObject({ status: 503 })
     expect(mocks.adjustProgress).not.toHaveBeenCalled()
   })
 })

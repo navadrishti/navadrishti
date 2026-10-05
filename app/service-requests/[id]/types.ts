@@ -95,6 +95,7 @@ export interface VolunteerApplication {
   fulfilled_quantity?: number | null
   individual_receipt_url?: string | null
   ngo_receipt_url?: string | null
+  individual_done_at?: string | null
 }
 
 export type RequestRecord = {

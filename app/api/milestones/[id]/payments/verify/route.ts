@@ -99,6 +99,7 @@ export async function POST(
     }
 
     const result = await confirmMilestonePayment({
+      razorpay,
       milestoneId,
       razorpayOrderId: razorpay_order_id,
       razorpayPaymentId: razorpay_payment_id,

@@ -15,7 +15,7 @@ export interface UserData {
   phone_verified?: boolean;
 }
 
-export type ScopedTokenKind = 'platform_ca' | 'government_admin';
+export type ScopedTokenKind = 'platform_ca' | 'government_admin' | 'company_ca';
 
 export class AuthError extends Error {
   readonly status: 401 | 403;

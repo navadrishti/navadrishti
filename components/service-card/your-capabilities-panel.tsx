@@ -33,8 +33,8 @@ export function YourCapabilitiesPanel({
   emptyDescription = 'Create capability offers to support NGO needs and partnerships.',
   canCreate = true,
   createBlockedHref,
-  createBlockedLabel = 'Connect Razorpay payout',
-  createBlockedMessage = 'Connect Razorpay payout before listing capabilities so you can receive merchant payments.',
+  createBlockedLabel = 'Connect payout account',
+  createBlockedMessage = 'Connect your payout account before listing capabilities so you can receive merchant payments.',
 }: YourCapabilitiesPanelProps) {
   const [tab, setTab] = useState<'active' | 'past'>('active')
 

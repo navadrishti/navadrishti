@@ -48,7 +48,7 @@ export function CapabilityOffersSection({
         ) : (
           <Link href={payoutHref}>
             <Button variant="outline" size="sm">
-              Connect Razorpay payout
+              Connect payout account
             </Button>
           </Link>
         )}

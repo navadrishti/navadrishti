@@ -1,7 +1,10 @@
 import Razorpay from 'razorpay';
 import { db, supabase } from '@/lib/db';
-import { debitServiceRequestRefund, resolveRefundDebitInr } from '@/lib/service-request-payments';
-import { parseAmountToInr, parseJsonObject } from '@/lib/utils';
+import type { Json } from '@/lib/database.types';
+import { recordCapturedPaymentFromProvider } from '@/lib/razorpay/payment-records';
+import { paymentStatusAfterRefunds, recordRefund, settleRefundStatus } from '@/lib/razorpay/refunds';
+import { refundPaymentKind, refundPaymentKindLabel, reverseRefundedPayment } from '@/lib/refund-reversal';
+import { getErrorMessage, parseAmountToInr, parseJsonObject } from '@/lib/utils';
 
 export const isFinancialRequest = (
   request: { request_type?: unknown; category?: unknown } | null | undefined,
@@ -18,209 +21,260 @@ export const normalizeRefundStatus = (status: unknown): 'processed' | 'pending' 
   return 'pending';
 };
 
+export class AdminRefundError extends Error {
+  constructor(message: string, readonly status = 400) {
+    super(message);
+  }
+}
+
 export type ProcessAdminRefundInput = {
   admin: { id: number };
-  serviceRequestId: number;
   refundPaymentId: string;
+  /** Optional cross-check: the payment must belong to this request when given. */
+  serviceRequestId?: number | null;
   requestedRefundInr?: number;
   refundReason?: string;
   supportTicketId?: string | null;
 };
 
+type ProviderPayment = { id?: string; status?: string; amount?: number | string; amount_refunded?: number | string };
+
+async function loadPaymentRow(razorpayPaymentId: string) {
+  const { data, error } = await supabase
+    .from('razorpay_payments')
+    .select('id, amount_inr, payment_status, order:razorpay_payment_orders(id, service_request_id, payer_user_id, order_status, order_notes)')
+    .eq('razorpay_payment_id', razorpayPaymentId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function noteRefundOnTicket(input: {
+  admin: { id: number };
+  supportTicketId: string;
+  refundPaymentId: string;
+  refundInr: number;
+  refundReason: string;
+  processed: boolean;
+}) {
+  const { data: ticketRow } = await supabase
+    .from('support_tickets')
+    .select('*')
+    .eq('ticket_id', input.supportTicketId)
+    .single();
+  if (!ticketRow) return;
+
+  const nowIso = new Date().toISOString();
+  const summary = `payment ${input.refundPaymentId}, amount INR ${input.refundInr.toFixed(2)}, reason ${input.refundReason}`;
+  await db.supportTicketMessages.create({
+    ticket_id: input.supportTicketId,
+    sender_id: input.admin.id,
+    sender_type: 'admin',
+    message_type: 'refund_initiated',
+    content: `Refund initiated for ${summary}`,
+    created_at: nowIso,
+  });
+  await supabase.from('support_tickets').update({
+    status: input.processed ? 'resolved' : 'in_progress',
+    resolved_at: input.processed ? nowIso : null,
+    admin_notes: [String(ticketRow.admin_notes || '').trim(), `Refund initiated ${nowIso}: ${summary}`].filter(Boolean).join('\n\n'),
+    updated_at: nowIso,
+  }).eq('ticket_id', input.supportTicketId);
+}
+
+/**
+ * Refunds any captured platform payment, in full or in part. Razorpay's running refund total
+ * decides what is left, routed payee shares are pulled back, and once the refund is processed
+ * the item it paid for is reversed (here or, for slower refunds, by the refund webhook).
+ */
 export async function processAdminRefund(input: ProcessAdminRefundInput) {
   const {
     admin,
-    serviceRequestId,
     refundPaymentId,
     requestedRefundInr = 0,
     refundReason = 'admin_refund',
     supportTicketId = null,
   } = input;
+  const expectedRequestId = Number(input.serviceRequestId || 0);
 
-  if (!Number.isFinite(serviceRequestId) || serviceRequestId <= 0) {
-    throw new Error('Valid service request ID is required for refunds');
-  }
-
-  if (!refundPaymentId) {
-    throw new Error('Razorpay payment ID is required');
+  if (!refundPaymentId) throw new AdminRefundError('Payment ID is required');
+  if (!Number.isFinite(requestedRefundInr) || requestedRefundInr < 0) {
+    throw new AdminRefundError('Refund amount must be a positive number; use 0 for a full refund');
   }
 
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
   const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
-  if (!keySecret || !keyId) {
-    throw new Error('Razorpay is not configured');
-  }
+  if (!keySecret || !keyId) throw new AdminRefundError('Refund payments are not configured', 500);
+  const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
 
-  const serviceRequest = await db.serviceRequests.getById(serviceRequestId);
-  if (!serviceRequest) {
-    throw new Error('Service request not found');
-  }
-
-  const requirements = parseJsonObject(serviceRequest.requirements);
-  if (!isFinancialRequest(serviceRequest, requirements)) {
-    throw new Error('Refunds only apply to financial requests');
-  }
-
-  const targetInr = parseAmountToInr(
-    requirements.funding_target_inr ?? serviceRequest.target_amount ?? requirements.estimated_budget ?? requirements.budget
-  );
-  const currentRaisedInr = parseAmountToInr(serviceRequest.current_amount);
-
-  const { data: paymentRow } = await supabase
-    .from('razorpay_payments')
-    .select('id, amount_inr, payment_status, order:razorpay_payment_orders(service_request_id, order_notes)')
-    .eq('razorpay_payment_id', refundPaymentId)
-    .maybeSingle();
-
+  let paymentRow = await loadPaymentRow(refundPaymentId);
   if (!paymentRow) {
-    throw new Error('Payment record not found for this request');
+    await recordCapturedPaymentFromProvider(razorpay, refundPaymentId).catch(() => null);
+    paymentRow = await loadPaymentRow(refundPaymentId);
   }
+  if (!paymentRow) throw new AdminRefundError('No platform payment found with this payment ID', 404);
 
   const order = Array.isArray(paymentRow.order) ? paymentRow.order[0] : paymentRow.order;
-  if (Number(order?.service_request_id || 0) !== serviceRequestId) {
-    throw new Error('Payment belongs to a different request');
+  const orderRequestId = Number(order?.service_request_id || 0);
+  if (expectedRequestId > 0 && orderRequestId !== expectedRequestId) {
+    throw new AdminRefundError('Payment belongs to a different request', 409);
   }
 
-  if (paymentRow.payment_status === 'refunded') {
+  const orderNotes = parseJsonObject(order?.order_notes);
+  const paymentKind = refundPaymentKind(orderNotes);
+  const providerPayment = (await razorpay.payments.fetch(refundPaymentId)) as ProviderPayment;
+  const providerStatus = String(providerPayment?.status || '').toLowerCase();
+  if (!['captured', 'refunded'].includes(providerStatus)) {
+    throw new AdminRefundError(`Only captured payments can be refunded (status: ${providerStatus || 'unknown'})`, 409);
+  }
+
+  const amountPaise = Number(providerPayment.amount || 0) || Math.round(parseAmountToInr(paymentRow.amount_inr) * 100);
+  const alreadyRefundedPaise = Number(providerPayment.amount_refunded || 0);
+  const remainingPaise = Math.max(0, amountPaise - alreadyRefundedPaise);
+  const paidInr = amountPaise / 100;
+
+  const baseResult = {
+    payment_id: refundPaymentId,
+    payment_kind: paymentKind,
+    payment_kind_label: refundPaymentKindLabel(orderNotes),
+    service_request_id: orderRequestId || null,
+  };
+
+  if (remainingPaise <= 0) {
+    await supabase
+      .from('razorpay_payments')
+      .update({ payment_status: 'refunded', updated_at: new Date().toISOString() })
+      .eq('id', paymentRow.id);
     return {
-      message: 'Refund already processed',
-      payment_id: refundPaymentId,
+      ...baseResult,
+      message: 'This payment has already been refunded in full',
       refund_id: null,
       refunded_amount_inr: 0,
+      remaining_inr: 0,
       refund_status: 'processed' as const,
-      fundsRaisedInr: currentRaisedInr,
-      targetInr,
+      payment_status: 'refunded' as const,
+      actions: [] as string[],
+      warnings: [] as string[],
     };
   }
 
-  const paidInr = parseAmountToInr(paymentRow.amount_inr);
-  const refundInr = requestedRefundInr > 0 ? Math.min(requestedRefundInr, paidInr) : paidInr;
+  const refundPaise = requestedRefundInr > 0 ? Math.min(Math.round(requestedRefundInr * 100), remainingPaise) : remainingPaise;
+  const refundInr = refundPaise / 100;
 
-  const { data: existingRefund } = await supabase
-    .from('razorpay_refunds')
-    .select('id, refund_status, amount_paise')
-    .eq('payment_id', paymentRow.id)
-    .in('refund_status', ['pending', 'processed'])
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (existingRefund?.id && Number(existingRefund.amount_paise || 0) === Math.round(refundInr * 100)) {
-    return {
-      message: existingRefund.refund_status === 'processed' ? 'Refund already processed' : 'Refund already initiated',
-      payment_id: refundPaymentId,
-      refund_id: null,
-      refunded_amount_inr: refundInr,
-      refund_status: existingRefund.refund_status as 'processed' | 'pending' | 'failed',
-      fundsRaisedInr: currentRaisedInr,
-      targetInr,
-    };
-  }
-
-  const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
   const refund = await razorpay.payments.refund(refundPaymentId, {
-    amount: Math.round(refundInr * 100),
+    amount: refundPaise,
+    // Routed payments already moved the payee's share to their linked account; pull it back too.
+    ...(orderNotes.route_transfer ? { reverse_all: 1 } : {}),
     notes: {
-      service_request_id: String(serviceRequestId),
+      payment_kind: paymentKind,
+      ...(orderRequestId ? { service_request_id: String(orderRequestId) } : {}),
       ...(supportTicketId ? { admin_ticket_id: String(supportTicketId) } : {}),
       reason: refundReason,
     },
   });
+
+  const warnings: string[] = [];
+  const actions: string[] = [];
   const razorpayRefundId = refund?.id ? String(refund.id) : null;
+  const refundStatus = normalizeRefundStatus(refund?.status);
   const nowIso = new Date().toISOString();
 
-  const { error: paymentUpdateError } = await supabase.from('razorpay_payments').update({
-    payment_status: refundInr < paidInr ? 'partially_refunded' : 'refunded',
-    updated_at: nowIso,
-  }).eq('id', paymentRow.id);
-  if (paymentUpdateError) console.error('Failed to mark Razorpay payment refunded:', paymentUpdateError);
+  const paymentStatus = paymentStatusAfterRefunds({ amount: amountPaise, amount_refunded: alreadyRefundedPaise + refundPaise });
+  const { error: paymentUpdateError } = await supabase
+    .from('razorpay_payments')
+    .update({ payment_status: paymentStatus, updated_at: nowIso })
+    .eq('id', paymentRow.id);
+  if (paymentUpdateError) console.error('Failed to update refunded payment status:', paymentUpdateError);
 
-  // The refund webhook may already have recorded (and debited) this refund.
-  let previousRefundStatus: string | null = null;
-  let previousRefundError: unknown = null;
+  let recording: 'recorded' | 'failed' = 'failed';
   if (razorpayRefundId) {
-    const previous = await supabase
-      .from('razorpay_refunds')
-      .select('refund_status')
-      .eq('razorpay_refund_id', razorpayRefundId)
-      .maybeSingle();
-    previousRefundStatus = previous.data?.refund_status ?? null;
-    previousRefundError = previous.error;
-  }
-
-  const wasProcessed = previousRefundStatus === 'processed';
-  const normalizedRefundStatus = wasProcessed ? 'processed' : normalizeRefundStatus(refund?.status);
-  const refundProcessed = normalizedRefundStatus === 'processed';
-
-  const refundRow = {
-    payment_id: paymentRow.id,
-    service_request_id: serviceRequestId,
-    initiated_by_admin_id: Number(admin.id) > 0 ? Number(admin.id) : null,
-    support_ticket_id: supportTicketId,
-    razorpay_refund_id: razorpayRefundId,
-    refund_reason: refundReason,
-    amount_inr: Number(refundInr.toFixed(2)),
-    amount_paise: Math.round(refundInr * 100),
-    refund_status: normalizedRefundStatus,
-    provider_payload: refund ? { ...refund } : {},
-    initiated_at: nowIso,
-    processed_at: refundProcessed ? nowIso : null,
-    updated_at: nowIso,
-  };
-  const { error: refundRecordError } = previousRefundError
-    ? { error: previousRefundError }
-    : razorpayRefundId
-      ? await supabase.from('razorpay_refunds').upsert(refundRow, { onConflict: 'razorpay_refund_id' })
-      : await supabase.from('razorpay_refunds').insert(refundRow);
-  if (refundRecordError) console.error('Failed to record Razorpay refund:', refundRecordError);
-
-  // Without a recorded row the refund webhook records and debits the refund instead.
-  const shouldDebit = refundProcessed && !wasProcessed && !refundRecordError;
-  const nextRaisedInr = shouldDebit
-    ? (await debitServiceRequestRefund(
-        serviceRequestId,
-        resolveRefundDebitInr({ refundInr, paidInr, orderNotes: order?.order_notes })
-      )) ?? currentRaisedInr
-    : currentRaisedInr;
-
-  if (supportTicketId) {
-    const { data: ticketRow } = await supabase
-      .from('support_tickets')
-      .select('*')
-      .eq('ticket_id', supportTicketId)
-      .single();
-
-    if (ticketRow) {
-      const updatedNotes = [
-        String(ticketRow.admin_notes || '').trim(),
-        `Refund initiated ${new Date().toISOString()}: payment ${refundPaymentId}, amount INR ${refundInr.toFixed(2)}, reason ${refundReason}`,
-      ].filter(Boolean).join('\n\n');
-
-      await db.supportTicketMessages.create({
-        ticket_id: supportTicketId,
-        sender_id: admin.id,
-        sender_type: 'admin',
-        message_type: 'refund_initiated',
-        content: `Refund initiated for payment ${refundPaymentId}. Amount: INR ${refundInr.toFixed(2)}. Reason: ${refundReason}`,
-        created_at: new Date().toISOString(),
+    try {
+      const { recorded } = await recordRefund({
+        payment_id: paymentRow.id,
+        service_request_id: orderRequestId || null,
+        initiated_by_admin_id: Number(admin.id) > 0 ? Number(admin.id) : null,
+        support_ticket_id: supportTicketId,
+        razorpay_refund_id: razorpayRefundId,
+        refund_reason: refundReason,
+        amount_inr: Number(refundInr.toFixed(2)),
+        amount_paise: refundPaise,
+        provider_payload: (refund ? { ...refund } : {}) as Json,
       });
-
-      await supabase.from('support_tickets').update({
-        status: refundProcessed ? 'resolved' : 'in_progress',
-        resolved_at: refundProcessed ? new Date().toISOString() : null,
-        admin_notes: updatedNotes,
-        updated_at: new Date().toISOString(),
-      }).eq('ticket_id', supportTicketId);
+      recording = recorded ? 'recorded' : 'failed';
+      // The refund webhook may have stored the row first; keep who issued it and why.
+      await supabase
+        .from('razorpay_refunds')
+        .update({
+          initiated_by_admin_id: Number(admin.id) > 0 ? Number(admin.id) : null,
+          support_ticket_id: supportTicketId,
+          refund_reason: refundReason,
+          updated_at: nowIso,
+        })
+        .eq('razorpay_refund_id', razorpayRefundId);
+    } catch (error) {
+      console.error('Failed to record Razorpay refund:', error);
+      throw new AdminRefundError(
+        `The refund was issued, but its ledger entry could not be saved. The payment provider will retry the refund notification. ${
+          getErrorMessage(error) || 'Unknown ledger error'
+        }`,
+        503
+      );
     }
   }
 
+  let raisedInr: number | null = null;
+  if (refundStatus === 'processed') {
+    // Only the caller that marks the stored refund processed reverses it. Payments without a request
+    // cannot be stored before the migration, and their reversals are safe to repeat.
+    const firstToProcess = recording === 'recorded' && razorpayRefundId
+      ? await settleRefundStatus(razorpayRefundId, 'processed', (refund ? { ...refund } : {}) as Json).catch(() => false)
+      : false;
+    if (firstToProcess && order) {
+      const reversal = await reverseRefundedPayment({
+        order: {
+          id: String(order.id),
+          service_request_id: orderRequestId || null,
+          payer_user_id: Number(order.payer_user_id || 0) || null,
+          order_status: order.order_status,
+          order_notes: orderNotes,
+        },
+        razorpayPaymentId: refundPaymentId,
+        razorpayRefundId,
+        refundInr,
+        paidInr,
+        fullyRefunded: paymentStatus === 'refunded',
+      });
+      raisedInr = reversal.raisedInr;
+      actions.push(...reversal.actions);
+      warnings.push(...reversal.warnings);
+    }
+  } else if (refundStatus === 'failed' && recording === 'recorded' && razorpayRefundId) {
+    await settleRefundStatus(razorpayRefundId, 'failed').catch(() => false);
+  }
+
+  if (supportTicketId) {
+    await noteRefundOnTicket({
+      admin,
+      supportTicketId,
+      refundPaymentId,
+      refundInr,
+      refundReason,
+      processed: refundStatus === 'processed',
+    }).catch((error) => console.error('Failed to note refund on support ticket:', error));
+  }
+
   return {
-    message: refundProcessed ? 'Refund processed successfully' : 'Refund initiated successfully',
-    payment_id: refundPaymentId,
-    refund_id: refund?.id || null,
+    ...baseResult,
+    message: refundStatus === 'processed'
+      ? 'Refund processed successfully'
+      : 'Refund initiated. It completes when the payment provider confirms it.',
+    refund_id: razorpayRefundId,
     refunded_amount_inr: refundInr,
-    refund_status: normalizedRefundStatus,
-    fundsRaisedInr: Number(nextRaisedInr.toFixed(2)),
-    targetInr,
+    remaining_inr: Math.max(0, remainingPaise - refundPaise) / 100,
+    refund_status: refundStatus,
+    payment_status: paymentStatus,
+    ...(raisedInr !== null ? { fundsRaisedInr: raisedInr } : {}),
+    actions,
+    warnings,
   };
 }

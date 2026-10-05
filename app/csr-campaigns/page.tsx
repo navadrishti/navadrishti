@@ -1,6 +1,7 @@
 "use client"
 
 import { useIsClient } from "@/hooks/use-is-client"
+import { isFullyVerifiedAccount } from "@/lib/auth"
 import { Header } from "@/components/header"
 import { Button } from "@/components/ui/button"
 import { SkeletonCampaignCard } from "@/components/ui/skeleton"
@@ -17,7 +18,7 @@ import { CampaignCard } from "./campaign-card"
 
 export default function CSRCampaignsPage() {
   const { user } = useAuth()
-  const allVerified = Boolean(user?.email_verified && user?.phone_verified && user?.verification_status === 'verified')
+  const allVerified = isFullyVerifiedAccount(user)
   const isHydrated = useIsClient()
 
   const effectiveUserType = isHydrated ? user?.user_type : undefined

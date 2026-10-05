@@ -1,5 +1,7 @@
+import type Razorpay from 'razorpay'
 import { supabase } from '@/lib/db'
-import { parseAmountToInr, parseJsonObject, validateCapturedPaymentAmounts } from '@/lib/utils'
+import { refundDuplicatePayment } from '@/lib/razorpay/duplicate-payment'
+import { getErrorMessage, parseAmountToInr, parseJsonObject, validateCapturedPaymentAmounts } from '@/lib/utils'
 
 export function isCsrMilestonePaymentOrder(orderNotes: unknown): boolean {
   return parseJsonObject(orderNotes).payment_kind === 'csr_milestone'
@@ -30,6 +32,12 @@ export async function finalizeMilestonePayment(milestoneId: string, projectId: s
     .neq('status', 'completed')
   if (milestoneError) throw milestoneError
 
+  await recomputeCsrProjectProgress(projectId)
+}
+
+/** Progress and funds utilised come from completed milestones and confirmed payments. */
+export async function recomputeCsrProjectProgress(projectId: string) {
+  const nowIso = new Date().toISOString()
   const { data: allMilestones, error: milestonesError } = await supabase
     .from('csr_project_milestones')
     .select('id, status')
@@ -63,6 +71,7 @@ export async function finalizeMilestonePayment(milestoneId: string, projectId: s
  * replays of the same payment return `alreadyRecorded` and re-run finalization if it was interrupted.
  */
 export async function confirmMilestonePayment(input: {
+  razorpay: Razorpay
   milestoneId: string
   razorpayOrderId: string
   razorpayPaymentId: string
@@ -107,25 +116,40 @@ export async function confirmMilestonePayment(input: {
   const baseAmountInr = parseAmountToInr(notes.base_amount_inr) || parseAmountToInr(milestone.amount)
   const nowIso = new Date().toISOString()
 
-  const { data: orderRow, error: orderError } = await supabase
+  // The stored order carries notes Razorpay cannot hold (route_transfer), so never overwrite them.
+  const { data: storedOrder, error: storedOrderError } = await supabase
     .from('razorpay_payment_orders')
-    .upsert(
-      {
-        payer_user_id: Number(project.company_user_id),
-        ngo_user_id: Number(project.ngo_user_id),
-        razorpay_order_id: input.razorpayOrderId,
-        receipt: String(input.receipt || `csr_ms_${input.milestoneId}`),
-        amount_inr: paidInr,
-        amount_paise: Math.round(paidInr * 100),
-        currency: 'INR',
-        order_status: 'paid',
-        order_notes: notes,
-        updated_at: nowIso,
-      },
-      { onConflict: 'razorpay_order_id' }
-    )
     .select('id')
+    .eq('razorpay_order_id', input.razorpayOrderId)
     .maybeSingle()
+  if (storedOrderError) throw storedOrderError
+
+  const { data: orderRow, error: orderError } = storedOrder
+    ? await supabase
+        .from('razorpay_payment_orders')
+        .update({ order_status: 'paid', updated_at: nowIso })
+        .eq('id', storedOrder.id)
+        .select('id')
+        .maybeSingle()
+    : await supabase
+        .from('razorpay_payment_orders')
+        .upsert(
+          {
+            payer_user_id: Number(project.company_user_id),
+            ngo_user_id: Number(project.ngo_user_id),
+            razorpay_order_id: input.razorpayOrderId,
+            receipt: String(input.receipt || `csr_ms_${input.milestoneId}`).slice(0, 40),
+            amount_inr: paidInr,
+            amount_paise: Math.round(paidInr * 100),
+            currency: 'INR',
+            order_status: 'paid',
+            order_notes: notes,
+            updated_at: nowIso,
+          },
+          { onConflict: 'razorpay_order_id' }
+        )
+        .select('id')
+        .maybeSingle()
   if (orderError) throw orderError
 
   if (orderRow?.id) {
@@ -156,7 +180,17 @@ export async function confirmMilestonePayment(input: {
 
   const settleExisting = async (existing: { id: string; payment_reference: string }): Promise<MilestonePaymentResult> => {
     if (existing.payment_reference !== input.razorpayPaymentId) {
-      return { ok: false, status: 409, error: 'Milestone was already paid by a different payment' }
+      try {
+        return await refundDuplicatePayment({
+          razorpay: input.razorpay,
+          razorpayPaymentId: input.razorpayPaymentId,
+          razorpayOrderId: input.razorpayOrderId,
+          reason: 'csr_milestone_duplicate_payment',
+          itemLabel: 'milestone',
+        })
+      } catch (error) {
+        return { ok: false, status: 409, error: getErrorMessage(error) || 'Milestone was already paid by a different payment' }
+      }
     }
     if (milestone.status !== 'completed') await finalizeMilestonePayment(input.milestoneId, project.id)
     return { ok: true, alreadyRecorded: true, paymentConfirmationId: existing.id, baseAmountInr, paidInr }

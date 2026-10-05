@@ -15,6 +15,7 @@ import {
   canContributeViaPlatform,
   isVerifiedNgoUser,
   ngoIsEligibleForNetworkListing,
+  PayeeNotConnectedError,
 } from '@/lib/razorpay-route';
 import Razorpay from 'razorpay';
 import { filterNetworkNgos, loadNetworkNgos, loadRecommendationViewer } from '@/lib/ngo-network/listing';
@@ -121,7 +122,7 @@ export async function POST(request: NextRequest) {
     const payoutReady = await ngoIsEligibleForNetworkListing(ngoUserId);
     if (!payoutReady) {
       return NextResponse.json(
-        { error: 'This NGO has not connected Razorpay payout yet, so payments cannot be accepted' },
+        { error: 'This NGO has not connected a payout account yet, so payments cannot be accepted' },
         { status: 403 }
       );
     }
@@ -136,7 +137,7 @@ export async function POST(request: NextRequest) {
     const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
     if (!keyId || !keySecret) {
-      return NextResponse.json({ error: 'Razorpay is not configured on this environment' }, { status: 500 });
+      return NextResponse.json({ error: 'Online payments are not configured on this environment' }, { status: 500 });
     }
 
     const context = {
@@ -154,6 +155,9 @@ export async function POST(request: NextRequest) {
 
     return await createNetworkDonationOrder(context, body?.amount);
   } catch (error) {
+    if (error instanceof PayeeNotConnectedError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     console.error('NGO network payment error:', error);
     return NextResponse.json({ error: 'Failed to process NGO network payment' }, { status: 500 });
   }

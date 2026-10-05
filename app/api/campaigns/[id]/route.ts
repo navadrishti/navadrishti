@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 import { getAuthUserFromRequest, assertUserType, authErrorResponse, findAuthUser } from '@/lib/server-auth'
-import { deleteCampaignWithDependencies, formatCampaignDeleteError } from '@/lib/campaign-delete'
+import {
+  assertCampaignDeletable,
+  CampaignDeleteBlockedError,
+  deleteCampaignWithDependencies,
+  formatCampaignDeleteError,
+} from '@/lib/campaign-delete'
 import { getCampaignLeadNgoId, parseLeadNgoInvites } from '@/lib/campaign-volunteer-attendance'
 import { parseJsonObject } from '@/lib/utils'
 import { redactCampaignForViewer } from '@/lib/campaign-public-view'
@@ -100,6 +105,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       return NextResponse.json({ error: 'You can only delete your own campaign' }, { status: 403 })
     }
 
+    await assertCampaignDeletable(campaign)
     await deleteCampaignWithDependencies(id)
 
     return NextResponse.json({ success: true })
@@ -108,7 +114,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     if (authResponse) return authResponse
     console.error('Campaign delete error:', error)
     const message = formatCampaignDeleteError(error)
-    const status = (error as { code?: string } | null)?.code === '23503' ? 409 : 500
+    const code = (error as { code?: string } | null)?.code
+    const status = code === '23503' || error instanceof CampaignDeleteBlockedError ? 409 : 500
     return NextResponse.json({ error: message }, { status })
   }
 }

@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTokenClaims } from '@/lib/auth';
-import { db, getApplicationApplicantUserId, shapeApplicationForApi, supabase } from '@/lib/db';
-import { getDelhiveryTrackingSnapshot } from '@/lib/delhivery';
-import { isDeliveredTrackingStatus } from '@/lib/service-request-allocation';
-import { getErrorMessage, parseJsonObject } from '@/lib/utils';
-
-function extractTrackingId(input: unknown): string {
-  return typeof input === 'string' ? input.trim() : '';
-}
+import { db, getApplicationApplicantUserId } from '@/lib/db';
+import {
+  DeliveryRequestError,
+  bookServiceRequestDelivery,
+  loadDeliveryApplication,
+  syncServiceRequestDelivery,
+} from '@/lib/service-request-delivery';
+import { getErrorMessage } from '@/lib/utils';
 
 export async function POST(
   request: NextRequest,
@@ -26,9 +26,9 @@ export async function POST(
 
     const { id, volunteerId } = await params;
     const requestId = Number(id);
-    const volunteerApplicationId = Number(volunteerId);
+    const applicationId = Number(volunteerId);
 
-    if (!Number.isFinite(requestId) || requestId <= 0 || !Number.isFinite(volunteerApplicationId) || volunteerApplicationId <= 0) {
+    if (!Number.isFinite(requestId) || requestId <= 0 || !Number.isFinite(applicationId) || applicationId <= 0) {
       return NextResponse.json({ error: 'Invalid request or application id' }, { status: 400 });
     }
 
@@ -37,204 +37,67 @@ export async function POST(
       return NextResponse.json({ error: 'Service request not found' }, { status: 404 });
     }
 
-    const { data: rawApplication, error: volunteerError } = await supabase
-      .from('service_request_applications')
-      .select(`
-        *,
-        fulfillment:service_request_fulfillments!application_id(*)
-      `)
-      .eq('id', volunteerApplicationId)
-      .eq('service_request_id', requestId)
-      .single();
+    const application = await loadDeliveryApplication(requestId, applicationId);
+    const isOwnerNgo = userType === 'ngo' && Number(serviceRequest.ngo_id) === Number(userId);
+    const isDonor = userType === 'individual' && getApplicationApplicantUserId(application) === Number(userId);
 
-    const volunteerApplication = shapeApplicationForApi(rawApplication);
-
-    if (volunteerError || !volunteerApplication) {
-      return NextResponse.json({ error: 'Volunteer assignment not found' }, { status: 404 });
-    }
-
-    if (userType === 'ngo' && Number(serviceRequest.ngo_id) !== Number(userId)) {
+    if (userType === 'ngo' && !isOwnerNgo) {
       return NextResponse.json({ error: 'You can only track deliveries for your own requests' }, { status: 403 });
     }
-
-    if (userType === 'individual' && getApplicationApplicantUserId(volunteerApplication) !== Number(userId)) {
+    if (userType === 'individual' && !isDonor) {
       return NextResponse.json({ error: 'You can only track your own assignments' }, { status: 403 });
     }
 
-    const applicationStatus = String(volunteerApplication.status || '').toLowerCase();
-    if (!['accepted', 'active'].includes(applicationStatus)) {
+    const status = String(application.status || '').toLowerCase();
+    if (!['accepted', 'active'].includes(status)) {
       return NextResponse.json({ error: 'Delivery can only be tracked for accepted assignments' }, { status: 409 });
     }
 
-    let body: Record<string, unknown> | null = {};
+    let body: Record<string, unknown> = {};
     try {
       body = await request.json();
     } catch {
       body = {};
     }
 
-    const existingMeta =
-      parseJsonObject(volunteerApplication.response_meta);
-
-    const trackingId =
-      extractTrackingId(body?.trackingId) ||
-      extractTrackingId(body?.deliveryTrackingId) ||
-      extractTrackingId(existingMeta.delivery_tracking_id);
-
-    if (!trackingId) {
-      return NextResponse.json({ error: 'Delhivery tracking ID is required' }, { status: 400 });
-    }
-
-    const snapshot = await getDelhiveryTrackingSnapshot(trackingId);
-
-    const { data: existingShipmentByTracking } = await supabase
-      .from('service_request_shipments')
-      .select('id, service_request_id, application_id')
-      .eq('provider', 'delhivery')
-      .eq('tracking_id', snapshot.trackingId)
-      .maybeSingle();
-
-    if (
-      existingShipmentByTracking?.id &&
-      (Number(existingShipmentByTracking.service_request_id) !== requestId ||
-        Number(existingShipmentByTracking.application_id || 0) !== volunteerApplicationId)
-    ) {
-      return NextResponse.json(
-        { error: 'Tracking ID is already linked to a different assignment' },
-        { status: 409 }
-      );
-    }
-
-    const nextMeta = {
-      ...existingMeta,
-      delivery_provider: 'delhivery',
-      delivery_tracking_id: snapshot.trackingId,
-      delivery_tracking_last_status: snapshot.currentStatus,
-      delivery_tracking_last_location: snapshot.lastLocation,
-      delivery_tracking_last_event_at: snapshot.lastEventAt,
-      delivery_tracking_synced_at: new Date().toISOString(),
-      delivery_tracking_events: snapshot.events.slice(0, 20)
-    };
-
-    try {
-      const nowIso = new Date().toISOString();
-      const creatorUserId = Number(userId) > 0 ? Number(userId) : null;
-
-      const { error: shipmentUpsertError } = await supabase
-        .from('service_request_shipments')
-        .upsert({
-          service_request_id: requestId,
-          application_id: volunteerApplicationId,
-          contribution_id: null,
-          provider: 'delhivery',
-          tracking_id: snapshot.trackingId,
-          shipment_status: String(snapshot.currentStatus || 'in_transit').toLowerCase(),
-          last_status: snapshot.currentStatus,
-          last_location: snapshot.lastLocation,
-          last_event_at: snapshot.lastEventAt,
-          synced_at: nowIso,
-          meta: {
-            latest_sync_source: 'manual_sync_api',
-            event_count: snapshot.events.length
-          },
-          created_by_user_id: creatorUserId,
-          updated_at: nowIso
-        }, { onConflict: 'provider,tracking_id' });
-      if (shipmentUpsertError) throw shipmentUpsertError;
-
-      const { data: shipmentRow } = await supabase
-        .from('service_request_shipments')
-        .select('id')
-        .eq('provider', 'delhivery')
-        .eq('tracking_id', snapshot.trackingId)
-        .maybeSingle();
-
-      if (shipmentRow?.id) {
-        const { data: existingEvents } = await supabase
-          .from('shipment_tracking_events')
-          .select('event_status, event_location, event_at')
-          .eq('shipment_id', shipmentRow.id)
-          .order('created_at', { ascending: false })
-          .limit(200);
-
-        const existingKeys = new Set(
-          (existingEvents || []).map((event) =>
-            `${String(event.event_status || '')}|${String(event.event_location || '')}|${String(event.event_at || '')}`
-          )
-        );
-
-        for (const event of snapshot.events.slice(0, 20)) {
-          const eventKey = `${String(event.status || '')}|${String(event.location || '')}|${String(event.timestamp || '')}`;
-          if (existingKeys.has(eventKey)) {
-            continue;
-          }
-
-          const { error: eventInsertError } = await supabase
-            .from('shipment_tracking_events')
-            .insert({
-              shipment_id: shipmentRow.id,
-              provider: 'delhivery',
-              event_code: null,
-              event_status: event.status || null,
-              event_description: event.details || null,
-              event_location: event.location || null,
-              event_at: event.timestamp || null,
-              raw_payload: event
-            });
-
-          if (!eventInsertError) {
-            existingKeys.add(eventKey);
-          }
-        }
+    if (body?.action === 'book') {
+      if (!isDonor && userType !== 'admin') {
+        return NextResponse.json({ error: 'Only the donor can book the Delhivery pickup' }, { status: 403 });
       }
-    } catch (shipmentRecordError) {
-      console.error('Failed to record Delhivery shipment:', shipmentRecordError);
-      return NextResponse.json({ error: 'Failed to record shipment tracking' }, { status: 500 });
+      try {
+        const result = await bookServiceRequestDelivery({ requestId, application, actorUserId: Number(userId) });
+        return NextResponse.json({ success: true, data: { tracking: result.snapshot, assignment: result.assignment } });
+      } catch (error) {
+        if (error instanceof DeliveryRequestError) throw error;
+        return NextResponse.json({ error: getErrorMessage(error) || 'Delhivery booking failed' }, { status: 422 });
+      }
     }
 
-    const delivered = isDeliveredTrackingStatus(snapshot.currentStatus)
-
-    const volunteerUpdatePayload: Record<string, unknown> = {
-      response_meta: nextMeta,
-      updated_at: new Date().toISOString(),
-    }
-
-    if (delivered) {
-      const assignedQuantity = Number(volunteerApplication.assigned_quantity || volunteerApplication.fulfillment_quantity || 0)
-      const assignedAmount = Number(volunteerApplication.assigned_amount || volunteerApplication.fulfillment_amount || 0)
-
-      volunteerUpdatePayload.status = 'completed'
-      volunteerUpdatePayload.individual_done_at =
-        volunteerApplication.individual_done_at || new Date().toISOString()
-      volunteerUpdatePayload.fulfilled_quantity = assignedQuantity > 0
-        ? assignedQuantity
-        : Number(volunteerApplication.fulfilled_quantity || 0)
-      volunteerUpdatePayload.fulfilled_amount = assignedAmount > 0
-        ? assignedAmount
-        : Number(volunteerApplication.fulfilled_amount || 0)
-    }
-
-    const updatedVolunteer = await db.serviceRequestApplications.update(volunteerApplicationId, volunteerUpdatePayload);
-
-    if (!updatedVolunteer) {
-      return NextResponse.json({ error: 'Failed to persist tracking details' }, { status: 500 });
-    }
+    const result = await syncServiceRequestDelivery({
+      requestId,
+      application,
+      actorUserId: Number(userId) || null,
+      source: 'manual_sync_api',
+    });
 
     return NextResponse.json({
       success: true,
       data: {
         tracking: {
-          provider: snapshot.provider,
-          trackingId: snapshot.trackingId,
-          currentStatus: snapshot.currentStatus,
-          lastEventAt: snapshot.lastEventAt,
-          lastLocation: snapshot.lastLocation,
-          events: snapshot.events
+          provider: result.snapshot.provider,
+          trackingId: result.snapshot.trackingId,
+          currentStatus: result.snapshot.currentStatus,
+          lastEventAt: result.snapshot.lastEventAt,
+          lastLocation: result.snapshot.lastLocation,
+          events: result.snapshot.events,
         },
-        assignment: updatedVolunteer
-      }
+        assignment: result.assignment,
+      },
     });
   } catch (error) {
+    if (error instanceof DeliveryRequestError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error('Delivery sync error:', error);
     return NextResponse.json(
       { error: getErrorMessage(error) || 'Failed to sync Delhivery tracking' },

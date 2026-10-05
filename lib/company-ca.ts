@@ -8,16 +8,6 @@ export type CompanyCaIdSuccessionOption = {
   reusable: boolean;
 };
 
-export async function listCompanyOwnedAssignmentIds(companyUserId: number): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('service_engagement_assignments')
-    .select('id')
-    .eq('owner_user_id', companyUserId);
-
-  if (error) throw error;
-  return (data ?? []).map((row) => String(row.id));
-}
-
 export async function getCompanyCAUserIdSet(candidateUserIds?: number[]): Promise<Set<number>> {
   let query = supabase.from('company_ca_identities').select('user_id');
 

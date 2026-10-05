@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adjustServiceRequestProgress, supabase } from '@/lib/db';
 import { getTokenClaims } from '@/lib/auth';
 import { isCapabilityRentalTransaction, resolveCapabilityRentalRate } from '@/lib/service-offers';
+import { loadAssignmentOutstanding } from '@/lib/engagement-settlement';
 import { parseJsonObject } from '@/lib/utils';
 import type { TablesUpdate } from '@/lib/database.types';
 
@@ -83,6 +84,48 @@ export async function PUT(
 
     const currentMeta = parseJsonObject(targetRequest.response_meta);
 
+    if (status === 'accepted') {
+      if (parseJsonObject(offer.offer_details).csr_rental_lock) {
+        return NextResponse.json({ error: 'This capability is rented to a CSR campaign right now.' }, { status: 409 })
+      }
+      const { data: alreadyAccepted, error: acceptedError } = await supabase
+        .from('service_clients')
+        .select('id')
+        .eq('service_offer_id', targetRequest.service_offer_id)
+        .eq('status', 'accepted')
+        .neq('id', parsedRequestId)
+        .limit(1)
+      if (acceptedError) throw acceptedError
+      if ((alreadyAccepted || []).length > 0) {
+        return NextResponse.json({ error: 'This offer is already assigned to another client.' }, { status: 409 })
+      }
+    }
+
+    const { data: liveAssignment, error: liveAssignmentError } = await supabase
+      .from('service_engagement_assignments')
+      .select('*')
+      .eq('application_table', 'service_clients')
+      .eq('application_id', String(parsedRequestId))
+      .in('status', ['active', 'in_progress'])
+      .limit(1)
+      .maybeSingle()
+    if (liveAssignmentError) throw liveAssignmentError
+
+    if (status === 'completed') {
+      const isDailyDue = String(currentMeta.payment_mode || targetRequest.payment_mode || '').toLowerCase() === 'daily_due'
+      if (isDailyDue) {
+        const outstanding = liveAssignment ? (await loadAssignmentOutstanding(String(liveAssignment.id))).outstanding : 0
+        if (outstanding > 0) {
+          return NextResponse.json(
+            { error: `INR ${outstanding.toLocaleString('en-IN')} of attendance dues is still unpaid. Settle the engagement before completing it.` },
+            { status: 409 }
+          )
+        }
+      } else if (currentMeta.payment_required === true && String(currentMeta.payment_status || '').toLowerCase() !== 'paid') {
+        return NextResponse.json({ error: 'The client has not paid for this offer yet.' }, { status: 409 })
+      }
+    }
+
     const nowIso = new Date().toISOString()
 
     const updatePayload: TablesUpdate<'service_clients'> = {
@@ -117,14 +160,29 @@ export async function PUT(
       updatePayload.fulfilled_quantity = fulfilled_quantity
     }
 
-    const { error: updateError } = await supabase
+    const { data: claimedRequest, error: updateError } = await supabase
       .from('service_clients')
       .update(updatePayload)
       .eq('id', parsedRequestId)
-      .eq('service_offer_id', targetRequest.service_offer_id);
+      .eq('service_offer_id', targetRequest.service_offer_id)
+      .eq('status', targetRequest.status ?? currentStatus)
+      .select('id')
+      .maybeSingle();
 
     if (updateError) {
       return NextResponse.json({ error: 'Failed to update request status' }, { status: 500 });
+    }
+    if (!claimedRequest) {
+      return NextResponse.json({ error: 'This request was changed by someone else. Refresh and try again.' }, { status: 409 });
+    }
+
+    if (status === 'completed' && liveAssignment) {
+      const { error: closeError } = await supabase
+        .from('service_engagement_assignments')
+        .update({ status: 'completed', completed_at: nowIso, updated_at: nowIso })
+        .eq('id', liveAssignment.id)
+        .in('status', ['active', 'in_progress']);
+      if (closeError) throw closeError;
     }
 
     if (status === 'accepted') {
@@ -133,7 +191,7 @@ export async function PUT(
         .select('id, response_meta')
         .eq('service_offer_id', targetRequest.service_offer_id)
         .neq('id', parsedRequestId)
-        .in('status', ['pending', 'accepted']);
+        .eq('status', 'pending');
 
       if (otherRequestsError) {
         return NextResponse.json({ error: 'Failed to update other applications' }, { status: 500 });
@@ -204,15 +262,17 @@ export async function PUT(
         ? dailyRate > 0
         : offer.transaction_type !== 'volunteer' && offer.transaction_type !== 'donate' && offerAmount > 0;
 
-      const { data: assignment, error: assignmentError } = await supabase
-        .from('service_engagement_assignments')
-        .insert({
-          ...assignmentMeta,
-          status: 'active',
-          meta: assignmentMeta
-        })
-        .select('*')
-        .maybeSingle();
+      const { data: assignment, error: assignmentError } = liveAssignment
+        ? { data: liveAssignment, error: null }
+        : await supabase
+            .from('service_engagement_assignments')
+            .insert({
+              ...assignmentMeta,
+              status: 'active',
+              meta: assignmentMeta
+            })
+            .select('*')
+            .maybeSingle();
 
       if (assignmentError) {
         return NextResponse.json({ error: 'Failed to create service assignment' }, { status: 500 });
