@@ -60,12 +60,12 @@ function payoutLinkStatusVariant(status: NgoRazorpayLinkStatus): 'default' | 'se
 
 function payoutPanelDescription(userType: 'ngo' | 'individual' | 'company'): string {
   if (userType === 'ngo') {
-    return 'Connect Razorpay to receive donations and to list capabilities that settle to your account. NGO Network listing only requires verification.'
+    return 'Connect your payout account to receive donations and to list capabilities that settle to your account. NGO Network listing only requires verification.'
   }
   if (userType === 'individual') {
-    return 'You must connect Razorpay before listing capabilities so you can receive merchant payouts. You do not need this to donate to NGOs.'
+    return 'You must connect your payout account before listing capabilities so you can receive merchant payouts. You do not need this to donate to NGOs.'
   }
-  return 'You must connect Razorpay before listing capabilities so you can receive merchant payouts. You do not need this to pay NGOs.'
+  return 'You must connect your payout account before listing capabilities so you can receive merchant payouts. You do not need this to pay NGOs.'
 }
 
 function payoutDisconnectedHelper(userType: 'ngo' | 'individual' | 'company'): string {
@@ -249,7 +249,7 @@ export function PayoutAccountPanel({ userType }: { userType: 'ngo' | 'individual
 
       {linkStatus === 'needs_reconnect' ? (
         <p className="text-xs text-muted-foreground">
-          Bank details changed. Save the form and reconnect so Razorpay can verify the updated account.
+          Bank details changed. Save the form and reconnect so your payout account can verify the updated details.
         </p>
       ) : null}
 
@@ -344,13 +344,13 @@ export function PayoutAccountPanel({ userType }: { userType: 'ngo' | 'individual
           ) : (
             <>
               <RefreshCw className="mr-2 h-4 w-4" />
-              {showReconnect ? 'Connect payout account' : 'Refresh Razorpay status'}
+              {showReconnect ? 'Connect payout account' : 'Refresh payout status'}
             </>
           )}
         </Button>
       </div>
       {!canConnect ? (
-        <p className="text-xs text-muted-foreground">Save payout details first, then connect to Razorpay.</p>
+        <p className="text-xs text-muted-foreground">Save payout details first, then connect your payout account.</p>
       ) : null}
     </div>
   )

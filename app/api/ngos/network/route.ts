@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
     const payoutReady = await ngoIsEligibleForNetworkListing(ngoUserId);
     if (!payoutReady) {
       return NextResponse.json(
-        { error: 'This NGO has not connected Razorpay payout yet, so payments cannot be accepted' },
+        { error: 'This NGO has not connected a payout account yet, so payments cannot be accepted' },
         { status: 403 }
       );
     }
@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
     const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
     if (!keyId || !keySecret) {
-      return NextResponse.json({ error: 'Razorpay is not configured on this environment' }, { status: 500 });
+      return NextResponse.json({ error: 'Online payments are not configured on this environment' }, { status: 500 });
     }
 
     const context = {

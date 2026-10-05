@@ -125,7 +125,7 @@ export function InlineSkillServiceFulfillment({
         onFailure: (error) => {
           toast({
             title: 'Payment failed',
-            description: error.description || error.reason || 'Razorpay could not complete the payment.',
+            description: error.description || error.reason || 'The payment provider could not complete the payment.',
             variant: 'destructive',
           });
         },

@@ -72,14 +72,14 @@ export function DelhiveryFulfillment({
       );
       const data = await response.json();
       if (!response.ok || !data?.success) {
-        throw new Error(data?.error || (action === 'book' ? 'Could not book the Delhivery pickup' : 'Could not refresh Delhivery status'));
+        throw new Error(data?.error || (action === 'book' ? 'Could not book the delivery pickup' : 'Could not refresh delivery status'));
       }
       const nextMeta = parseJsonObject(data?.data?.assignment?.response_meta);
       toast({
         title: action === 'book' ? 'Pickup booked' : 'Delivery status updated',
         description:
           action === 'book'
-            ? `Delhivery will collect from your saved address. AWB ${nextMeta.delivery_tracking_id || ''}`.trim()
+            ? `The delivery partner will collect from your saved address. Tracking ID ${nextMeta.delivery_tracking_id || ''}`.trim()
             : formatDeliveryTrackingStatus(nextMeta),
       });
       await onUpdated?.(nextMeta);
@@ -99,7 +99,7 @@ export function DelhiveryFulfillment({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex items-center gap-2">
           <Truck className="h-4 w-4 text-indigo-700" />
-          <p className="text-sm font-medium text-indigo-950">Delhivery delivery</p>
+          <p className="text-sm font-medium text-indigo-950">Delivery</p>
         </div>
         {trackingId ? <TrackingIdChip trackingId={trackingId} /> : null}
       </div>
@@ -126,20 +126,20 @@ export function DelhiveryFulfillment({
       ) : (
         <p className="text-xs text-slate-700">
           {role === 'donor'
-            ? 'Book a pickup when the items are packed. Delhivery collects from the street address on your profile and delivers to the NGO.'
-            : 'Waiting for the donor to book the Delhivery pickup.'}
+            ? 'Book a pickup when the items are packed. The delivery partner collects from the street address on your profile and delivers to the NGO.'
+            : 'Waiting for the donor to book the pickup.'}
         </p>
       )}
 
       {cancelled ? (
-        <p className="text-xs text-amber-800">This shipment was cancelled by Delhivery. {role === 'donor' ? 'Book a new pickup to send the items.' : ''}</p>
+        <p className="text-xs text-amber-800">This shipment was cancelled by the delivery partner. {role === 'donor' ? 'Book a new pickup to send the items.' : ''}</p>
       ) : null}
 
       <div className="flex flex-wrap gap-2">
         {canBook ? (
           <Button size="sm" className="bg-indigo-700 hover:bg-indigo-800" onClick={() => call('book')} disabled={busy !== null}>
             {busy === 'book' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            Book Delhivery pickup
+            Book pickup
           </Button>
         ) : null}
         {trackingId && !cancelled && stage < 2 ? (

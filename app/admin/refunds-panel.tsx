@@ -234,7 +234,7 @@ export function AdminRefundsPanel() {
         <CardContent className="flex flex-1 flex-col gap-4 pt-6">
           {!selectedPayment ? (
             <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/50 p-6 text-center text-sm text-slate-600">
-              Select a payment to review full details and initiate a Razorpay refund. Only admins can issue refunds.
+              Select a payment to review full details and initiate a refund. Only admins can issue refunds.
             </div>
           ) : (
             <div className="flex-1 space-y-5 overflow-y-auto pr-1">
@@ -274,7 +274,7 @@ export function AdminRefundsPanel() {
                 </AdminDetailSection>
               ) : null}
 
-              <AdminDetailSection title="Initiate Razorpay refund">
+              <AdminDetailSection title="Initiate refund">
                 <p className="text-xs text-amber-800">
                   Any captured payment can be refunded in full or in part. Money already sent to the payee is pulled back automatically. Users cannot start refunds themselves.
                 </p>
@@ -284,7 +284,7 @@ export function AdminRefundsPanel() {
                     <Input value={refundRequestId} onChange={(e) => setRefundRequestId(e.target.value)} placeholder="Only checked when filled in" />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700">Razorpay Payment ID</label>
+                    <label className="text-sm font-medium text-slate-700">Payment ID</label>
                     <Input
                       value={refundPaymentId}
                       onChange={(e) => setRefundPaymentId(e.target.value)}

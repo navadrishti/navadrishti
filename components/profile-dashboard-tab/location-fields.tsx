@@ -113,7 +113,7 @@ export function IndividualLocationFields({ details }: { details: ProfileDetails 
           placeholder="House, street, locality"
           rows={2}
         />
-        <p className="mt-1 text-xs text-muted-foreground">Delhivery collects material donations from this address.</p>
+        <p className="mt-1 text-xs text-muted-foreground">The delivery partner collects material donations from this address.</p>
       </div>
       <div>
         <Label>City</Label>

@@ -57,7 +57,7 @@ export function ProjectOpportunitiesSection({
             id="project-apply-note"
             value={applicationNote}
             onChange={(event) => onApplicationNoteChange(event.target.value)}
-            placeholder="Scope, timeline, logistics plan (Delhivery), payment controls (Razorpay)"
+            placeholder="Scope, timeline, logistics plan, payment controls"
             disabled={!allVerified}
           />
         </div>

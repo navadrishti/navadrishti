@@ -91,7 +91,7 @@ export function InlineCsrCapabilityDelhivery({
     try {
       const nextLeg = await postRentalDeliveryAction(
         'capability_rental_sync_delivery',
-        'Could not refresh Delhivery status',
+        'Could not refresh delivery status',
         { campaignId, offerId, leg }
       )
 
@@ -104,7 +104,7 @@ export function InlineCsrCapabilityDelhivery({
     } catch (error) {
       toast({
         title: 'Status refresh failed',
-        description: error instanceof Error ? error.message : 'Could not refresh Delhivery status',
+        description: error instanceof Error ? error.message : 'Could not refresh delivery status',
         variant: 'destructive',
       })
     } finally {
@@ -117,12 +117,12 @@ export function InlineCsrCapabilityDelhivery({
     try {
       const nextLeg = await postRentalDeliveryAction(
         'capability_rental_retry_booking',
-        'Could not retry Delhivery booking',
+        'Could not retry delivery booking',
         { campaignId, offerId, leg }
       )
 
       toast({
-        title: hasAwb ? 'Delhivery booking retried' : 'Delhivery shipment scheduled',
+        title: hasAwb ? 'Delivery booking retried' : 'Delivery shipment scheduled',
         description: nextLeg?.tracking_id ? `AWB ${nextLeg.tracking_id}` : 'Booking submitted',
       })
 
@@ -130,7 +130,7 @@ export function InlineCsrCapabilityDelhivery({
     } catch (error) {
       toast({
         title: 'Booking retry failed',
-        description: error instanceof Error ? error.message : 'Could not retry Delhivery booking',
+        description: error instanceof Error ? error.message : 'Could not retry delivery booking',
         variant: 'destructive',
       })
     } finally {
@@ -159,10 +159,10 @@ export function InlineCsrCapabilityDelhivery({
             ) : bookingPending ? (
               <span className="inline-flex items-center gap-1 text-udaan-blue">
                 <Loader2 className="h-3 w-3 animate-spin" />
-                Scheduling Delhivery pickup…
+                Scheduling pickup…
               </span>
             ) : (
-              <span className="text-[#8C5555]">{bookingError || 'Delhivery booking pending'}</span>
+              <span className="text-[#8C5555]">{bookingError || 'Delivery booking pending'}</span>
             )}
           </div>
           {hasAwb ? (

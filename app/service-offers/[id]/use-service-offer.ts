@@ -318,7 +318,7 @@ export function useServiceOffer(offerId: string) {
         onFailure: (error) => {
           toast({
             title: 'Payment failed',
-            description: error.description || error.reason || 'Razorpay could not complete the payment.',
+            description: error.description || error.reason || 'The payment provider could not complete the payment.',
             variant: 'destructive'
           })
         },
@@ -327,7 +327,7 @@ export function useServiceOffer(offerId: string) {
       console.error('Error starting offer payment:', error)
       toast({
         title: 'Payment failed',
-        description: error instanceof Error ? error.message : 'Could not open Razorpay checkout.',
+        description: error instanceof Error ? error.message : 'Could not open online payment.',
         variant: 'destructive'
       })
     } finally {

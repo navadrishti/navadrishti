@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { createClient as createSupabaseClient } from '@/lib/supabase';
 import type { CampaignVolunteerAssignmentItem } from '@/components/campaign-volunteer-assignment-card';
 import { getOfferRequestBucket, type OfferRequestItem } from '@/lib/offer-requests';
 import type { CapabilityOfferSummary } from '@/lib/service-offers';
@@ -129,6 +130,56 @@ export function useIndividualDashboardData(userId: number | undefined) {
     fetchServiceOffers();
     fetchOfferRequests();
     fetchCampaignVolunteerAssignments();
+
+    const realtime = createSupabaseClient();
+    const channel = realtime.channel('realtime-individual-dashboard');
+    const refresh = (table: string) => {
+      if (table === 'service_offers') {
+        void fetchServiceOffers();
+        void fetchOfferRequests();
+        return;
+      }
+      if (
+        [
+          'service_request_applications',
+          'service_engagement_assignments',
+          'service_clients',
+          'service_attendance_entries',
+          'campaigns',
+          'csr_project_milestones',
+          'csr_payment_confirmations',
+          'service_request_shipments',
+          'shipment_tracking_events',
+        ].includes(table)
+      ) {
+        void fetchMyApplications();
+        void fetchCampaignVolunteerAssignments();
+      }
+    };
+
+    [
+      'service_offers',
+      'service_request_applications',
+      'service_engagement_assignments',
+      'service_clients',
+      'service_attendance_entries',
+      'campaigns',
+      'csr_project_milestones',
+      'csr_payment_confirmations',
+      'service_request_shipments',
+      'shipment_tracking_events',
+    ].forEach((table) => {
+      channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => refresh(table));
+    });
+    void channel.subscribe();
+
+    return () => {
+      try {
+        realtime.removeChannel(channel);
+      } catch {
+        // The channel may already be closed during page navigation.
+      }
+    };
   }, [userId]);
 
   return {

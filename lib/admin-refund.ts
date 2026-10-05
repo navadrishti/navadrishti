@@ -97,14 +97,14 @@ export async function processAdminRefund(input: ProcessAdminRefundInput) {
   } = input;
   const expectedRequestId = Number(input.serviceRequestId || 0);
 
-  if (!refundPaymentId) throw new AdminRefundError('Razorpay payment ID is required');
+  if (!refundPaymentId) throw new AdminRefundError('Payment ID is required');
   if (!Number.isFinite(requestedRefundInr) || requestedRefundInr < 0) {
-    throw new AdminRefundError('Refund amount must be a positive number');
+    throw new AdminRefundError('Refund amount must be a positive number; use 0 for a full refund');
   }
 
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
   const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
-  if (!keySecret || !keyId) throw new AdminRefundError('Razorpay is not configured', 500);
+  if (!keySecret || !keyId) throw new AdminRefundError('Refund payments are not configured', 500);
   const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
 
   let paymentRow = await loadPaymentRow(refundPaymentId);
@@ -112,7 +112,7 @@ export async function processAdminRefund(input: ProcessAdminRefundInput) {
     await recordCapturedPaymentFromProvider(razorpay, refundPaymentId).catch(() => null);
     paymentRow = await loadPaymentRow(refundPaymentId);
   }
-  if (!paymentRow) throw new AdminRefundError('No platform payment found with this Razorpay payment ID', 404);
+  if (!paymentRow) throw new AdminRefundError('No platform payment found with this payment ID', 404);
 
   const order = Array.isArray(paymentRow.order) ? paymentRow.order[0] : paymentRow.order;
   const orderRequestId = Number(order?.service_request_id || 0);
@@ -214,7 +214,7 @@ export async function processAdminRefund(input: ProcessAdminRefundInput) {
     } catch (error) {
       console.error('Failed to record Razorpay refund:', error);
       throw new AdminRefundError(
-        `The refund was issued, but its ledger entry could not be saved. Razorpay will retry the refund webhook. ${
+        `The refund was issued, but its ledger entry could not be saved. The payment provider will retry the refund notification. ${
           getErrorMessage(error) || 'Unknown ledger error'
         }`,
         503
@@ -267,7 +267,7 @@ export async function processAdminRefund(input: ProcessAdminRefundInput) {
     ...baseResult,
     message: refundStatus === 'processed'
       ? 'Refund processed successfully'
-      : 'Refund initiated. It completes when Razorpay confirms it.',
+      : 'Refund initiated. It completes when the payment provider confirms it.',
     refund_id: razorpayRefundId,
     refunded_amount_inr: refundInr,
     remaining_inr: Math.max(0, remainingPaise - refundPaise) / 100,

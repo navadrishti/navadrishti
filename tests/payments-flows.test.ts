@@ -398,7 +398,7 @@ describe('admin refunds', () => {
   })
 
   it.each([
-    ['a missing payment id', () => refund({ refundPaymentId: '' }), 'Razorpay payment ID is required'],
+    ['a missing payment id', () => refund({ refundPaymentId: '' }), 'Payment ID is required'],
     ['a negative amount', () => refund({ requestedRefundInr: -5 }), 'Refund amount must be a positive number'],
   ])('rejects %s', async (_label, run, message) => {
     await expect(run()).rejects.toThrow(message)
@@ -406,11 +406,11 @@ describe('admin refunds', () => {
 
   it('requires Razorpay credentials', async () => {
     useSupabase()
-    await expect(refund()).rejects.toThrow('Razorpay is not configured')
+    await expect(refund()).rejects.toThrow('Refund payments are not configured')
   })
 
   it.each([
-    ['unknown payment', { payment: null }, 'No platform payment found with this Razorpay payment ID'],
+    ['unknown payment', { payment: null }, 'No platform payment found with this payment ID'],
     ['payment of another request', { payment: { ...paymentRow, order: [{ service_request_id: 99 }] } }, 'Payment belongs to a different request'],
     ['payment that was never captured', { providerStatus: 'authorized' }, 'Only captured payments can be refunded'],
   ])('rejects a %s', async (_label, options, message) => {

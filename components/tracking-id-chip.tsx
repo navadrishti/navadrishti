@@ -1,13 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { Check, Copy, ExternalLink } from 'lucide-react';
+import { Check, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-
-export function delhiveryTrackingUrl(trackingId: string): string {
-  return `https://www.delhivery.com/track-v2/package/${encodeURIComponent(trackingId)}`;
-}
 
 export function TrackingIdChip({ trackingId, label = 'AWB' }: { trackingId: string; label?: string }) {
   const { toast } = useToast();
@@ -37,15 +33,6 @@ export function TrackingIdChip({ trackingId, label = 'AWB' }: { trackingId: stri
       >
         {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
       </Button>
-      <a
-        href={delhiveryTrackingUrl(trackingId)}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex h-6 w-6 items-center justify-center rounded hover:bg-muted"
-        aria-label="Track on Delhivery"
-      >
-        <ExternalLink className="h-3.5 w-3.5" />
-      </a>
     </div>
   );
 }

@@ -80,7 +80,7 @@ export function NgoRequestCard({ application, onUpdated }: NgoRequestCardProps) 
 
         {shouldUseDelhiveryForNeed(request) && status === 'pending' ? (
           <p className="text-sm text-muted-foreground">
-            You can book the Delhivery pickup once the NGO accepts your donation.
+            You can book the pickup once the NGO accepts your donation.
           </p>
         ) : null}
 
@@ -88,10 +88,10 @@ export function NgoRequestCard({ application, onUpdated }: NgoRequestCardProps) 
           <div className="rounded-md border border-emerald-200 bg-emerald-50/60 p-3 space-y-2">
             <p className="text-sm font-medium text-emerald-950">Financial contribution</p>
             <p className="text-xs text-emerald-900/80">
-              Financial needs are fulfilled through Razorpay. Attendance is not used here.
+              Financial needs are fulfilled through online payment. Attendance is not used here.
             </p>
             <Link href={`/service-requests/${requestId}?pay=1`}>
-              <Button size="sm">Pay via Razorpay</Button>
+              <Button size="sm">Pay online</Button>
             </Link>
           </div>
         ) : null}
@@ -111,7 +111,7 @@ export function NgoRequestCard({ application, onUpdated }: NgoRequestCardProps) 
 
         {!inFulfillment && mode === 'material' && status !== 'pending' ? (
           <p className="text-sm text-muted-foreground">
-            Delhivery: {formatDeliveryTrackingStatus(meta)}
+            Delivery: {formatDeliveryTrackingStatus(meta)}
           </p>
         ) : null}
       </CardContent>
