@@ -11,7 +11,7 @@ Only the variables below are read by the code.
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Browser-safe Supabase key |
 | `SUPABASE_SECRET_KEY` | Server-side Supabase access (`lib/db.ts`) |
-| `JWT_SECRET` | Signing platform, CA, and government tokens |
+| `JWT_SECRET` | Signing platform and CA tokens |
 | `ADMIN_USERNAME`, `ADMIN_PASSWORD` | Platform admin console login |
 
 ## Auth and sessions
@@ -20,7 +20,6 @@ Only the variables below are read by the code.
 |----------|---------|
 | `JWT_EXPIRES_IN` | `7d` |
 | `CA_JWT_EXPIRES_IN` | `12h` |
-| `GOVT_ADMIN_JWT_EXPIRES_IN` | `12h` |
 | `CRON_SECRET` | required for `/api/cron/daily-cleanup` |
 
 CA accounts are created from the admin console. `CA_USERNAME` and `CA_MEMBERSHIP_NUMBER` only feed the fallback payload in `/api/ca/auth/verify`.

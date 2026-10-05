@@ -6,8 +6,6 @@
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | How the app is put together |
 | [API_REFERENCE.md](./API_REFERENCE.md) | Request/response examples for the main endpoints |
 | [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md) | Tables and naming conventions |
-| [TABLE_ORDER_AND_MERGE_GUIDE.md](./TABLE_ORDER_AND_MERGE_GUIDE.md) | Legacy → current table mapping |
-| [SERVICE_EXCHANGE_MODEL.md](./SERVICE_EXCHANGE_MODEL.md) | Needs, offers, assignments, attendance billing |
 | [VERIFICATION_FLOW.md](./VERIFICATION_FLOW.md) | User verification and the CA console |
 | [ENVIRONMENT.md](./ENVIRONMENT.md) | Environment variables |
 | [DEPLOYMENT.md](./DEPLOYMENT.md) | Building and deploying |
@@ -27,7 +25,7 @@ The app runs on `http://localhost:3000`; the admin console is at `/admin`.
 - **NGOs** publish needs and projects, apply to capability offers, and act as Lead NGO on CSR work.
 - **Individuals** volunteer for needs and publish capability offers.
 - **Companies** run CSR campaigns, fund projects, and manage evidence reviewers.
-- **Consoles**: platform admin, Navadrishti CA, company evidence review, government admin.
+- **Consoles**: platform admin, Navadrishti CA, company evidence review.
 
 ## AI suite
 

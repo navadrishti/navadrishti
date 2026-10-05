@@ -96,13 +96,7 @@ describe('getAuthUserFromRequest', () => {
     expect(() => getAuthUserFromRequest(buildRequest({ header: `Bearer ${adminToken}` }))).toThrow()
   })
 
-  it('rejects government-admin tokens', () => {
-    const govt = jwt.sign({ id: 4, username: 'g', email: 'g@gov.in', display_name: 'G', role: 'field_officer' }, secret)
-    expect(() => getAuthUserFromRequest(buildRequest({ header: `Bearer ${govt}` }))).toThrow()
-  })
-
   it.each([
-    ['government admin', { id: 4, email: 'g@gov.in', kind: 'government_admin' }],
     ['platform CA', { id: 3, email: 'ca@x.io', kind: 'platform_ca' }],
     ['unknown user_type', { id: 5, email: 'a@b.co', user_type: 'superuser' }],
   ])('rejects a %s token that carries an email', (_label, payload) => {
@@ -156,9 +150,7 @@ describe('getCAFromRequest', () => {
 
   it('rejects CA-shaped tokens without the platform_ca kind', () => {
     const legacy = jwt.sign({ id: 3, ca_id: 'CA-3', username: 'ca3', display_name: 'CA Three' }, secret)
-    const govt = jwt.sign({ id: 3, username: 'g', role: 'field_officer', kind: 'government_admin' }, secret)
     expect(getCAFromRequest(buildRequest({ cookies: { 'navadrishti-ca-token': legacy } }))).toBeNull()
-    expect(getCAFromRequest(buildRequest({ header: `Bearer ${govt}` }))).toBeNull()
   })
 })
 

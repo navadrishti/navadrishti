@@ -15,7 +15,7 @@ export interface UserData {
   phone_verified?: boolean;
 }
 
-export type ScopedTokenKind = 'platform_ca' | 'government_admin' | 'company_ca';
+export type ScopedTokenKind = 'platform_ca' | 'company_ca';
 
 export class AuthError extends Error {
   readonly status: 401 | 403;
@@ -69,7 +69,7 @@ function decodeSignedToken(token: string): JwtPayload | null {
 
 function isUserSessionPayload(decoded: JwtPayload): boolean {
   if (decoded.kind !== undefined) return false;
-  // Platform CA and government admin tokens issued before the `kind` claim existed.
+  // Platform CA tokens issued before the `kind` claim existed.
   if (decoded.ca_id !== undefined || decoded.role !== undefined) return false;
   return decoded.user_type === undefined || USER_TYPES.has(decoded.user_type);
 }

@@ -7,9 +7,9 @@ GRAM (Navadrishti) uses Supabase PostgreSQL. The canonical DDL is the local, git
 ## Conventions
 
 - Tables/columns: `snake_case`; timestamps: `*_at` as `timestamptz`
-- Domain prefixes: `csr_*`, `service_*`, `platform_*`, `government_*`
+- Domain prefixes: `csr_*`, `service_*`, `platform_*`
 - JSONB only for optional payloads — not primary relationships (lead NGO, KYC docs, verification status)
-- Never use bare “project” in APIs without a domain prefix (`csr_project`, `service_request_project`, `government_project`)
+- Never use bare “project” in APIs without a domain prefix (`csr_project`, `service_request_project`)
 
 ## Canonical domain map
 
@@ -63,7 +63,6 @@ The refund API fails explicitly if this constraint is still present; it must not
 successful refund while omitting the platform ledger entry.
 
 ### G) Other domains
-- Government: `government_bodies`, `government_admin_accounts`, `government_projects`, `government_project_milestones`
 - AI agents: `ngo_ai_agent_*`, `csr_ai_agent_*`
 - Engagement attendance: `service_engagement_invitations`, `service_engagement_assignments`, `service_attendance_entries`
 - Field offline ledger: `field_events` (hash-chained evidence ingestion; distinct from `csr_audit_log`)

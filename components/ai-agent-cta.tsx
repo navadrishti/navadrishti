@@ -85,8 +85,7 @@ export function AIAgentCTA() {
   if (
     pathname.startsWith('/ca') ||
     pathname.startsWith('/evidence-verification') ||
-    pathname.startsWith('/admin') ||
-    pathname.startsWith('/government-admin')
+    pathname.startsWith('/admin')
   ) {
     return null
   }
@@ -95,8 +94,6 @@ export function AIAgentCTA() {
   for (const p of publicPathsToHide) {
     if (pathname === p || pathname.startsWith(p + '/')) return null
   }
-  // Also hide on government-admin state/district specific dashboards and generic state/district routes
-  if (pathname.startsWith('/government-admin/state') || pathname.startsWith('/government-admin/district') || pathname.startsWith('/state') || pathname.startsWith('/district')) return null
   if (isMobileMenuOpen) return null
   if (pathname === aiAgentCta.href) return null
 

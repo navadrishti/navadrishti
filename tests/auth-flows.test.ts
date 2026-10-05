@@ -34,13 +34,6 @@ import {
   verifyPlatformCAToken,
   type PlatformCAAccount,
 } from '@/lib/platform-ca-auth'
-import {
-  generateGovernmentAdminToken,
-  getGovernmentAdminFromRequest,
-  getGovernmentAdminTokenFromRequest,
-  verifyGovernmentAdminToken,
-  type GovernmentAdminAccount,
-} from '@/lib/government-admin-auth'
 import { ensureCompanyCaIdAssigned, generateUniqueCompanyCaId } from '@/lib/company-ca'
 import { callsOf, supabaseFake } from './support/supabase-fake'
 
@@ -59,16 +52,7 @@ const caAccount: PlatformCAAccount = {
   active: true,
   must_change_password: false,
 }
-const govtAccount: GovernmentAdminAccount = {
-  id: 8,
-  government_body_id: 1,
-  username: 'gov8',
-  email: 'gov8@gov.in',
-  display_name: 'Gov Eight',
-  role: 'district_officer',
-  active: true,
-  must_change_password: false,
-}
+
 
 function requestWith(options: { header?: string; cookie?: string } = {}) {
   const headers: Record<string, string> = {}
@@ -243,46 +227,6 @@ describe('platform CA tokens', () => {
     supabaseFake.queue('platform_ca_accounts', { data: { ...caAccount } })
     const userToken = generateToken({ ...user, id: 3 })
     await expect(getPlatformCAFromRequest(requestWith({ header: `Bearer ${userToken}` }))).resolves.toBeNull()
-  })
-})
-
-describe('government admin tokens', () => {
-  it('round-trips the admin payload', () => {
-    const token = generateGovernmentAdminToken(govtAccount)
-    expect(verifyGovernmentAdminToken(token)).toMatchObject({ id: 8, role: 'district_officer', email: 'gov8@gov.in' })
-  })
-
-  it('honours GOVT_ADMIN_JWT_EXPIRES_IN', () => {
-    vi.stubEnv('GOVT_ADMIN_JWT_EXPIRES_IN', '30m')
-    const payload = jwt.decode(generateGovernmentAdminToken(govtAccount)) as { iat: number; exp: number }
-    expect(payload.exp - payload.iat).toBe(1800)
-  })
-
-  it.each([
-    ['empty', ''],
-    ['forged', jwt.sign({ id: 8, role: 'super_admin' }, 'other')],
-    ['expired', jwt.sign({ id: 8, role: 'super_admin', exp: Math.floor(Date.now() / 1000) - 1 }, secret)],
-  ])('rejects an %s token', (_label, token) => {
-    expect(verifyGovernmentAdminToken(token)).toBeNull()
-  })
-
-  it('reads the govt-admin cookie before the header', () => {
-    expect(getGovernmentAdminTokenFromRequest(requestWith({ header: 'Bearer h', cookie: 'govt-admin-token=c' }))).toBe('c')
-    expect(getGovernmentAdminTokenFromRequest(requestWith({ header: 'Bearer h' }))).toBe('h')
-    expect(getGovernmentAdminTokenFromRequest(requestWith())).toBeNull()
-  })
-
-  it('loads active accounts and rejects inactive ones', async () => {
-    const cookie = `govt-admin-token=${generateGovernmentAdminToken(govtAccount)}`
-    supabaseFake.queue('government_admin_accounts', { data: govtAccount }, { data: { ...govtAccount, active: false } })
-    await expect(getGovernmentAdminFromRequest(requestWith({ cookie }))).resolves.toMatchObject({ id: 8 })
-    await expect(getGovernmentAdminFromRequest(requestWith({ cookie }))).resolves.toBeNull()
-  })
-
-  it('rejects user session tokens', async () => {
-    supabaseFake.queue('government_admin_accounts', { data: govtAccount })
-    const header = `Bearer ${generateToken({ ...user, id: 8 })}`
-    await expect(getGovernmentAdminFromRequest(requestWith({ header }))).resolves.toBeNull()
   })
 })
 
