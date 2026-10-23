@@ -11,7 +11,7 @@ export function useOfferRequestActions(setOfferRequests: Dispatch<SetStateAction
   const handleOfferRequestStatusUpdate = async (requestId: number, newStatus: 'accepted' | 'rejected') => {
     try {
       setUpdatingOfferRequestId(requestId);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
 
       const response = await fetch(`/api/service-offers/requests/${requestId}`, {
         method: 'PUT',

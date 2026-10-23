@@ -21,7 +21,7 @@ export function useIndividualDashboardData(userId: number | undefined) {
   const fetchServiceOffers = async () => {
     try {
       setLoadingServiceOffers(true);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         setServiceOffers([]);
         return;
@@ -45,7 +45,7 @@ export function useIndividualDashboardData(userId: number | undefined) {
   const fetchOfferRequests = async () => {
     try {
       setLoadingOfferRequests(true);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         setOfferRequests([]);
         return;
@@ -67,7 +67,7 @@ export function useIndividualDashboardData(userId: number | undefined) {
   };
 
   const fetchMyApplications = async () => {
-    const token = sessionStorage.getItem('token');
+    const token = localStorage.getItem('token');
     if (!token) {
       setOngoingApplications([]);
       setHistoryApplications([]);
@@ -89,7 +89,7 @@ export function useIndividualDashboardData(userId: number | undefined) {
   const fetchCampaignVolunteerAssignments = async () => {
     try {
       setLoadingCampaignVolunteerAssignments(true);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         setCampaignVolunteerAssignments([]);
         return;

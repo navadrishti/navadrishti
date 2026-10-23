@@ -110,7 +110,7 @@ export default function CreateServiceRequestPage() {
     try {
       const response = await fetch(`/api/service-offers/${offerId}/clients`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('token')}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
         body: JSON.stringify({
           client_id: user?.id,
           client_type: user?.user_type,
@@ -157,7 +157,7 @@ export default function CreateServiceRequestPage() {
     setError('')
 
     try {
-      const token = sessionStorage.getItem('token')
+      const token = localStorage.getItem('token')
       const creationResults: Array<{ ok: boolean; error?: string }> = []
 
       for (let index = 0; index < needs.length; index += 1) {

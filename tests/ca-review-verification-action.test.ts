@@ -117,15 +117,30 @@ describe('applyCAVerificationAction on decided records', () => {
     expect(fake.queries.filter((call) => call.op !== 'select')).toHaveLength(0)
   })
 
-  it.each([
-    ['pending', 'pending'],
-    ['unverified', 'unverified'],
-    ['missing', null],
-  ])('decides a %s row', async (_label, rowStatus) => {
-    const fake = setup({ table: 'company_verifications', row: { verification_status: rowStatus } })
+  it('decides a pending row', async () => {
+    const fake = setup({ table: 'company_verifications', row: { verification_status: 'pending' } })
     const result = await applyCAVerificationAction({ type: 'companies', id: 4, action: 'reject', reason: 'x', ca })
     expect(result).toMatchObject({ status: 'rejected' })
     expect(fake.writes('company_verifications')).toHaveLength(1)
+  })
+
+  it.each([
+    ['unverified', 'unverified', 'pending'],
+    ['missing', null, 'pending'],
+    ['unverified user with a pending row', 'pending', 'unverified'],
+  ])('refuses a %s record', async (_label, rowStatus, userStatus) => {
+    const fake = setup({
+      table: 'company_verifications',
+      row: { verification_status: rowStatus },
+      user: { verification_status: userStatus },
+    })
+    await expect(applyCAVerificationAction({ type: 'companies', id: 4, action: 'approve', ca })).rejects.toMatchObject(
+      caError(
+        'Unverified records cannot be considered. Old documents were removed and cannot be used until the user resubmits.',
+        409
+      )
+    )
+    expect(fake.queries.filter((call) => call.op !== 'select')).toHaveLength(0)
   })
 
   it('refuses an NGO reverification when the row is no longer verified', async () => {
@@ -272,15 +287,22 @@ describe('applyCAVerificationAction concurrent decisions', () => {
     ])
   })
 
-  it('claims a row without a status with an is-null check', async () => {
+  it('refuses a row without a status instead of treating it as pending', async () => {
     const fake = setup({
       table: 'ngo_verifications',
       row: { verification_status: null },
       user: { verification_status: null },
     })
-    await applyCAVerificationAction({ type: 'ngos', id: 4, action: 'reject', reason: 'x', ca })
-    expect(fake.writes('ngo_verifications')[0].filters).toContainEqual(['filter', 'verification_status', 'is', null])
-    expect(fake.writes('users')[0].filters).toContainEqual(['filter', 'verification_status', 'is', null])
+    await expect(
+      applyCAVerificationAction({ type: 'ngos', id: 4, action: 'reject', reason: 'x', ca })
+    ).rejects.toMatchObject(
+      caError(
+        'Unverified records cannot be considered. Old documents were removed and cannot be used until the user resubmits.',
+        409
+      )
+    )
+    expect(fake.writes('ngo_verifications')).toHaveLength(0)
+    expect(fake.writes('users')).toHaveLength(0)
   })
 
   it.each(['approve', 'reject'] as const)(
@@ -509,14 +531,20 @@ describe('applyCAVerificationAction reverification', () => {
     )
   })
 
-  it('reviews a downgraded NGO as a fresh submission', async () => {
+  it('does not treat a downgraded NGO as a reviewable submission', async () => {
     const fake = setup({
       table: 'ngo_verifications',
       user: { verification_status: 'unverified', profile_data: { reverification_pending: true } },
     })
-    const result = await applyCAVerificationAction({ type: 'ngos', id: 4, action: 'reject', reason: 'x', ca })
+    await expect(
+      applyCAVerificationAction({ type: 'ngos', id: 4, action: 'reject', reason: 'x', ca })
+    ).rejects.toMatchObject(
+      caError(
+        'Unverified records cannot be considered. Old documents were removed and cannot be used until the user resubmits.',
+        409
+      )
+    )
     expect(mocks.reject).not.toHaveBeenCalled()
-    expect(result).toMatchObject({ status: 'rejected' })
-    expect(payloadOf(fake, 'users').verification_status).toBe('unverified')
+    expect(fake.writes('ngo_verifications')).toHaveLength(0)
   })
 })

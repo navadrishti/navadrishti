@@ -8,7 +8,7 @@ export function useVerificationStatus(enabled: boolean, emailOtpVerified: boolea
   useEffect(() => {
     const fetchAuthSnapshot = async () => {
       try {
-        const token = sessionStorage.getItem('token');
+        const token = localStorage.getItem('token');
         if (!token) return;
 
         const response = await fetch('/api/auth/me', {
@@ -31,7 +31,7 @@ export function useVerificationStatus(enabled: boolean, emailOtpVerified: boolea
 
     const fetchVerificationStatus = async () => {
       try {
-        const token = sessionStorage.getItem('token');
+        const token = localStorage.getItem('token');
         if (!token || !userType) return;
 
         const response = await fetch(`/api/verification/${userType}`, {

@@ -67,7 +67,7 @@ function NGODashboardContent() {
   useEffect(() => {
     if (!user?.id || user.user_type !== 'ngo') return;
 
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) return;
 
     fetch('/api/profile/update?scope=payout', {
@@ -143,7 +143,7 @@ function NGODashboardContent() {
                   Manage your NGO capability offers, service requests, and CSR projects
                 </p>
                                 </div>
-                </div>
+                                </div>
 
             {allVerified && acceptsPayments === false ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">

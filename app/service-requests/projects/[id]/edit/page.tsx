@@ -57,7 +57,7 @@ export default function EditProjectPage({ params }: { params: Promise<{ id: stri
     const load = async () => {
       setLoading(true)
       try {
-        const token = sessionStorage.getItem('token')
+        const token = localStorage.getItem('token')
         const resp = await fetch(`/api/service-request-projects?ngoId=${user.id}`, { headers: { Authorization: `Bearer ${token}` } })
         const data = await resp.json()
         if (resp.ok && data.success) {
@@ -99,7 +99,7 @@ export default function EditProjectPage({ params }: { params: Promise<{ id: stri
     }
     setSavingProject(true)
     try {
-      const token = sessionStorage.getItem('token')
+      const token = localStorage.getItem('token')
       const resp = await fetch(`/api/service-request-projects/${project.id}`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },

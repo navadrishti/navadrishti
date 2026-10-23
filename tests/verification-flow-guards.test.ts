@@ -454,4 +454,63 @@ describe('admin CA credentials and user downgrade', () => {
     expect(profile.ca_compliance_tags).toEqual([])
     expect(profile).not.toHaveProperty('ca_badge_number')
   })
+
+  it('removes submitted documents when an admin marks a user unverified', async () => {
+    supabaseFake.queue('users.select', {
+      data: {
+        id: 5,
+        user_type: 'ngo',
+        profile_data: {
+          ca_badge_number: 'ND-CA-1',
+          reverification_pending: true,
+          verification_documents: {
+            ngo: {
+              documents: { ngoPanCard: 'https://cdn.example.com/pan.pdf' },
+              reverification_documents: { ngoEightyGCertificate: 'https://cdn.example.com/80g.pdf' },
+            },
+          },
+        },
+      },
+    })
+    supabaseFake.queue('users.update', { data: { id: 5 } })
+    const response = await patchUser(
+      jsonRequest('http://localhost/api/admin/users/5', {
+        token: adminToken,
+        method: 'PATCH',
+        body: { verification_status: 'unverified' },
+      }),
+      { params: Promise.resolve({ id: '5' }) }
+    )
+    expect(response.status).toBe(200)
+    const profile = (supabaseFake.writes('users')[0].payload as { profile_data: Record<string, unknown> }).profile_data
+    const ngoBlock = (profile.verification_documents as Record<string, Record<string, unknown>>).ngo
+    expect(ngoBlock).not.toHaveProperty('documents')
+    expect(ngoBlock).not.toHaveProperty('reverification_documents')
+    expect(profile).not.toHaveProperty('reverification_pending')
+  })
+
+  it('keeps submitted documents when an admin moves a verified user to pending', async () => {
+    const profileData = {
+      ca_badge_number: 'ND-CA-1',
+      verification_documents: {
+        ngo: { documents: { ngoPanCard: 'https://cdn.example.com/pan.pdf' } },
+      },
+    }
+    supabaseFake.queue('users.select', {
+      data: { id: 5, user_type: 'ngo', verification_status: 'verified', profile_data: profileData },
+    })
+    supabaseFake.queue('users.update', { data: { id: 5 } })
+    const response = await patchUser(
+      jsonRequest('http://localhost/api/admin/users/5', {
+        token: adminToken,
+        method: 'PATCH',
+        body: { verification_status: 'pending' },
+      }),
+      { params: Promise.resolve({ id: '5' }) }
+    )
+    expect(response.status).toBe(200)
+    const payload = supabaseFake.writes('users')[0].payload as Record<string, unknown>
+    expect(payload.verification_status).toBe('pending')
+    expect(payload).not.toHaveProperty('profile_data')
+  })
 })

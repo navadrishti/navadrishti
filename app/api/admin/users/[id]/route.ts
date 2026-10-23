@@ -212,8 +212,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       }
       updatePayload.verification_status = nextVerification;
 
-      // When the admin explicitly downgrades to unverified, clear CA badge and
-      // submitted documents so the CA receives a clean resubmission.
+      // Pending and reverification keep the existing documents so a CA can still
+      // review them. Unverified strips documents so they cannot be considered again.
       if (nextVerification === 'unverified') {
         const currentProfile = parseJsonObject(existingUser.profile_data);
         const cleaned = parseJsonObject(

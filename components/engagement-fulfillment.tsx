@@ -55,7 +55,7 @@ export function InlineSkillServiceFulfillment({
 
     setSettling(true);
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) throw new Error('Please sign in again');
 
       const response = await fetch(`/api/service-assignments/${assignmentId}/settle`, {
@@ -228,7 +228,7 @@ export function InlineInfrastructureAssignment({
   const handleMarkComplete = async () => {
     setCompleting(true);
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) throw new Error('Please sign in again');
 
       const response = await fetch(

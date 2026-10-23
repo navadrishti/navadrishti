@@ -44,7 +44,7 @@ export function useNgoDashboardData(userId: number | undefined) {
 
   const fetchServiceOffers = async () => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) return;
 
       const response = await fetch('/api/service-offers?view=my-offers&include_expired=true&limit=50', {
@@ -66,7 +66,7 @@ export function useNgoDashboardData(userId: number | undefined) {
 
   const fetchServiceRequests = async () => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) return;
 
       const [ongoingResponse, historyResponse] = await Promise.all([
@@ -95,7 +95,7 @@ export function useNgoDashboardData(userId: number | undefined) {
   const fetchOfferApplications = async () => {
     try {
       setLoadingOfferApplications(true);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         setOfferApplications([]);
         return;
@@ -120,7 +120,7 @@ export function useNgoDashboardData(userId: number | undefined) {
   const fetchOfferRequests = async () => {
     try {
       setLoadingOfferRequests(true);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         setOfferRequests([]);
         return;
@@ -145,7 +145,7 @@ export function useNgoDashboardData(userId: number | undefined) {
   const fetchCompanyProjectApplications = async () => {
     try {
       setLoadingCompanyProjectApplications(true);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         setCompanyProjectApplications([]);
         return;
@@ -174,7 +174,7 @@ export function useNgoDashboardData(userId: number | undefined) {
   const fetchCSRTrackingAssignments = async () => {
     try {
       setLoadingCSRTrackingAssignments(true);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         setCsrTrackingAssignments([]);
         return;
@@ -203,7 +203,7 @@ export function useNgoDashboardData(userId: number | undefined) {
   const fetchCampaignLeadInvitations = async () => {
     try {
       setLoadingCampaignLeadInvitations(true);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         setCampaignLeadInvitations([]);
         return;
@@ -232,7 +232,7 @@ export function useNgoDashboardData(userId: number | undefined) {
   const fetchCampaignLeadAssignments = async () => {
     try {
       setLoadingCampaignLeadAssignments(true);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         setCampaignLeadAssignments([]);
         return;
@@ -263,7 +263,7 @@ export function useNgoDashboardData(userId: number | undefined) {
 
   const fetchCsrCapabilityRentals = async () => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         setCsrCapabilityRentals([]);
         return;
@@ -287,7 +287,7 @@ export function useNgoDashboardData(userId: number | undefined) {
   const fetchCampaignVolunteerAssignments = async () => {
     try {
       setLoadingCampaignVolunteerAssignments(true);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         setCampaignVolunteerAssignments([]);
         return;
@@ -313,7 +313,7 @@ export function useNgoDashboardData(userId: number | undefined) {
   const fetchCSRProjects = async () => {
     try {
       setLoadingCSRProjects(true);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         setCsrProjects([]);
         return;
@@ -342,7 +342,7 @@ export function useNgoDashboardData(userId: number | undefined) {
   const fetchProjectEvidenceTimeline = async (projectId: string) => {
     try {
       setLoadingEvidenceProjectId(projectId);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         return;
       }
@@ -389,7 +389,7 @@ export function useNgoDashboardData(userId: number | undefined) {
 
     const runAutoUpdate = async () => {
       try {
-        const token = sessionStorage.getItem('token');
+        const token = localStorage.getItem('token');
         if (!token) return;
 
         await fetch('/api/auto-update-statuses', {

@@ -4,7 +4,7 @@ import { getErrorMessage } from "@/lib/utils"
 import { toCampaign } from "./helpers"
 import type { Campaign, CampaignApiItem } from "./types"
 
-const readToken = () => (typeof window !== 'undefined' ? sessionStorage.getItem('token') : null)
+const readToken = () => (typeof window !== 'undefined' ? localStorage.getItem('token') : null)
 
 export function useCampaigns(currentUserId: number, userType?: string) {
   const [campaigns, setCampaigns] = useState<Campaign[]>([])

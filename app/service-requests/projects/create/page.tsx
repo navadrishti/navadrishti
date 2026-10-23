@@ -163,7 +163,7 @@ export default function CreateServiceRequestProjectPage() {
 
     setLoading(true)
     try {
-      const token = sessionStorage.getItem('token')
+      const token = localStorage.getItem('token')
       const response = await fetch('/api/service-request-projects', {
         method: 'POST',
         headers: {

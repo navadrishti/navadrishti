@@ -69,7 +69,7 @@ export function useServiceRequests() {
       const res = await fetch(`/api/service-requests/${id}`, {
         method: 'DELETE',
         headers: {
-          Authorization: `Bearer ${sessionStorage.getItem('token')}`,
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
           'Content-Type': 'application/json',
         },
       })
@@ -96,7 +96,7 @@ export function useServiceRequests() {
       const res = await fetch(`/api/service-request-projects/${id}`, {
         method: 'DELETE',
         headers: {
-          Authorization: `Bearer ${sessionStorage.getItem('token')}`,
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
           'Content-Type': 'application/json',
         },
       })

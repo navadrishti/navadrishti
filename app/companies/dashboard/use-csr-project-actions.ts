@@ -24,7 +24,7 @@ export function useCsrProjectActions(data: CompanyDashboardData, allVerified: bo
       }
 
       setInvitingProjectId(projectId);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         toast({ title: 'Error', description: 'Please login again', variant: 'destructive' });
         return;
@@ -65,7 +65,7 @@ export function useCsrProjectActions(data: CompanyDashboardData, allVerified: bo
   };
 
   const revokeLeadNgoInvite = async (projectId: string, ngoId: number) => {
-    const token = sessionStorage.getItem('token');
+    const token = localStorage.getItem('token');
     if (!token) {
       toast({ title: 'Error', description: 'Please login again', variant: 'destructive' });
       return;
@@ -110,7 +110,7 @@ export function useCsrProjectActions(data: CompanyDashboardData, allVerified: bo
 
     try {
       setApplyingProjectId(projectId);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         toast({ title: 'Error', description: 'Please login again', variant: 'destructive' });
         return;

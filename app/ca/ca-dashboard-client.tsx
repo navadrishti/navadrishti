@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowRight, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
@@ -15,7 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { CAVerificationReview, caReviewDescription, isCaReviewLocked, type CAReviewItem } from '@/components/ca-verification-review';
+import { CAVerificationReview, caReviewDescription, canCaReviewAct, isCaReviewLocked, type CAReviewItem } from '@/components/ca-verification-review';
 import { getErrorMessage } from '@/lib/utils';
 
 interface Individual {
@@ -128,6 +129,7 @@ export default function CADashboardClient() {
   const [selectedType, setSelectedType] = useState<'individuals' | 'companies' | 'ngos' | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [reviewLoading, setReviewLoading] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
   const [complianceTags, setComplianceTags] = useState<string[]>([]);
 
   const fetchData = async () => {
@@ -186,6 +188,7 @@ export default function CADashboardClient() {
   const handleItemClick = async (item: CAReviewItem, type: 'individuals' | 'companies' | 'ngos') => {
     setSelectedItem(item);
     setSelectedType(type);
+    setRejectionReason('');
     setComplianceTags(
       isCaReviewLocked(item) && Array.isArray(item.allotted_compliance_tags)
         ? item.allotted_compliance_tags
@@ -210,9 +213,14 @@ export default function CADashboardClient() {
     }
   };
 
-  const handleAction = async () => {
+  const handleAction = async (action: 'approve' | 'reject') => {
     if (!selectedItem || !selectedType) return;
-    if (isCaReviewLocked(selectedItem) || selectedItem.verification_status !== 'pending') return;
+    if (!canCaReviewAct(selectedItem)) return;
+
+    if (action === 'reject' && !rejectionReason.trim()) {
+      alert('Please provide a reason for rejection');
+      return;
+    }
 
     setActionLoading(true);
     try {
@@ -223,14 +231,15 @@ export default function CADashboardClient() {
         body: JSON.stringify({
           entity_type: selectedType,
           entity_id: selectedItem.id,
-          action: 'approve',
+          action: action === 'approve' ? 'approve' : 'reject',
+          reason: rejectionReason,
           compliance_tags: selectedType === 'ngos' ? complianceTags : undefined,
         })
       });
 
       const data = await response.json().catch(() => ({}));
       if (response.ok) {
-        alert(data.message || `${selectedItem.name || selectedItem.company_name || selectedItem.ngo_name} approved`);
+        alert(data.message || `${selectedItem.name || selectedItem.company_name || selectedItem.ngo_name} ${action === 'approve' ? 'approved' : 'rejected'}`);
         if (selectedType === 'individuals') {
           setIndividuals(individuals.filter(ind => ind.id !== selectedItem.id));
         } else if (selectedType === 'companies') {
@@ -240,6 +249,7 @@ export default function CADashboardClient() {
         }
         setSelectedItem(null);
         setSelectedType(null);
+        setRejectionReason('');
         setComplianceTags([]);
       } else {
         alert(data.error || 'Failed to process action');
@@ -268,7 +278,7 @@ export default function CADashboardClient() {
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-slate-900">CA Portal</h1>
-        <p className="mt-1 text-slate-500">Review and approve pending individuals, companies, and NGOs</p>
+        <p className="mt-1 text-slate-500">Review, approve, or reject pending individuals, companies, and NGOs</p>
       </div>
 
       {/* Toolbar */}
@@ -428,18 +438,35 @@ export default function CADashboardClient() {
                 readOnly={isCaReviewLocked(selectedItem)}
               />
 
-              {!isCaReviewLocked(selectedItem) && selectedItem.verification_status === 'pending' ? (
+              {canCaReviewAct(selectedItem) ? (
                 <>
-              {/* Action Buttons */}
-              <div className="flex gap-3 pt-4">
-                <Button
-                  onClick={handleAction}
-                  disabled={actionLoading || reviewLoading}
-                  className="flex-1 bg-green-600 hover:bg-green-700"
-                >
+                <div>
+                  <label className="text-sm font-medium">Rejection Reason (if rejecting)</label>
+                  <Textarea
+                    value={rejectionReason}
+                    onChange={(e) => setRejectionReason(e.target.value)}
+                    placeholder="Provide reason for rejection..."
+                    className="mt-1"
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <Button
+                    onClick={() => handleAction('approve')}
+                    disabled={actionLoading || reviewLoading}
+                    className="flex-1 bg-green-600 hover:bg-green-700"
+                  >
                     {actionLoading ? 'Processing...' : 'Approve'}
                   </Button>
-              </div>
+                  <Button
+                    onClick={() => handleAction('reject')}
+                    disabled={actionLoading || reviewLoading}
+                    variant="destructive"
+                    className="flex-1"
+                  >
+                    {actionLoading ? 'Processing...' : 'Reject'}
+                  </Button>
+                </div>
                 </>
               ) : null}
             </div>

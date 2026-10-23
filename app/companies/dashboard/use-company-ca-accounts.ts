@@ -25,7 +25,7 @@ export function useCompanyCaAccounts(userId: number | undefined, isTabActive: bo
 
   const fetchAvailableCompanyCaIds = async () => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) return;
 
       const response = await fetch('/api/evidence-verification/accounts?query=available-ca-ids', {
@@ -50,7 +50,7 @@ export function useCompanyCaAccounts(userId: number | undefined, isTabActive: bo
   const fetchCompanyCAAccounts = async () => {
     try {
       setLoadingCompanyCAAccounts(true);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
 
       if (!token) {
         setCompanyCAAccounts([]);
@@ -105,7 +105,7 @@ export function useCompanyCaAccounts(userId: number | undefined, isTabActive: bo
 
     try {
       setCreatingCompanyCA(true);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
 
       if (!token) {
         setCompanyCAFeedback({ type: 'error', message: 'Please login again to continue.' });
@@ -175,7 +175,7 @@ export function useCompanyCaAccounts(userId: number | undefined, isTabActive: bo
     try {
       setResettingCaPassword(true);
       setCompanyCAFeedback(null);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         setCompanyCAFeedback({ type: 'error', message: 'Please login again to continue.' });
         return;
@@ -221,7 +221,7 @@ export function useCompanyCaAccounts(userId: number | undefined, isTabActive: bo
     }
 
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         setCompanyCAFeedback({ type: 'error', message: 'Please login again to continue.' });
         return;
@@ -263,7 +263,7 @@ export function useCompanyCaAccounts(userId: number | undefined, isTabActive: bo
     }
 
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         setCompanyCAFeedback({ type: 'error', message: 'Please login again to continue.' });
         return;

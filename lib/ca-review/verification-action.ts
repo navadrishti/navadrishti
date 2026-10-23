@@ -133,11 +133,15 @@ export async function applyCAVerificationAction(options: {
     if (currentUserStatus === 'suspended') {
       throw new CAReviewError('This account is suspended by an admin and cannot be reviewed.', 409)
     }
-    if (rowStatus !== 'pending') {
-      throw new CAReviewError('Only pending verification records can be approved by a CA. Admins manage other status changes.', 409)
-    }
-    if (action !== 'approve') {
-      throw new CAReviewError('CA reviewers can only approve pending verification records', 409)
+    if (rowStatus !== 'pending' || currentUserStatus !== 'pending') {
+      const statusLabel = rowStatus !== 'pending' ? rowStatus : currentUserStatus || 'unverified'
+      if (statusLabel === 'unverified') {
+        throw new CAReviewError(
+          'Unverified records cannot be considered. Old documents were removed and cannot be used until the user resubmits.',
+          409
+        )
+      }
+      throw new CAReviewError(`This record is ${statusLabel}. It can be reviewed again after the user resubmits.`, 409)
     }
   }
   const rowRecord = parseJsonObject(row)

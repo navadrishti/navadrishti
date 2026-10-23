@@ -36,6 +36,13 @@ export function isCaReviewLocked(item: Record<string, unknown> | null | undefine
   )
 }
 
+export function canCaReviewAct(item: Record<string, unknown> | null | undefined) {
+  if (!item || isCaReviewLocked(item)) return false
+  const status = String(item.verification_status || '').toLowerCase()
+  if (item.reverification_pending && status === 'verified') return true
+  return status === 'pending'
+}
+
 export function comparisonResult(row: CAFieldComparison) {
   if (row.status === 'match' || row.match) return { text: 'Match', className: 'text-green-700' }
   if (row.status === 'incomplete') return { text: 'Incomplete', className: 'text-slate-600' }

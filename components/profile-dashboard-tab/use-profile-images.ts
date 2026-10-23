@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 
 async function uploadImage(file: File): Promise<string> {
-  const token = sessionStorage.getItem('token')
+  const token = localStorage.getItem('token')
   if (!token) {
     throw new Error('Authentication required. Please log in again.')
   }
@@ -30,7 +30,7 @@ async function uploadImage(file: File): Promise<string> {
 }
 
 async function persistCoverImage(imageUrl: string) {
-  const token = sessionStorage.getItem('token')
+  const token = localStorage.getItem('token')
   if (!token) {
     throw new Error('Authentication required. Please log in again.')
   }

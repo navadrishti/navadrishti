@@ -167,14 +167,15 @@ describe('listCAQueue', () => {
 
   it.each([
     ['verified', ['eq', 'verification_status', 'verified']],
-    ['unverified', ['in', 'verification_status', ['pending', 'unverified']]],
+    ['unverified', ['eq', 'verification_status', 'pending']],
+    ['pending', ['eq', 'verification_status', 'pending']],
   ])('filters %s rows', async (status, filter) => {
     const fake = useDb()
     await listCAQueue('individuals', status)
     expect(fake.queries[0].filters).toContainEqual(filter)
   })
 
-  it('drops unverified rows that have nothing to review', async () => {
+  it('drops unverified rows even when leftover documents exist', async () => {
     useDb({
       'individual_verifications.select': [
         {
@@ -187,7 +188,7 @@ describe('listCAQueue', () => {
       ],
     })
     const items = await listCAQueue('individuals', 'unverified')
-    expect(items.map((item) => item.id)).toEqual([2, 3])
+    expect(items.map((item) => item.id)).toEqual([2])
   })
 
   it('keeps every row for other statuses', async () => {

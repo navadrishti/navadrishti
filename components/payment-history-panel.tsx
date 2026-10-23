@@ -86,7 +86,7 @@ export function PaymentHistoryPanel({
       try {
         setLoading(true)
         setLoadError(false)
-        const token = sessionStorage.getItem('token')
+        const token = localStorage.getItem('token')
         if (!token) {
           setPayments([])
           return

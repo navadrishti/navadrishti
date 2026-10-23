@@ -13,7 +13,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { CAVerificationReview, caReviewDescription, isCaReviewLocked, type CAReviewItem } from '@/components/ca-verification-review';
+import { Textarea } from '@/components/ui/textarea';
+import { CAVerificationReview, caReviewDescription, canCaReviewAct, isCaReviewLocked, type CAReviewItem } from '@/components/ca-verification-review';
 
 type VerificationDetail = CAReviewItem & {
   user_id: number;
@@ -29,6 +30,7 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
   const [selectedItem, setSelectedItem] = useState<VerificationDetail | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [reviewLoading, setReviewLoading] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
   const [complianceTags, setComplianceTags] = useState<string[]>([]);
   const [loadError, setLoadError] = useState('');
 
@@ -61,6 +63,7 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
 
   const openReview = async (item: VerificationDetail) => {
     setSelectedItem(item);
+    setRejectionReason('');
     setComplianceTags(
       isCaReviewLocked(item) && Array.isArray(item.allotted_compliance_tags)
         ? item.allotted_compliance_tags
@@ -85,9 +88,14 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
     }
   };
 
-  const handleAction = async () => {
+  const handleAction = async (action: 'approve' | 'reject') => {
     if (!selectedItem) return;
-    if (isCaReviewLocked(selectedItem) || selectedItem.verification_status !== 'pending') return;
+    if (!canCaReviewAct(selectedItem)) return;
+
+    if (action === 'reject' && !rejectionReason.trim()) {
+      alert('Please provide a reason for rejection');
+      return;
+    }
 
     setActionLoading(true);
     try {
@@ -98,16 +106,18 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
         body: JSON.stringify({
           entity_type: type,
           entity_id: selectedItem.id,
-          action: 'approve',
+          action: action === 'approve' ? 'approve' : 'reject',
+          reason: rejectionReason,
           compliance_tags: type === 'ngos' ? complianceTags : undefined,
         })
       });
 
       const data = await response.json().catch(() => ({}));
       if (response.ok) {
-        alert(data.message || `${selectedItem.name || selectedItem.company_name || selectedItem.ngo_name} approved`);
+        alert(data.message || `${selectedItem.name || selectedItem.company_name || selectedItem.ngo_name} ${action === 'approve' ? 'approved' : 'rejected'}`);
         setItems(items.filter(item => item.id !== selectedItem.id));
         setSelectedItem(null);
+        setRejectionReason('');
         setComplianceTags([]);
       } else {
         alert(data.error || 'Failed to process action');
@@ -269,16 +279,33 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
                   readOnly={isCaReviewLocked(selectedItem)}
                 />
 
-                {!isCaReviewLocked(selectedItem) && selectedItem.verification_status === 'pending' ? (
+                {canCaReviewAct(selectedItem) ? (
                 <>
-                {/* Action Buttons */}
+                <div>
+                  <label className="text-sm font-medium">Rejection Reason (if rejecting)</label>
+                  <Textarea
+                    value={rejectionReason}
+                    onChange={(e) => setRejectionReason(e.target.value)}
+                    placeholder="Provide reason for rejection..."
+                    className="mt-1"
+                  />
+                </div>
+
                 <div className="flex gap-3 pt-4">
                   <Button
-                    onClick={handleAction}
+                    onClick={() => handleAction('approve')}
                     disabled={actionLoading || reviewLoading}
                     className="flex-1 bg-green-600 hover:bg-green-700"
                   >
                     {actionLoading ? 'Processing...' : 'Approve'}
+                  </Button>
+                  <Button
+                    onClick={() => handleAction('reject')}
+                    disabled={actionLoading || reviewLoading}
+                    variant="destructive"
+                    className="flex-1"
+                  >
+                    {actionLoading ? 'Processing...' : 'Reject'}
                   </Button>
                 </div>
                 </>

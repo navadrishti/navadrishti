@@ -60,7 +60,7 @@ export function DelhiveryFulfillment({
   const call = async (action: 'book' | 'sync') => {
     setBusy(action);
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) throw new Error('Please sign in again');
       const response = await fetch(
         `/api/service-requests/${serviceRequestId}/volunteers/${volunteerApplicationId}/delivery/sync`,

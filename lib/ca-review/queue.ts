@@ -102,8 +102,7 @@ export function mapQueueItem(type: CAQueueType, row: VerificationQueueRow): CAQu
 
 function hasReviewableSubmission(item: CAQueueItem) {
   if (item.reverification_pending) return true
-  if (item.verification_status === 'pending') return true
-  return item.documents_total > 0
+  return item.verification_status === 'pending'
 }
 
 export async function listCAQueue(type: CAQueueType, status: string) {

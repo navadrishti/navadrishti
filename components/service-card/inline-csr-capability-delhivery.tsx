@@ -31,7 +31,7 @@ async function postRentalDeliveryAction(
   fallbackError: string,
   { campaignId, offerId, leg }: { campaignId: string; offerId: number; leg: DeliveryLeg }
 ) {
-  const token = sessionStorage.getItem('token')
+  const token = localStorage.getItem('token')
   if (!token) throw new Error('Please sign in again')
 
   const response = await fetch('/api/campaigns/lead-assignments', {

@@ -9,7 +9,7 @@ import { DocumentsCard } from './ca-verification-review/documents-card'
 import type { CAReviewEntityType, CAReviewItem } from './ca-verification-review/types'
 
 export { DocumentFileViewer } from './ca-verification-review/document-file-viewer'
-export { caReviewDescription, isCaReviewLocked } from './ca-verification-review/helpers'
+export { caReviewDescription, canCaReviewAct, isCaReviewLocked } from './ca-verification-review/helpers'
 export type { CAReviewItem } from './ca-verification-review/types'
 
 export function CAVerificationReview({

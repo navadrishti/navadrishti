@@ -181,7 +181,7 @@ export async function uploadVerificationDocument(
   key: DocumentKey,
   category: VerificationCategory
 ): Promise<string> {
-  const token = sessionStorage.getItem('token');
+  const token = localStorage.getItem('token');
   if (!token) {
     throw new Error('Authentication required. Please log in again.');
   }

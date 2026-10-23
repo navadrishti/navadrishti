@@ -54,7 +54,7 @@ export function useCompanyDashboardData({
   const fetchProjectOpportunities = async () => {
     try {
       setLoadingProjectOpportunities(true);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         setProjectOpportunities([]);
         return;
@@ -86,7 +86,7 @@ export function useCompanyDashboardData({
   const fetchCSRTrackingAssignments = async () => {
     try {
       setLoadingCSRTrackingAssignments(true);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         setCsrTrackingAssignments([]);
         return;
@@ -114,7 +114,7 @@ export function useCompanyDashboardData({
   const fetchPublishedCsrCampaigns = async () => {
     try {
       setLoadingPublishedCsrCampaigns(true);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token || !userId) {
         setPublishedCsrCampaigns([]);
         return;
@@ -160,7 +160,7 @@ export function useCompanyDashboardData({
   const fetchServiceOffers = async () => {
     try {
       setLoadingServiceOffers(true);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         setServiceOffers([]);
         return;
@@ -185,7 +185,7 @@ export function useCompanyDashboardData({
   const fetchOfferRequests = async () => {
     try {
       setLoadingOfferRequests(true);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         setOfferRequests([]);
         return;
