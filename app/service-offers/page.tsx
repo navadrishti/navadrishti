@@ -154,7 +154,7 @@ function ServiceOffersPageContent() {
 
     try {
       setDeleting(offerId);
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
 
       const response = await fetch(`/api/service-offers/${offerId}`, {
         method: 'DELETE',

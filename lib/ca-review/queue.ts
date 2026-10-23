@@ -110,7 +110,7 @@ export async function listCAQueue(type: CAQueueType, status: string) {
   const { table } = TYPE_CONFIG[type]
   let query = supabase.from(table).select(selectColumns(type)).order('updated_at', { ascending: false }).limit(100)
   if (status === 'verified') query = query.eq('verification_status', 'verified')
-  else if (status === 'unverified') query = query.in('verification_status', ['pending', 'unverified'])
+  else if (status === 'unverified' || status === 'pending') query = query.eq('verification_status', 'pending')
 
   const { data, error } = await query
 
@@ -120,7 +120,7 @@ export async function listCAQueue(type: CAQueueType, status: string) {
   }
 
   let mapped = ((data || []) as unknown as VerificationQueueRow[]).map((row) => mapQueueItem(type, row))
-  if (status === 'unverified') {
+  if (status === 'unverified' || status === 'pending') {
     mapped = mapped.filter(hasReviewableSubmission)
     if (type === 'ngos') {
       const { data: verifiedRows, error: verifiedError } = await supabase

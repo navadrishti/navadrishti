@@ -121,7 +121,7 @@ export function NgoNeedDashboardInline({
   ) => {
     setUpdatingId(assignment.id);
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       if (!token) {
         throw new Error('Please sign in again');
       }

@@ -29,7 +29,7 @@ export function ProjectSuggestionsSection({
   onSelect: (project: ProjectSuggestion) => void
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-slate-950">Existing project suggestions</p>
@@ -134,21 +134,21 @@ export function ServiceMatchesSection({
           <div className="rounded-xl border border-red-200 bg-white p-3 text-sm text-red-700">{error}</div>
         ) : suggestions.length > 0 ? (
           suggestions.slice(0, 3).map((service) => (
-            <div key={service.service_offer_id} className="rounded-xl border border-slate-200 bg-white p-3">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div key={service.service_offer_id} className="min-w-0 rounded-xl border border-slate-200 bg-white p-3">
+              <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-slate-950">{service.capability_name}</p>
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="break-words text-sm font-semibold text-slate-950 [overflow-wrap:anywhere]">{service.capability_name}</p>
+                  <p className="mt-1 break-words text-xs text-slate-500">
                     Offer #{service.service_offer_id}
                     {service.offer_type && service.offer_type !== "unknown" ? ` • ${formatStatusLabel(service.offer_type)}` : ""}
                   </p>
                 </div>
-                <div className="flex shrink-0 items-center gap-2 self-start">
-                  <span className="whitespace-nowrap rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">Score {service.score}</span>
+                <div className="flex w-full min-w-0 flex-wrap items-center gap-2 self-start sm:w-auto sm:flex-nowrap">
+                  <span className="shrink-0 whitespace-nowrap rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">Score {service.score}</span>
                   <Button
                     type="button"
                     size="sm"
-                    className="whitespace-nowrap"
+                    className="min-w-0 flex-1 whitespace-nowrap sm:flex-none"
                     disabled={
                       paidOfferIds.includes(service.service_offer_id) ||
                       !actionsEnabled ||

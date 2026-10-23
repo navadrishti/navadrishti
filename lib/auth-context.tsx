@@ -161,19 +161,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const persistAuthSnapshot = useCallback((nextToken: string | null, nextUser: User | null) => {
     if (nextToken) {
-      localStorage.setItem('token', nextToken);
       sessionStorage.setItem('token', nextToken);
     } else {
-      localStorage.removeItem('token');
       sessionStorage.removeItem('token');
     }
 
     if (nextUser) {
       const serializedUser = JSON.stringify(nextUser);
-      localStorage.setItem('user', serializedUser);
       sessionStorage.setItem('user', serializedUser);
     } else {
-      localStorage.removeItem('user');
       sessionStorage.removeItem('user');
     }
   }, []);
@@ -238,8 +234,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
         return;
       }
 
-      const storedToken = sessionStorage.getItem('token') || localStorage.getItem('token');
-      const storedUser = sessionStorage.getItem('user') || localStorage.getItem('user');
+      const storedToken = sessionStorage.getItem('token');
+      const storedUser = sessionStorage.getItem('user');
 
       if (storedToken && storedToken !== 'undefined' && storedToken !== 'null') {
         const cleanToken = storedToken.replace(/["']/g, '').trim();
@@ -514,9 +510,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     };
 
     const storageListener = (e: StorageEvent) => {
-      if (e.key === 'token' || e.key === 'user') {
-        rehydrateHandler();
-      }
+      if (e.storageArea === sessionStorage && (e.key === 'token' || e.key === 'user')) rehydrateHandler();
     };
 
     window.addEventListener('storage', storageListener);

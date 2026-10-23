@@ -11,14 +11,14 @@ export async function POST(request: NextRequest) {
     if (!body || typeof body !== 'object') {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
     }
-    const { entity_type, entity_id, action, reason, compliance_tags } = body;
+    const { entity_type, entity_id, action, compliance_tags } = body;
 
     if (!allowedTypes.includes(entity_type)) {
       return NextResponse.json({ error: 'Invalid entity type' }, { status: 400 });
     }
 
-    if (!['approve', 'reject'].includes(action)) {
-      return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    if (action !== 'approve') {
+      return NextResponse.json({ error: 'CA reviewers can only approve pending verification records' }, { status: 403 });
     }
 
     const id = Number(entity_id);
@@ -26,15 +26,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid entity id' }, { status: 400 });
     }
 
-    if (action === 'reject' && !String(reason || '').trim()) {
-      return NextResponse.json({ error: 'Rejection reason is required' }, { status: 400 });
-    }
-
     const data = await applyCAVerificationAction({
       type: entity_type,
       id,
       action,
-      reason: String(reason || '').trim(),
       compliance_tags,
       ca,
     });

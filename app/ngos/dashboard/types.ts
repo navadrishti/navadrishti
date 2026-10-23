@@ -77,6 +77,7 @@ export interface CampaignVolunteerAssignment {
     days_attended?: number;
     total_entries?: number;
   };
+  tracking?: CampaignTracking | null;
 }
 
 export interface CampaignLeadInvitation {

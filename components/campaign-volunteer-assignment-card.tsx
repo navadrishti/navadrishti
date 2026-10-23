@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button'
 import { formatDisplayDate, formatCampaignLeadLifecycleLabel, type CampaignLeadLifecycle } from '@/lib/format-date'
 import { cn } from '@/lib/utils'
 import { VerifiedAccountName } from '@/components/verification-badge'
+import { CampaignTrackingPanel } from '@/components/campaign-tracking-panel'
+import type { CampaignTracking } from '@/lib/campaign-tracking'
 
 export interface CampaignVolunteerAssignmentItem {
   id: string
@@ -29,6 +31,7 @@ export interface CampaignVolunteerAssignmentItem {
     days_attended?: number
     total_entries?: number
   }
+  tracking?: CampaignTracking | null
 }
 
 function getLifecycleBadgeClass(lifecycle: CampaignLeadLifecycle) {
@@ -104,6 +107,8 @@ export function CampaignVolunteerAssignmentCard({
         {assignment.campaign_description ? (
           <p className="text-sm text-muted-foreground line-clamp-3">{assignment.campaign_description}</p>
         ) : null}
+
+        {assignment.tracking ? <CampaignTrackingPanel tracking={assignment.tracking} /> : null}
 
         <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm md:grid-cols-3">
           <div>

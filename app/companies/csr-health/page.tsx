@@ -38,7 +38,7 @@ export default function CompanyCSRHealthPage() {
       try {
         setLoading(true)
         setLoadError('')
-        const token = localStorage.getItem("token")
+        const token = sessionStorage.getItem("token")
 
         if (!token) {
           setProjects([])

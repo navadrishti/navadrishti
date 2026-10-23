@@ -13,6 +13,40 @@ const allowedVerificationStatuses = new Set(['unverified', 'pending', 'verified'
 const USER_SELECT =
   'id, name, email, phone, user_type, verification_status, account_status, locked_until, city, state_province, profile_image, profile_data, created_at, updated_at';
 
+function clearVerificationDocuments(profileData: unknown, userType: unknown): Json {
+  const current = parseJsonObject(profileData);
+  const verificationDocuments = { ...parseJsonObject(current.verification_documents) };
+  const profileKey =
+    String(userType || '').toLowerCase() === 'individual'
+      ? 'individual'
+      : String(userType || '').toLowerCase() === 'company'
+        ? 'company'
+        : String(userType || '').toLowerCase() === 'ngo'
+          ? 'ngo'
+          : null;
+
+  if (profileKey) {
+    const typeBlock = { ...parseJsonObject(verificationDocuments[profileKey]) };
+    delete typeBlock.documents;
+    delete typeBlock.reverification_documents;
+    delete typeBlock.ocr_cache;
+    delete typeBlock.ocr_expiries;
+    verificationDocuments[profileKey] = typeBlock;
+  }
+
+  const next = {
+    ...current,
+    verification_documents: verificationDocuments,
+  } as Record<string, Json>;
+  if (profileKey === 'ngo') {
+    delete next.compliance_documents;
+    delete next.document_expiries;
+    delete next.document_expiry_unverified_at;
+    delete next.document_expiry_unverified_docs;
+  }
+  return next;
+}
+
 async function updateUser(userId: number, updatePayload: TablesUpdate<'users'>) {
   const { data, error } = await supabase
     .from('users')
@@ -179,10 +213,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       updatePayload.verification_status = nextVerification;
 
       // When the admin explicitly downgrades to unverified, clear CA badge and
-      // reverification flag from profile_data so the user sees the correct state.
+      // submitted documents so the CA receives a clean resubmission.
       if (nextVerification === 'unverified') {
         const currentProfile = parseJsonObject(existingUser.profile_data);
-        const cleaned = { ...currentProfile };
+        const cleaned = parseJsonObject(
+          clearVerificationDocuments(currentProfile, existingUser.user_type)
+        );
         delete cleaned.ca_badge_number;
         delete cleaned.reverification_pending;
         delete cleaned.allotted_compliance_tags;

@@ -86,7 +86,7 @@ export function PayoutAccountPanel({ userType }: { userType: 'ngo' | 'individual
   const [status, setStatus] = useState<PayoutAccountResponse | null>(null)
 
   const loadStatus = useCallback(async () => {
-    const token = localStorage.getItem('token')
+    const token = sessionStorage.getItem('token')
     if (!token) return
 
     setLoading(true)
@@ -143,7 +143,7 @@ export function PayoutAccountPanel({ userType }: { userType: 'ngo' | 'individual
       return
     }
 
-    const token = localStorage.getItem('token')
+    const token = sessionStorage.getItem('token')
     if (!token) {
       toast.error('Please sign in again.')
       return
@@ -179,7 +179,7 @@ export function PayoutAccountPanel({ userType }: { userType: 'ngo' | 'individual
   }
 
   const handleConnect = async () => {
-    const token = localStorage.getItem('token')
+    const token = sessionStorage.getItem('token')
     if (!token) {
       toast.error('Please sign in again.')
       return

@@ -9,7 +9,7 @@ export function useOfferRequestActions(setOfferRequests: Dispatch<SetStateAction
   const [updatingOfferRequestId, setUpdatingOfferRequestId] = useState<number | null>(null);
 
   const handleOfferRequestStatusUpdate = async (requestId: number, newStatus: 'accepted' | 'rejected') => {
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     if (!token) return;
 
     try {

@@ -81,7 +81,7 @@ export function ProfileDashboardTab() {
   const fetchProfile = async () => {
     try {
       setLoading(true)
-      const token = localStorage.getItem('token')
+      const token = sessionStorage.getItem('token')
       if (!token || !user?.id) return
 
       const response = await fetch('/api/auth/me', {
@@ -116,7 +116,7 @@ export function ProfileDashboardTab() {
 
   const fetchVerificationStatus = async () => {
     try {
-      const token = localStorage.getItem('token')
+      const token = sessionStorage.getItem('token')
       if (!token || !user?.user_type) return
 
       const response = await fetch(`/api/verification/${user.user_type}`, {

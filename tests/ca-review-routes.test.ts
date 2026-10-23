@@ -389,15 +389,16 @@ describe('POST /api/ca/verification-action', () => {
   it.each([
     [{ entity_type: 'admins', entity_id: 1, action: 'approve' }, 'Invalid entity type'],
     [{ entity_id: 1, action: 'approve' }, 'Invalid entity type'],
-    [{ entity_type: 'ngos', entity_id: 1, action: 'request_changes' }, 'Invalid action'],
-    [{ entity_type: 'ngos', entity_id: 1 }, 'Invalid action'],
+    [{ entity_type: 'ngos', entity_id: 1, action: 'request_changes' }, 'CA reviewers can only approve pending verification records'],
+    [{ entity_type: 'ngos', entity_id: 1 }, 'CA reviewers can only approve pending verification records'],
     [{ entity_type: 'ngos', entity_id: 0, action: 'approve' }, 'Invalid entity id'],
     [{ entity_type: 'ngos', entity_id: 'abc', action: 'approve' }, 'Invalid entity id'],
     [{ entity_type: 'ngos', entity_id: 2.5, action: 'approve' }, 'Invalid entity id'],
-    [{ entity_type: 'ngos', entity_id: 1, action: 'reject' }, 'Rejection reason is required'],
-    [{ entity_type: 'ngos', entity_id: 1, action: 'reject', reason: '   ' }, 'Rejection reason is required'],
+    [{ entity_type: 'ngos', entity_id: 1, action: 'reject' }, 'CA reviewers can only approve pending verification records'],
+    [{ entity_type: 'ngos', entity_id: 1, action: 'reject', reason: '   ' }, 'CA reviewers can only approve pending verification records'],
   ])('rejects %j', async (body, error) => {
-    expect(await read(await act(body))).toEqual({ status: 400, body: { error } })
+    const expectedStatus = String(error).startsWith('CA reviewers') ? 403 : 400
+    expect(await read(await act(body))).toEqual({ status: expectedStatus, body: { error } })
     expect(mocks.action).not.toHaveBeenCalled()
   })
 
@@ -418,16 +419,9 @@ describe('POST /api/ca/verification-action', () => {
       type: 'ngos',
       id: 12,
       action: 'approve',
-      reason: '',
       compliance_tags: ['csr1'],
       ca: expect.objectContaining(caPayload),
     })
-  })
-
-  it('passes a trimmed rejection reason', async () => {
-    mocks.action.mockResolvedValue({ message: 'Acme rejected' })
-    await act({ entity_type: 'companies', entity_id: 4, action: 'reject', reason: '  Blurry GST  ' })
-    expect(mocks.action).toHaveBeenCalledWith(expect.objectContaining({ type: 'companies', action: 'reject', reason: 'Blurry GST' }))
   })
 
   it.each([

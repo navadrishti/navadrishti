@@ -43,8 +43,8 @@ describe('AuthProvider', () => {
   })
 
   it('hydrates a stored session from /api/auth/me', async () => {
-    localStorage.setItem('token', 'stored-token')
-    localStorage.setItem('user', JSON.stringify({ ...alice, name: 'Stale Alice' }))
+    sessionStorage.setItem('token', 'stored-token')
+    sessionStorage.setItem('user', JSON.stringify({ ...alice, name: 'Stale Alice' }))
     const fetchMock = mockFetch((url) => (url === '/api/auth/me' ? jsonResponse({ user: alice }) : jsonResponse({}, 404)))
 
     renderWithAuth()
@@ -55,12 +55,12 @@ describe('AuthProvider', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/auth/me', {
       headers: { Authorization: 'Bearer stored-token' },
     })
-    expect(JSON.parse(localStorage.getItem('user') ?? '{}').name).toBe('Alice')
+    expect(JSON.parse(sessionStorage.getItem('user') ?? '{}').name).toBe('Alice')
   })
 
   it('clears a stored session rejected by the server', async () => {
-    localStorage.setItem('token', 'expired-token')
-    localStorage.setItem('user', JSON.stringify(alice))
+    sessionStorage.setItem('token', 'expired-token')
+    sessionStorage.setItem('user', JSON.stringify(alice))
     mockFetch(() => jsonResponse({ error: 'Unauthorized' }, 401))
 
     renderWithAuth()
@@ -68,8 +68,8 @@ describe('AuthProvider', () => {
     await screen.findByText('loading: false')
     expect(screen.getByText('user: none')).toBeInTheDocument()
     expect(screen.getByText('token: none')).toBeInTheDocument()
-    expect(localStorage.getItem('token')).toBeNull()
-    expect(localStorage.getItem('user')).toBeNull()
+    expect(sessionStorage.getItem('token')).toBeNull()
+    expect(sessionStorage.getItem('user')).toBeNull()
   })
 
   it('logs in and persists the token and user', async () => {
@@ -86,9 +86,8 @@ describe('AuthProvider', () => {
     await screen.findByText('user: Alice')
     await screen.findByText('loading: false')
     expect(screen.getByText('token: new-token')).toBeInTheDocument()
-    expect(localStorage.getItem('token')).toBe('new-token')
     expect(sessionStorage.getItem('token')).toBe('new-token')
-    expect(JSON.parse(localStorage.getItem('user') ?? '{}').id).toBe(7)
+    expect(JSON.parse(sessionStorage.getItem('user') ?? '{}').id).toBe(7)
 
     const loginCall = fetchMock.mock.calls.find(([url]) => url === '/api/auth/login')
     expect(requestBody(loginCall?.[1])).toEqual({ email: 'alice@example.com', password: 'secret123' })
@@ -104,7 +103,7 @@ describe('AuthProvider', () => {
     await screen.findByText('error: Invalid email or password')
     expect(screen.getByText('user: none')).toBeInTheDocument()
     expect(screen.getByText('loading: false')).toBeInTheDocument()
-    expect(localStorage.getItem('token')).toBeNull()
+    expect(sessionStorage.getItem('token')).toBeNull()
   })
 
   it('stays loading while login is in flight', async () => {
@@ -126,8 +125,8 @@ describe('AuthProvider', () => {
 
   it('logs out, clears storage and blocks rehydration', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    localStorage.setItem('token', 'stored-token')
-    localStorage.setItem('user', JSON.stringify(alice))
+    sessionStorage.setItem('token', 'stored-token')
+    sessionStorage.setItem('user', JSON.stringify(alice))
     const fetchMock = mockFetch((url) => (url === '/api/auth/me' ? jsonResponse({ user: alice }) : jsonResponse({ success: true })))
 
     renderWithAuth()
@@ -137,8 +136,8 @@ describe('AuthProvider', () => {
 
     await screen.findByText('user: none')
     expect(screen.getByText('token: none')).toBeInTheDocument()
-    expect(localStorage.getItem('token')).toBeNull()
-    expect(localStorage.getItem('user')).toBeNull()
+    expect(sessionStorage.getItem('token')).toBeNull()
+    expect(sessionStorage.getItem('user')).toBeNull()
     expect(sessionStorage.getItem('navadrishti:auth-revoked')).toBe('1')
     expect(fetchMock).toHaveBeenCalledWith('/api/auth/logout', expect.objectContaining({ method: 'POST' }))
   })
@@ -148,17 +147,16 @@ describe('AuthProvider', () => {
     expect(() => renderHook(() => useAuth())).toThrow('useAuth must be used within an AuthProvider')
   })
 
-  it('rehydrates when another tab stores a token', async () => {
+  it('does not rehydrate from another tab storage change', async () => {
     const fetchMock = mockFetch(() => jsonResponse({ user: alice }))
     renderWithAuth()
     await screen.findByText('loading: false')
 
-    window.dispatchEvent(new StorageEvent('storage', { key: 'theme' }))
     localStorage.setItem('token', 'other-tab-token')
     window.dispatchEvent(new StorageEvent('storage', { key: 'token' }))
 
-    await screen.findByText('user: Alice')
-    await waitFor(() => expect(screen.getByText('token: other-tab-token')).toBeInTheDocument())
-    expect(fetchMock).toHaveBeenCalled()
+    await waitFor(() => expect(screen.getByText('user: none')).toBeInTheDocument())
+    expect(screen.getByText('token: none')).toBeInTheDocument()
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })

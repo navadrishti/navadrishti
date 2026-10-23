@@ -3,6 +3,7 @@ import { supabase, ensureCampaignVolunteerAssignment } from '@/lib/db'
 import { getAuthUserFromRequest, assertUserType, authErrorResponse } from '@/lib/server-auth'
 import { getCampaignLeadLifecycle } from '@/lib/format-date'
 import { readCampaignCategory, readCampaignLocation } from '@/lib/campaign-schema'
+import { buildCampaignTracking } from '@/lib/campaign-tracking'
 
 import { parseJsonObject } from '@/lib/utils'
 import type { Tables } from '@/lib/database.types'
@@ -31,6 +32,7 @@ export async function GET(request: NextRequest) {
     const volunteeredCampaigns = (campaigns || []).filter((campaign) =>
       isCampaignVolunteerApplicant(campaign, user.id)
     )
+    const trackingByCampaignId = await buildCampaignTracking(volunteeredCampaigns)
 
     const companyIds = [...new Set(volunteeredCampaigns.map((row) => Number(row.company_id || 0)).filter((id) => id > 0))]
     const { data: companies } = companyIds.length > 0
@@ -100,6 +102,7 @@ export async function GET(request: NextRequest) {
         company_verified: String(company?.verification_status || '').toLowerCase() === 'verified',
         assignment_id: assignment?.id || null,
         attendance_summary: assignmentMeta.attendance_summary || {},
+        tracking: trackingByCampaignId.get(String(campaign.id)) || null,
       })
     }
 

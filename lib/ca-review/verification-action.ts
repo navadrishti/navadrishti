@@ -28,7 +28,6 @@ type VerificationActionRow = {
   ngo_name?: string
 }
 
-const AWAITING_REVIEW_STATUSES = new Set(['pending', 'unverified'])
 const ALREADY_DECIDED_MESSAGE = 'This record was already decided by another reviewer'
 
 async function claimReverification<T>(decide: () => Promise<T>) {
@@ -134,8 +133,11 @@ export async function applyCAVerificationAction(options: {
     if (currentUserStatus === 'suspended') {
       throw new CAReviewError('This account is suspended by an admin and cannot be reviewed.', 409)
     }
-    if (!AWAITING_REVIEW_STATUSES.has(rowStatus)) {
-      throw new CAReviewError(`This record is ${rowStatus}. It can be reviewed again after the user resubmits.`, 409)
+    if (rowStatus !== 'pending') {
+      throw new CAReviewError('Only pending verification records can be approved by a CA. Admins manage other status changes.', 409)
+    }
+    if (action !== 'approve') {
+      throw new CAReviewError('CA reviewers can only approve pending verification records', 409)
     }
   }
   const rowRecord = parseJsonObject(row)

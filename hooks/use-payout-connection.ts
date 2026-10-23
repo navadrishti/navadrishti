@@ -22,7 +22,7 @@ export function usePayoutConnection(enabled = true): PayoutConnectionState {
       return
     }
 
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
+    const token = typeof window !== 'undefined' ? sessionStorage.getItem('token') : null
     if (!token) {
       setLoading(false)
       setConnected(false)

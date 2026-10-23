@@ -1,7 +1,5 @@
 'use client';
 
-import type { ReactNode } from 'react';
-import { CalendarDays, Coins, Flag, Truck, Users } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import type { CampaignLifecycle, CampaignTracking } from '@/lib/campaign-tracking';
@@ -26,8 +24,7 @@ function inr(value: number) {
   return `INR ${Math.round(value).toLocaleString('en-IN')}`;
 }
 
-function Meter({ icon, title, value, detail, progress }: {
-  icon: ReactNode;
+function Meter({ title, value, detail, progress }: {
   title: string;
   value: string;
   detail?: string | null;
@@ -36,7 +33,6 @@ function Meter({ icon, title, value, detail, progress }: {
   return (
     <div className="rounded-md border bg-white p-3 space-y-2">
       <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-slate-500">
-        {icon}
         {title}
       </div>
       <p className="text-sm font-semibold text-slate-900">{value}</p>
@@ -68,13 +64,11 @@ export function CampaignTrackingPanel({ tracking }: { tracking: CampaignTracking
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5">
         <Meter
-          icon={<CalendarDays className="h-3.5 w-3.5" />}
           title="Timeline"
           value={tracking.days_total > 0 ? `Day ${tracking.days_elapsed} of ${tracking.days_total}` : 'Dates not set'}
           progress={tracking.days_total > 0 ? percent(tracking.days_elapsed, tracking.days_total) : null}
         />
         <Meter
-          icon={<Users className="h-3.5 w-3.5" />}
           title="Volunteers"
           value={
             volunteers.required > 0
@@ -91,7 +85,6 @@ export function CampaignTrackingPanel({ tracking }: { tracking: CampaignTracking
           }
         />
         <Meter
-          icon={<Flag className="h-3.5 w-3.5" />}
           title="Milestones"
           value={milestones.total > 0 ? `${milestones.paid} of ${milestones.total} paid` : 'No milestones yet'}
           progress={milestones.total > 0 ? percent(milestones.paid, milestones.total) : null}
@@ -106,7 +99,6 @@ export function CampaignTrackingPanel({ tracking }: { tracking: CampaignTracking
           }
         />
         <Meter
-          icon={<Coins className="h-3.5 w-3.5" />}
           title="Spend"
           value={spendBase > 0 ? `${inr(budget.paid_inr)} of ${inr(spendBase)}` : inr(budget.paid_inr)}
           progress={spendBase > 0 ? percent(budget.paid_inr, spendBase) : null}
@@ -117,7 +109,6 @@ export function CampaignTrackingPanel({ tracking }: { tracking: CampaignTracking
           }
         />
         <Meter
-          icon={<Truck className="h-3.5 w-3.5" />}
           title="Capability rentals"
           value={rentals.total > 0 ? `${rentalsOpen} open of ${rentals.total}` : 'None rented'}
           detail={

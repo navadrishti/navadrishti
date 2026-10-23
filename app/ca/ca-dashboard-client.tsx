@@ -15,7 +15,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
 import { CAVerificationReview, caReviewDescription, isCaReviewLocked, type CAReviewItem } from '@/components/ca-verification-review';
 import { getErrorMessage } from '@/lib/utils';
 
@@ -44,10 +43,10 @@ interface NGO {
   reverification_pending?: boolean;
 }
 
-type FilterStatus = 'unverified' | 'verified' | 'all';
+type FilterStatus = 'pending' | 'verified' | 'all';
 
 const TABS: { label: string; value: FilterStatus }[] = [
-  { label: 'Unverified', value: 'unverified' },
+  { label: 'Pending & reverification', value: 'pending' },
   { label: 'Verified',   value: 'verified'   },
   { label: 'All',        value: 'all'         },
 ];
@@ -123,13 +122,12 @@ export default function CADashboardClient() {
   const [ngos, setNGOs]               = useState<NGO[]>([]);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState('');
-  const [filterStatus, setFilterStatus] = useState<FilterStatus>('unverified');
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [searchQuery, setSearchQuery]   = useState('');
   const [selectedItem, setSelectedItem] = useState<CAReviewItem | null>(null);
   const [selectedType, setSelectedType] = useState<'individuals' | 'companies' | 'ngos' | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [reviewLoading, setReviewLoading] = useState(false);
-  const [rejectionReason, setRejectionReason] = useState('');
   const [complianceTags, setComplianceTags] = useState<string[]>([]);
 
   const fetchData = async () => {
@@ -188,7 +186,6 @@ export default function CADashboardClient() {
   const handleItemClick = async (item: CAReviewItem, type: 'individuals' | 'companies' | 'ngos') => {
     setSelectedItem(item);
     setSelectedType(type);
-    setRejectionReason('');
     setComplianceTags(
       isCaReviewLocked(item) && Array.isArray(item.allotted_compliance_tags)
         ? item.allotted_compliance_tags
@@ -213,14 +210,9 @@ export default function CADashboardClient() {
     }
   };
 
-  const handleAction = async (action: 'approve' | 'reject') => {
+  const handleAction = async () => {
     if (!selectedItem || !selectedType) return;
-    if (isCaReviewLocked(selectedItem)) return;
-
-    if (action === 'reject' && !rejectionReason.trim()) {
-      alert('Please provide a reason for rejection');
-      return;
-    }
+    if (isCaReviewLocked(selectedItem) || selectedItem.verification_status !== 'pending') return;
 
     setActionLoading(true);
     try {
@@ -231,15 +223,14 @@ export default function CADashboardClient() {
         body: JSON.stringify({
           entity_type: selectedType,
           entity_id: selectedItem.id,
-          action: action === 'approve' ? 'approve' : 'reject',
-          reason: rejectionReason,
+          action: 'approve',
           compliance_tags: selectedType === 'ngos' ? complianceTags : undefined,
         })
       });
 
       const data = await response.json().catch(() => ({}));
       if (response.ok) {
-        alert(data.message || `${selectedItem.name || selectedItem.company_name || selectedItem.ngo_name} ${action === 'approve' ? 'approved' : 'rejected'}`);
+        alert(data.message || `${selectedItem.name || selectedItem.company_name || selectedItem.ngo_name} approved`);
         if (selectedType === 'individuals') {
           setIndividuals(individuals.filter(ind => ind.id !== selectedItem.id));
         } else if (selectedType === 'companies') {
@@ -249,7 +240,6 @@ export default function CADashboardClient() {
         }
         setSelectedItem(null);
         setSelectedType(null);
-        setRejectionReason('');
         setComplianceTags([]);
       } else {
         alert(data.error || 'Failed to process action');
@@ -438,36 +428,17 @@ export default function CADashboardClient() {
                 readOnly={isCaReviewLocked(selectedItem)}
               />
 
-              {!isCaReviewLocked(selectedItem) ? (
+              {!isCaReviewLocked(selectedItem) && selectedItem.verification_status === 'pending' ? (
                 <>
-              {/* Rejection Reason */}
-              <div>
-                <label className="text-sm font-medium">Rejection Reason (if rejecting)</label>
-                <Textarea
-                  value={rejectionReason}
-                  onChange={(e) => setRejectionReason(e.target.value)}
-                  placeholder="Provide reason for rejection..."
-                  className="mt-1"
-                />
-              </div>
-
               {/* Action Buttons */}
               <div className="flex gap-3 pt-4">
                 <Button
-                  onClick={() => handleAction('approve')}
+                  onClick={handleAction}
                   disabled={actionLoading || reviewLoading}
                   className="flex-1 bg-green-600 hover:bg-green-700"
                 >
                     {actionLoading ? 'Processing...' : 'Approve'}
                   </Button>
-                  <Button
-                    onClick={() => handleAction('reject')}
-                    disabled={actionLoading || reviewLoading}
-                    variant="destructive"
-                    className="flex-1"
-                  >
-                    {actionLoading ? 'Processing...' : 'Reject'}
-                </Button>
               </div>
                 </>
               ) : null}

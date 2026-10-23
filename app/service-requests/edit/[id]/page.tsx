@@ -85,7 +85,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
 
     const fetchRequest = async () => {
       try {
-        const token = localStorage.getItem('token')
+        const token = sessionStorage.getItem('token')
         const response = await fetch(`/api/service-requests/${resolvedParams.id}`, {
           headers: { Authorization: `Bearer ${token}` }
         })
@@ -171,7 +171,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
   ) => {
     if (!files || files.length === 0) return { urls: [] as string[], failures: [] as string[] }
 
-    const token = localStorage.getItem('token')
+    const token = sessionStorage.getItem('token')
     const urls: string[] = []
     const failures: string[] = []
     const total = Array.from(files).length
@@ -271,7 +271,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
     }
 
     try {
-      const token = localStorage.getItem('token')
+      const token = sessionStorage.getItem('token')
 
       const response = await fetch(`/api/service-requests/${resolvedParams.id}`, {
         method: 'PUT',

@@ -14,7 +14,7 @@ export function useRecommendedNgos(userId: number | undefined) {
       return
     }
 
-    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null
+    const token = typeof window !== "undefined" ? sessionStorage.getItem("token") : null
     if (!token) {
       setRecommended([])
       return

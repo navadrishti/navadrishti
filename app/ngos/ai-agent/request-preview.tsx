@@ -4,6 +4,7 @@ import Link from "next/link"
 import { CheckCircle2, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { AgentPreviewLock } from "@/components/agent-preview-lock"
 import { VerifiedAccountName } from "@/components/verification-badge"
 import { AGENT_NAMES } from "@/lib/ai-agent-sessions"
 import {
@@ -219,8 +220,9 @@ export function RequestPreview({
               : 'Building your request draft in real time.'}
         </CardDescription>
       </CardHeader>
-      <CardContent className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-5">
-        <div className="space-y-5">
+      <AgentPreviewLock locked={!generatedDraft}>
+        <CardContent className="h-full min-h-0 overflow-y-auto overflow-x-hidden p-5">
+          <div className="space-y-5">
           {generatedDraft ? (
             <>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -355,8 +357,9 @@ export function RequestPreview({
               </div>
             </>
           )}
-        </div>
-      </CardContent>
+          </div>
+        </CardContent>
+      </AgentPreviewLock>
     </Card>
   )
 }

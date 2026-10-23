@@ -438,7 +438,7 @@ function CSRAgentPage() {
           />
         </ChatPanel>
 
-        <PreviewPanel>
+        <PreviewPanel locked={!isQuestionnaireComplete}>
           <CampaignDetailsCard
             projectData={projectData}
             milestoneCount={milestoneCount}

@@ -147,7 +147,7 @@ export default function VerificationPage() {
       }
       setUploadedUrls(uploaded);
 
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       if (!token || !user?.user_type) {
         throw new Error('Authentication required. Please log in again.');
       }

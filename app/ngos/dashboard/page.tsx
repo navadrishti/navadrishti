@@ -67,7 +67,7 @@ function NGODashboardContent() {
   useEffect(() => {
     if (!user?.id || user.user_type !== 'ngo') return;
 
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       if (!token) return;
 
     fetch('/api/profile/update?scope=payout', {

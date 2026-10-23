@@ -52,7 +52,7 @@ export function NgoPayDialog({
   const handlePay = async () => {
     if (!ngo || !user) return
 
-    const token = localStorage.getItem('token')
+    const token = sessionStorage.getItem('token')
     if (!token) {
       notify({
         title: 'Sign in required',

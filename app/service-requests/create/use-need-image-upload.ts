@@ -34,7 +34,7 @@ export function useNeedImageUpload(
   const handleNeedImageFiles = async (index: number, files: FileList | null) => {
     if (!files || files.length === 0) return
 
-    const token = localStorage.getItem('token')
+    const token = sessionStorage.getItem('token')
     const uploadedUrls: string[] = []
     const failedFiles: string[] = []
     const total = files.length

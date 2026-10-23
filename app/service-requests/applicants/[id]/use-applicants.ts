@@ -45,7 +45,7 @@ export function useApplicants(requestId: string) {
 
     const fetchData = async () => {
       try {
-        const token = localStorage.getItem('token')
+        const token = sessionStorage.getItem('token')
 
         const requestResponse = await fetch(`/api/service-requests/${requestId}`, {
           headers: {
@@ -97,7 +97,7 @@ export function useApplicants(requestId: string) {
   const handleVolunteerStatusUpdate = async (volunteer: Volunteer, newStatus: string) => {
     setUpdating(volunteer.id)
     try {
-      const token = localStorage.getItem('token')
+      const token = sessionStorage.getItem('token')
       const payload: Record<string, unknown> = { status: newStatus }
 
       // Accepting allocates the applicant's offer, capped at what the need still requires.

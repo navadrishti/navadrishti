@@ -13,7 +13,7 @@ export function useNgoDashboardActions(data: NgoDashboardData, onLeadRoleAccepte
   const respondCampaignLeadInvitation = async (campaignId: string, decision: 'accepted' | 'rejected') => {
     try {
       setRespondingCampaignLeadInviteId(campaignId);
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       if (!token) {
         toast({ title: 'Error', description: 'Please login again', variant: 'destructive' });
         return;
@@ -55,7 +55,7 @@ export function useNgoDashboardActions(data: NgoDashboardData, onLeadRoleAccepte
     const key = `${projectId}:${companyId}`;
     try {
       setReviewingCompanyApplicationKey(key);
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       if (!token) {
         toast({ title: 'Error', description: 'Please login again', variant: 'destructive' });
         return;
@@ -101,7 +101,7 @@ export function useNgoDashboardActions(data: NgoDashboardData, onLeadRoleAccepte
   const handleOfferRequestStatusUpdate = async (requestId: number, newStatus: 'accepted' | 'rejected') => {
     try {
       setUpdatingOfferRequestId(requestId);
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
 
       const response = await fetch(`/api/service-offers/requests/${requestId}`, {
         method: 'PUT',
