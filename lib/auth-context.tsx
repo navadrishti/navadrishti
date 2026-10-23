@@ -44,9 +44,12 @@ function usableStoredValue(value: string | null): string | null {
 /** Platform tabs share one account through localStorage. sessionStorage is only a leftover mirror. */
 function readPlatformAuthFromStorage(): { token: string | null; userJson: string | null } {
   if (typeof window === 'undefined') return { token: null, userJson: null };
+  const rawUser = localStorage.getItem('user');
+  const userJson =
+    !rawUser || rawUser === 'undefined' || rawUser === 'null' ? null : rawUser;
   return {
     token: usableStoredValue(localStorage.getItem('token')),
-    userJson: usableStoredValue(localStorage.getItem('user')),
+    userJson,
   };
 }
 
@@ -173,6 +176,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [error, setError] = useState<string | null>(null);
   // Bumped on logout so in-flight /me hydrations and Strict Mode remounts cannot revive the session.
   const authEpochRef = useRef(0);
+  const tokenRef = useRef<string | null>(null);
 
   const persistAuthSnapshot = useCallback((nextToken: string | null, nextUser: User | null) => {
     if (nextToken) {
@@ -290,6 +294,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
       persistAuthSnapshot(null, null);
       tokenRef.current = null;
+      setToken(null);
       setUser(null);
       setLoading(false);
     } catch (error) {
@@ -302,11 +307,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   useEffect(() => {
     syncAuthOnMount();
-    tokenRef.current = token;
-  }, [token]);
+  }, []);
 
   useEffect(() => {
-  }, []);
+    tokenRef.current = token;
+  }, [token]);
 
   useEffect(() => {
     if (loading || !user) return;
@@ -556,6 +561,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       window.removeEventListener('storage', storageListener);
       window.removeEventListener('focus', focusListener);
       document.removeEventListener('visibilitychange', focusListener);
+    };
   }, [syncAuthFromStorage]);
 
   return (
