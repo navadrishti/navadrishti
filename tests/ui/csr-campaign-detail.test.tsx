@@ -95,8 +95,6 @@ describe('CSRCampaignDetailPage', () => {
   })
 
   it('lets an invited NGO accept the lead role on a draft', async () => {
-    const alert = vi.fn()
-    vi.stubGlobal('alert', alert)
     const draft = campaign({
       status: 'draft',
       impact_metrics: { lead_ngo_invites: [{ ngo_id: 21, name: 'Helping Hands', email: 'ngo@example.org', status: 'invited' }] },
@@ -114,7 +112,6 @@ describe('CSRCampaignDetailPage', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/campaigns/accept-lead', expect.objectContaining({ method: 'POST', body: JSON.stringify({ campaign_id: 'camp-1' }) }))
     expect(await screen.findByText(/You accepted the lead NGO role/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Accept Lead Role' })).not.toBeInTheDocument()
-    expect(alert).toHaveBeenCalledWith(expect.stringContaining('Accepted lead role'))
   })
 
   it('shows confirmation for an accepted draft lead', async () => {

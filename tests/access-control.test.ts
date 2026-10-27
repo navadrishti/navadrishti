@@ -195,6 +195,29 @@ describe('proxy', () => {
     expect(response.headers.get('x-middleware-next')).toBe('1')
     expect(accounts.lookups).toBe(before)
   })
+
+  it('keeps delegated company CAs off company portal APIs', async () => {
+    accounts.rows.set(45, {
+      account_status: 'active',
+      locked_until: null,
+      profile_data: { role: 'company_ca', parent_company_user_id: 6 },
+    })
+    const caApiRequest = (path: string) =>
+      new NextRequest(`https://app.example.com${path}`, {
+        headers: {
+          authorization: `Bearer ${jwt.sign({ id: 45, email: 'ca@acme.com', user_type: 'company' }, 'test-secret')}`,
+        },
+      })
+
+    const blocked = await proxy(caApiRequest('/api/campaigns'))
+    expect(blocked.status).toBe(403)
+    expect(await blocked.json()).toEqual({
+      error: 'This account can only access the evidence verification portal',
+    })
+
+    const allowed = await proxy(caApiRequest('/api/evidence-verification/verify'))
+    expect(allowed.headers.get('x-middleware-next')).toBe('1')
+  })
 })
 
 describe('PWA origins', () => {

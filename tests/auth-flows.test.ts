@@ -5,6 +5,7 @@ import {
   backfillNgoComplianceProfileData,
   comparePassword,
   generateAdminToken,
+  generateCompanyCAToken,
   generateToken,
   getAccountAccessBlockReason,
   getAccountLockUntil,
@@ -19,6 +20,7 @@ import {
   validateCompanyHeadquartersLocation,
   validateNgoHeadquartersLocation,
   verifyAdminToken,
+  verifyCompanyCAToken,
   verifyToken,
   visibleCaBadgeNumber,
   withAuth,
@@ -227,6 +229,22 @@ describe('platform CA tokens', () => {
     supabaseFake.queue('platform_ca_accounts', { data: { ...caAccount } })
     const userToken = generateToken({ ...user, id: 3 })
     await expect(getPlatformCAFromRequest(requestWith({ header: `Bearer ${userToken}` }))).resolves.toBeNull()
+  })
+})
+
+describe('company CA tokens', () => {
+  it('round-trips a scoped company CA payload that platform verifyToken rejects', () => {
+    const token = generateCompanyCAToken(user)
+    const payload = jwt.decode(token) as { kind: string; iat: number; exp: number }
+    expect(payload.kind).toBe('company_ca')
+    expect(payload.exp - payload.iat).toBe(12 * 3600)
+    expect(verifyCompanyCAToken(token)).toMatchObject({ id: 21, email: 'a@b.org', user_type: 'company' })
+    expect(verifyToken(token)).toBeNull()
+    expect(verifyPlatformCAToken(token)).toBeNull()
+  })
+
+  it('rejects a platform user token', () => {
+    expect(verifyCompanyCAToken(generateToken(user))).toBeNull()
   })
 })
 

@@ -6,10 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { VerificationBadge } from '@/components/verification-badge';
 import { CheckCircle } from 'lucide-react';
+import type { VerificationReviewNotice } from '@/lib/verification-review-notice';
 
 interface VerifiedSummaryCardProps {
   user: User;
   reverificationPending: boolean;
+  reviewNotice?: VerificationReviewNotice | null;
   onBack: () => void;
   onStartReverify: () => void;
 }
@@ -17,6 +19,7 @@ interface VerifiedSummaryCardProps {
 export function VerifiedSummaryCard({
   user,
   reverificationPending,
+  reviewNotice,
   onBack,
   onStartReverify
 }: VerifiedSummaryCardProps) {
@@ -28,7 +31,7 @@ export function VerifiedSummaryCard({
     null;
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
+    <div id="verification-top" className="max-w-4xl mx-auto p-6 space-y-6">
       <Card>
         <CardHeader>
           <CardTitle className="flex min-w-0 items-center gap-x-3">
@@ -60,6 +63,11 @@ export function VerifiedSummaryCard({
               </AlertDescription>
             </Alert>
           )}
+          {reviewNotice?.kind === 'reverification_rejected' ? (
+            <Alert>
+              <AlertDescription>{reviewNotice.description}</AlertDescription>
+            </Alert>
+          ) : null}
           {(expirySummary?.has_expired || expirySummary?.has_due_soon) && !reverificationPending ? (
             <Alert>
               <AlertDescription>

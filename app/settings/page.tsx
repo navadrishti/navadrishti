@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { toast } from 'sonner'
 import { useAuth } from '@/lib/auth-context'
 import { PlatformContentSkeleton, Skeleton } from '@/components/ui/skeleton'
 
@@ -239,8 +240,7 @@ export default function SettingsPage() {
         setDeleteDialogOpen(false);
         
         logout();
-        
-        alert('Your account has been successfully deleted. We are sorry to see you go!');
+        toast.success('Your account has been deleted.');
         router.push('/');
       } else {
         setDeleteError(data.error || 'Failed to delete account');

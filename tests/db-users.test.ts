@@ -77,7 +77,39 @@ describe('users crud', () => {
     useDb({ 'users.insert': [{ data: { id: 3 } }] })
     const input = { email: 'a@example.org', password: 'hash', name: 'A', user_type: 'individual' as const }
     await expect(users.create(input)).resolves.toEqual({ id: 3 })
-    expect(fake.queries[0]).toMatchObject({ table: 'users', op: 'insert', payload: input })
+    expect(fake.queries[0]).toMatchObject({
+      table: 'users',
+      op: 'insert',
+      payload: { ...input, ngo_volunteer_capacity: 0 },
+    })
+  })
+
+  it('defaults volunteer capacity to 0 for company CA accounts that are not NGOs', async () => {
+    useDb({ 'users.insert': [{ data: { id: 39 } }] })
+    await users.create({
+      email: 'ca@techcorpsolutions.in',
+      password: 'hash',
+      name: 'Mukesh',
+      user_type: 'company',
+      verification_status: 'verified',
+      profile_data: { role: 'company_ca', parent_company_user_id: 6 },
+    })
+    expect(fake.queries[0].payload).toMatchObject({
+      user_type: 'company',
+      ngo_volunteer_capacity: 0,
+    })
+  })
+
+  it('keeps an NGO-provided volunteer capacity', async () => {
+    useDb({ 'users.insert': [{ data: { id: 4 } }] })
+    await users.create({
+      email: 'ngo@example.org',
+      password: 'hash',
+      name: 'Seva',
+      user_type: 'ngo',
+      ngo_volunteer_capacity: 40,
+    })
+    expect(fake.queries[0].payload).toMatchObject({ ngo_volunteer_capacity: 40 })
   })
 
   it('updates by id', async () => {

@@ -1,12 +1,13 @@
 import 'server-only'
 
 import { supabase } from '@/lib/db'
-import { getCaComplianceTags, getDocumentExpiries } from '@/lib/auth'
+import { getCaComplianceTags, getDocumentExpiries, visibleCaBadgeNumber } from '@/lib/auth'
 import type { CAQueueType } from '@/lib/ca-review-types'
 import { parseJsonObject } from '@/lib/utils'
 import { buildCrossDocumentComparisons } from './cross-field-comparisons'
 import { extractDocuments } from './documents'
 import { applyNgoExpiryOverlay } from './ngo-compliance'
+import { effectiveCaQueueStatus, hasLiveVerificationPack, sanitizeCaReviewItem } from './pack-visibility'
 import {
   selectColumns,
   TYPE_CONFIG,
@@ -28,24 +29,30 @@ export function mapQueueItem(type: CAQueueType, row: VerificationQueueRow): CAQu
   const profileData = parseJsonObject(user.profile_data)
   const profileKey = TYPE_CONFIG[type].profileKey
   const typeBlock = parseJsonObject(parseJsonObject(profileData.verification_documents)[profileKey])
-  const reverifying = Boolean(profileData.reverification_pending)
+  const verificationStatus = effectiveCaQueueStatus(row.verification_status, user.verification_status)
+  const livePack = hasLiveVerificationPack(verificationStatus)
+  const stagedDocs = livePack ? parseJsonObject(typeBlock.reverification_documents) : {}
+  const reverifying =
+    livePack && (Boolean(profileData.reverification_pending) || Object.keys(stagedDocs).length > 0)
   const staged = reverifying ? nonEmptyValues(typeBlock.reverification_entered_fields) : {}
   const stagedDetails = reverifying ? nonEmptyValues(typeBlock.reverification_details) : {}
-  const entered = { ...parseJsonObject(typeBlock.entered_fields), ...staged }
-  const documents = extractDocuments(profileData, profileKey, `${type}-${row.id}`)
+  const entered = livePack ? { ...parseJsonObject(typeBlock.entered_fields), ...staged } : {}
+  const documents = livePack ? extractDocuments(profileData, profileKey, `${type}-${row.id}`) : []
 
   const submittedAt = typeBlock.submitted_at || row.updated_at || row.created_at
-  const documentExpiries = type === 'ngos' ? getDocumentExpiries(profileData) : null
+  const documentExpiries = livePack && type === 'ngos' ? getDocumentExpiries(profileData) : null
   const base = {
     id: row.id,
     user_id: row.user_id,
     email: user.email || '',
     phone: user.phone || '',
-    verification_status: row.verification_status || user.verification_status || 'unverified',
+    verification_status: verificationStatus,
+    ca_badge_number: visibleCaBadgeNumber(verificationStatus, profileData),
     submitted_at: submittedAt,
     documents,
     documents_total: documents.length,
     ocr_error: '',
+    reverification_pending: reverifying,
   }
 
   const mapped =
@@ -53,64 +60,98 @@ export function mapQueueItem(type: CAQueueType, row: VerificationQueueRow): CAQu
       ? {
           ...base,
           name: user.name || '',
-          aadhaar: row.aadhaar_number || entered.aadhaar || '',
-          pan: row.pan_number || entered.pan || '',
+          aadhaar: livePack ? row.aadhaar_number || entered.aadhaar || '' : '',
+          pan: livePack ? row.pan_number || entered.pan || '' : '',
         }
       : type === 'companies'
         ? {
             ...base,
-            company_name: stagedDetails.company_name || row.company_name || user.name || '',
+            company_name: livePack
+              ? stagedDetails.company_name || row.company_name || user.name || ''
+              : row.company_name || user.name || '',
             business_description: profileData.business_description || user.work_experience || user.industry || '',
-            gst: staged.gst || row.gst_number || entered.gst || '',
-            pan: entered.pan || '',
-            cin: entered.cin || '',
+            gst: livePack ? staged.gst || row.gst_number || entered.gst || '' : '',
+            pan: livePack ? entered.pan || '' : '',
+            cin: livePack ? entered.cin || '' : '',
           }
         : {
             ...base,
-            ngo_name: stagedDetails.ngo_name || row.ngo_name || user.name || '',
+            ngo_name: livePack
+              ? stagedDetails.ngo_name || row.ngo_name || user.name || ''
+              : row.ngo_name || user.name || '',
             ngo_description: profileData.ngo_description || user.work_experience || '',
-            registration_number: staged.registration_number || row.registration_number || entered.registration_number || '',
-            fcra_number: staged.fcra_number || row.fcra_number || entered.fcra_number || '',
-            fcra_expiry:
-              entered.fcra_expiry ||
-              profileData.fcra_expiry_date ||
-              documentExpiries?.fcra?.valid_until ||
-              '',
-            pan: entered.pan || '',
-            twelve_a: staged.twelve_a || profileData.twelve_a_number || entered.twelve_a || '',
-            twelve_a_expiry: entered.twelve_a_expiry || documentExpiries?.twelve_a?.valid_until || '',
-            eighty_g: staged.eighty_g || profileData.eighty_g_number || entered.eighty_g || '',
-            eighty_g_expiry: entered.eighty_g_expiry || documentExpiries?.eighty_g?.valid_until || '',
-            csr1: staged.csr1 || profileData.csr1_registration_number || entered.csr1 || '',
-            csr1_expiry: entered.csr1_expiry || documentExpiries?.csr1?.valid_until || '',
-            reverification_pending: Boolean(profileData.reverification_pending),
-            allotted_compliance_tags: getCaComplianceTags(
-              profileData,
-              user.verification_status || row.verification_status
-            ),
+            registration_number: livePack
+              ? staged.registration_number || row.registration_number || entered.registration_number || ''
+              : '',
+            fcra_number: livePack ? staged.fcra_number || row.fcra_number || entered.fcra_number || '' : '',
+            fcra_expiry: livePack
+              ? entered.fcra_expiry ||
+                profileData.fcra_expiry_date ||
+                documentExpiries?.fcra?.valid_until ||
+                ''
+              : '',
+            pan: livePack ? entered.pan || '' : '',
+            twelve_a: livePack ? staged.twelve_a || profileData.twelve_a_number || entered.twelve_a || '' : '',
+            twelve_a_expiry: livePack ? entered.twelve_a_expiry || documentExpiries?.twelve_a?.valid_until || '' : '',
+            eighty_g: livePack ? staged.eighty_g || profileData.eighty_g_number || entered.eighty_g || '' : '',
+            eighty_g_expiry: livePack ? entered.eighty_g_expiry || documentExpiries?.eighty_g?.valid_until || '' : '',
+            csr1: livePack ? staged.csr1 || profileData.csr1_registration_number || entered.csr1 || '' : '',
+            csr1_expiry: livePack ? entered.csr1_expiry || documentExpiries?.csr1?.valid_until || '' : '',
+            registration_type: livePack ? row.registration_type || entered.registration_type || '' : '',
+            allotted_compliance_tags: livePack
+              ? getCaComplianceTags(profileData, user.verification_status || row.verification_status)
+              : [],
           }
 
   if (type === 'ngos') {
-    return applyNgoExpiryOverlay(mapped, documents, parseJsonObject(typeBlock.ocr_expiries))
+    const next = livePack
+      ? applyNgoExpiryOverlay(mapped, documents, parseJsonObject(typeBlock.ocr_expiries))
+      : { ...mapped, field_comparisons: [] }
+    return sanitizeCaReviewItem(next)
   }
 
-  return {
+  return sanitizeCaReviewItem({
     ...mapped,
     field_comparisons: buildCrossDocumentComparisons(type, documents, mapped),
-  }
+  })
 }
 
-function hasReviewableSubmission(item: CAQueueItem) {
-  if (item.reverification_pending) return true
-  if (item.verification_status === 'pending') return true
-  return item.documents_total > 0
+function isPendingQueueStatus(status: string) {
+  return status === 'pending' || status === 'unverified'
+}
+
+async function appendPendingReverifications(
+  type: CAQueueType,
+  mapped: ReturnType<typeof mapQueueItem>[]
+) {
+  const { table } = TYPE_CONFIG[type]
+  const { data: verifiedRows, error: verifiedError } = await supabase
+    .from(table)
+    .select(selectColumns(type))
+    .eq('verification_status', 'verified')
+    .order('updated_at', { ascending: false })
+    .limit(200)
+  if (verifiedError) {
+    console.error(`CA queue query failed for ${type} reverifications:`, verifiedError)
+    return mapped
+  }
+
+  const pending = ((verifiedRows || []) as unknown as VerificationQueueRow[])
+    .map((row) => mapQueueItem(type, row))
+    .filter((item) => Boolean(item.reverification_pending))
+  const seen = new Set(mapped.map((item) => item.id))
+  const next = [...mapped]
+  for (const item of pending) {
+    if (!seen.has(item.id)) next.push(item)
+  }
+  return next
 }
 
 export async function listCAQueue(type: CAQueueType, status: string) {
   const { table } = TYPE_CONFIG[type]
   let query = supabase.from(table).select(selectColumns(type)).order('updated_at', { ascending: false }).limit(100)
   if (status === 'verified') query = query.eq('verification_status', 'verified')
-  else if (status === 'unverified') query = query.in('verification_status', ['pending', 'unverified'])
+  else if (isPendingQueueStatus(status)) query = query.eq('verification_status', 'pending')
 
   const { data, error } = await query
 
@@ -119,29 +160,15 @@ export async function listCAQueue(type: CAQueueType, status: string) {
     throw error
   }
 
-  let mapped = ((data || []) as unknown as VerificationQueueRow[]).map((row) => mapQueueItem(type, row))
-  if (status === 'unverified') {
-    mapped = mapped.filter(hasReviewableSubmission)
-    if (type === 'ngos') {
-      const { data: verifiedRows, error: verifiedError } = await supabase
-        .from(table)
-        .select(selectColumns(type))
-        .eq('verification_status', 'verified')
-        .order('updated_at', { ascending: false })
-        .limit(200)
-      if (verifiedError) {
-        console.error('CA queue query failed for NGO reverifications:', verifiedError)
-      } else {
-        const pending = ((verifiedRows || []) as unknown as VerificationQueueRow[])
-          .map((row) => mapQueueItem(type, row))
-          .filter((item) => Boolean(item.reverification_pending))
-        const seen = new Set(mapped.map((item) => item.id))
-        for (const item of pending) {
-          if (!seen.has(item.id)) mapped.push(item)
-        }
-      }
-    }
-    return mapped
+  const mapped = ((data || []) as unknown as VerificationQueueRow[]).map((row) => mapQueueItem(type, row))
+  if (isPendingQueueStatus(status)) {
+    return appendPendingReverifications(
+      type,
+      mapped.filter(
+        (item) =>
+          String(item.verification_status).toLowerCase() === 'pending' || Boolean(item.reverification_pending)
+      )
+    )
   }
   return mapped
 }

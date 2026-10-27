@@ -29,11 +29,14 @@ export function caReviewDescription(type: CAReviewEntityType) {
   return `Review and verify this ${entityLabel(type)}'s details`
 }
 
+export function canCaDecide(item: Record<string, unknown> | null | undefined) {
+  const status = String(item?.verification_status || '').toLowerCase()
+  if (item?.reverification_pending && (status === 'verified' || status === 'pending')) return true
+  return status === 'pending'
+}
+
 export function isCaReviewLocked(item: Record<string, unknown> | null | undefined) {
-  return (
-    String(item?.verification_status || '').toLowerCase() === 'verified' &&
-    !item?.reverification_pending
-  )
+  return !canCaDecide(item)
 }
 
 export function comparisonResult(row: CAFieldComparison) {

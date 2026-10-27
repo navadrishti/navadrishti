@@ -137,6 +137,49 @@ export function generateToken(user: UserData): string {
   );
 }
 
+export type CompanyCATokenPayload = {
+  id: number;
+  email: string;
+  name: string;
+  user_type: UserData['user_type'];
+  verification_status?: UserData['verification_status'];
+};
+
+function asUserType(value: unknown): UserData['user_type'] {
+  return typeof value === 'string' && USER_TYPES.has(value) ? (value as UserData['user_type']) : 'company';
+}
+
+/** Delegated evidence-portal sessions. Distinct from platform company JWTs. */
+export function generateCompanyCAToken(user: UserData): string {
+  const payload: CompanyCATokenPayload = {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    user_type: asUserType(user.user_type),
+    verification_status: user.verification_status || 'verified',
+  };
+  return signScopedToken(
+    'company_ca',
+    payload,
+    (process.env.CA_JWT_EXPIRES_IN || '12h') as SignOptions['expiresIn']
+  );
+}
+
+export function verifyCompanyCAToken(token: string): UserData | null {
+  const decoded = verifyScopedToken<CompanyCATokenPayload>(token, 'company_ca');
+  if (!decoded?.id || !decoded.email) {
+    return null;
+  }
+
+  return {
+    id: decoded.id,
+    email: decoded.email,
+    name: decoded.name || '',
+    user_type: asUserType(decoded.user_type),
+    verification_status: decoded.verification_status,
+  };
+}
+
 export function verifyToken(token: string): UserData | null {
   const decoded = decodeSignedToken(token);
   if (!decoded || !decoded.id || !decoded.email || !isUserSessionPayload(decoded)) {

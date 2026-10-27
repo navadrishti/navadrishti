@@ -102,11 +102,6 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
-  // Blank until auth — avoids sidebar/skeleton flash before login
-  if (!ready) {
-    return <div className="min-h-screen bg-background" aria-hidden="true" />;
-  }
-
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <aside
@@ -198,7 +193,7 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
       </header>
 
       <main className="udaan-container w-full flex-1 px-4 py-8 sm:px-6 lg:px-8">
-        {children}
+        {ready ? children : <div className="h-40" aria-hidden="true" />}
       </main>
 
       <ConsoleFooter />

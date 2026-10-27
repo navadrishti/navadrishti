@@ -3,10 +3,10 @@
 import { useEffect, useEffectEvent, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowRight, Search } from 'lucide-react';
+import { CaQueueAccountTitle, CaQueueStatusBadge } from '@/components/ca-queue-status';
 import { Input } from '@/components/ui/input';
 import {
   Dialog,
@@ -17,7 +17,11 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { CAVerificationReview, caReviewDescription, isCaReviewLocked, type CAReviewItem } from '@/components/ca-verification-review';
+import { sanitizeCaReviewItem } from '@/lib/ca-review/pack-visibility';
+import { CAReviewHistoryFeed } from '@/components/ca-review-history-feed';
+import type { CAReviewHistoryEntry } from '@/lib/ca-review/history-types';
 import { getErrorMessage } from '@/lib/utils';
+import { toast } from 'sonner';
 
 interface Individual {
   id: number;
@@ -25,6 +29,8 @@ interface Individual {
   email: string;
   profession: string;
   verification_status: string;
+  reverification_pending?: boolean;
+  ca_badge_number?: string | null;
 }
 
 interface Company {
@@ -33,6 +39,8 @@ interface Company {
   email: string;
   business_description: string;
   verification_status: string;
+  reverification_pending?: boolean;
+  ca_badge_number?: string | null;
 }
 
 interface NGO {
@@ -42,35 +50,22 @@ interface NGO {
   ngo_description: string;
   verification_status: string;
   reverification_pending?: boolean;
+  ca_badge_number?: string | null;
 }
 
-type FilterStatus = 'unverified' | 'verified' | 'all';
+type FilterStatus = 'all' | 'pending' | 'verified' | 'history';
 
 const TABS: { label: string; value: FilterStatus }[] = [
-  { label: 'Unverified', value: 'unverified' },
-  { label: 'Verified',   value: 'verified'   },
-  { label: 'All',        value: 'all'         },
+  { label: 'All', value: 'all' },
+  { label: 'Pending', value: 'pending' },
+  { label: 'Verified', value: 'verified' },
+  { label: 'History', value: 'history' },
 ];
 
 const QUEUE_ITEM_HEIGHT = 'h-[6.5rem]';
 const QUEUE_LIST_HEIGHT = 'h-[20.5rem]';
 const QUEUE_ITEM_CLASS =
   `${QUEUE_ITEM_HEIGHT} shrink-0 cursor-pointer overflow-hidden rounded-lg border border-slate-100 bg-white p-3`;
-
-function StatusBadge({ status, reverification }: { status: string; reverification?: boolean }) {
-  const normalized = reverification ? 'reverification' : (status || '').toLowerCase();
-  const styles =
-    normalized === 'verified'
-      ? 'border-green-200 bg-green-50 text-green-700 text-xs'
-      : normalized === 'rejected'
-        ? 'border-red-200 bg-red-50 text-red-700 text-xs'
-        : 'border-amber-200 bg-amber-50 text-amber-700 text-xs';
-  return (
-    <Badge variant="outline" className={styles}>
-      {normalized === 'pending' ? 'pending review' : normalized || 'unverified'}
-    </Badge>
-  );
-}
 
 function ColumnCard({
   title,
@@ -106,12 +101,17 @@ function ColumnCard({
       </CardContent>
 
       <div className="relative z-10 px-4 pb-4 pt-2 border-t border-slate-100">
-        <Link
-          href={href}
-          className="inline-flex items-center justify-center gap-1 w-full h-8 rounded-md border border-input bg-background text-xs font-medium text-primary"
+        <Button
+          asChild
+          variant="outline"
+          size="sm"
+          className="h-9 w-full border-udaan-orange text-udaan-orange hover:bg-orange-50 hover:text-udaan-orange"
         >
-          See full list <ArrowRight className="w-3 h-3" />
-        </Link>
+          <Link href={href}>
+            See full list
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </Button>
       </div>
     </Card>
   );
@@ -123,7 +123,8 @@ export default function CADashboardClient() {
   const [ngos, setNGOs]               = useState<NGO[]>([]);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState('');
-  const [filterStatus, setFilterStatus] = useState<FilterStatus>('unverified');
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
+  const [history, setHistory] = useState<CAReviewHistoryEntry[]>([]);
   const [searchQuery, setSearchQuery]   = useState('');
   const [selectedItem, setSelectedItem] = useState<CAReviewItem | null>(null);
   const [selectedType, setSelectedType] = useState<'individuals' | 'companies' | 'ngos' | null>(null);
@@ -137,6 +138,16 @@ export default function CADashboardClient() {
       setLoading(true);
       setError('');
 
+      if (filterStatus === 'history') {
+        const response = await fetch('/api/ca/history', { credentials: 'include' });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || 'Failed to load review history');
+        }
+        setHistory(Array.isArray(payload.data) ? payload.data : []);
+        return;
+      }
+
       const response = await fetch(`/api/ca/queue?status=${filterStatus}`, { credentials: 'include' });
       const payload = await response.json();
 
@@ -144,9 +155,9 @@ export default function CADashboardClient() {
         throw new Error(payload.error || 'Failed to load verification queue');
       }
 
-      setIndividuals(payload.individuals || []);
-      setCompanies(payload.companies || []);
-      setNGOs(payload.ngos || []);
+      setIndividuals((payload.individuals || []).map(sanitizeCaReviewItem));
+      setCompanies((payload.companies || []).map(sanitizeCaReviewItem));
+      setNGOs((payload.ngos || []).map(sanitizeCaReviewItem));
     } catch (err) {
       setError(getErrorMessage(err) || 'Failed to load data');
     } finally {
@@ -185,13 +196,22 @@ export default function CADashboardClient() {
       ngo.ngo_description.toLowerCase().includes(q)
     ), [ngos, q]);
 
+  const filteredHistory = useMemo(() =>
+    history.filter((entry) =>
+      !q ||
+      entry.stakeholder_name.toLowerCase().includes(q) ||
+      entry.kind.toLowerCase().includes(q) ||
+      entry.action.toLowerCase().includes(q)
+    ), [history, q]);
+
   const handleItemClick = async (item: CAReviewItem, type: 'individuals' | 'companies' | 'ngos') => {
-    setSelectedItem(item);
+    const safeItem = sanitizeCaReviewItem(item);
+    setSelectedItem(safeItem);
     setSelectedType(type);
     setRejectionReason('');
     setComplianceTags(
-      isCaReviewLocked(item) && Array.isArray(item.allotted_compliance_tags)
-        ? item.allotted_compliance_tags
+      isCaReviewLocked(safeItem) && Array.isArray(safeItem.allotted_compliance_tags)
+        ? safeItem.allotted_compliance_tags
         : []
     );
     setReviewLoading(true);
@@ -199,10 +219,11 @@ export default function CADashboardClient() {
       const response = await fetch(`/api/ca/review?type=${type}&id=${item.id}`, { credentials: 'include' });
       const data = await response.json();
       if (response.ok && data.data) {
-        setSelectedItem(data.data);
+        const review = sanitizeCaReviewItem(data.data as CAReviewItem);
+        setSelectedItem(review);
         setComplianceTags(
-          isCaReviewLocked(data.data) && Array.isArray(data.data.allotted_compliance_tags)
-            ? data.data.allotted_compliance_tags
+          isCaReviewLocked(review) && Array.isArray(review.allotted_compliance_tags)
+            ? review.allotted_compliance_tags
             : []
         );
       }
@@ -218,7 +239,7 @@ export default function CADashboardClient() {
     if (isCaReviewLocked(selectedItem)) return;
 
     if (action === 'reject' && !rejectionReason.trim()) {
-      alert('Please provide a reason for rejection');
+      toast.error('Please provide a reason for rejection');
       return;
     }
 
@@ -239,7 +260,7 @@ export default function CADashboardClient() {
 
       const data = await response.json().catch(() => ({}));
       if (response.ok) {
-        alert(data.message || `${selectedItem.name || selectedItem.company_name || selectedItem.ngo_name} ${action === 'approve' ? 'approved' : 'rejected'}`);
+        toast.success(data.message || `${selectedItem.name || selectedItem.company_name || selectedItem.ngo_name} ${action === 'approve' ? 'approved' : 'rejected'}`);
         if (selectedType === 'individuals') {
           setIndividuals(individuals.filter(ind => ind.id !== selectedItem.id));
         } else if (selectedType === 'companies') {
@@ -252,11 +273,11 @@ export default function CADashboardClient() {
         setRejectionReason('');
         setComplianceTags([]);
       } else {
-        alert(data.error || 'Failed to process action');
+        toast.error(data.error || 'Failed to process action');
       }
     } catch (error) {
       console.error('Action failed:', error);
-      alert('Failed to process action');
+      toast.error('Failed to process action');
     } finally {
       setActionLoading(false);
     }
@@ -278,7 +299,7 @@ export default function CADashboardClient() {
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-slate-900">CA Portal</h1>
-        <p className="mt-1 text-slate-500">Review and approve pending individuals, companies, and NGOs</p>
+        <p className="mt-1 text-slate-500">Review pending submissions. Verified and unverified accounts are view-only.</p>
       </div>
 
       {/* Toolbar */}
@@ -312,13 +333,15 @@ export default function CADashboardClient() {
         </div>
       </div>
 
-      {/* Three columns */}
+      {filterStatus === 'history' ? (
+        <CAReviewHistoryFeed entries={filteredHistory} loading={loading} />
+      ) : (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Individuals */}
         <ColumnCard
           title="Individuals"
           count={filteredIndividuals.length}
-          href="/ca/individuals"
+          href={filterStatus === 'all' ? '/ca/individuals' : `/ca/individuals?status=${filterStatus}`}
           loading={loading}
         >
           {filteredIndividuals.length === 0 ? (
@@ -337,9 +360,9 @@ export default function CADashboardClient() {
                 }
               }}
             >
-              <p className="truncate text-sm font-medium text-slate-900">{ind.name}</p>
+              <CaQueueAccountTitle name={ind.name} status={ind.verification_status} badgeNumber={ind.ca_badge_number} />
               <p className="truncate text-xs text-slate-400">{ind.email}</p>
-              <div className="mt-2"><StatusBadge status={ind.verification_status} /></div>
+              <div className="mt-2"><CaQueueStatusBadge status={ind.verification_status} reverification={ind.reverification_pending} /></div>
             </div>
           ))}
         </ColumnCard>
@@ -348,7 +371,7 @@ export default function CADashboardClient() {
         <ColumnCard
           title="Companies"
           count={filteredCompanies.length}
-          href="/ca/companies"
+          href={filterStatus === 'all' ? '/ca/companies' : `/ca/companies?status=${filterStatus}`}
           loading={loading}
         >
           {filteredCompanies.length === 0 ? (
@@ -367,10 +390,10 @@ export default function CADashboardClient() {
                 }
               }}
             >
-              <p className="truncate text-sm font-medium text-slate-900">{comp.company_name}</p>
+              <CaQueueAccountTitle name={comp.company_name} status={comp.verification_status} badgeNumber={comp.ca_badge_number} />
               <p className="truncate text-xs text-slate-500">{comp.business_description}</p>
               <p className="truncate text-xs text-slate-400">{comp.email}</p>
-              <div className="mt-2"><StatusBadge status={comp.verification_status} /></div>
+              <div className="mt-2"><CaQueueStatusBadge status={comp.verification_status} reverification={comp.reverification_pending} /></div>
             </div>
           ))}
         </ColumnCard>
@@ -379,7 +402,7 @@ export default function CADashboardClient() {
         <ColumnCard
           title="NGOs"
           count={filteredNGOs.length}
-          href="/ca/ngos"
+          href={filterStatus === 'all' ? '/ca/ngos' : `/ca/ngos?status=${filterStatus}`}
           loading={loading}
         >
           {filteredNGOs.length === 0 ? (
@@ -398,28 +421,43 @@ export default function CADashboardClient() {
                 }
               }}
             >
-              <p className="truncate text-sm font-medium text-slate-900">{ngo.ngo_name}</p>
+              <CaQueueAccountTitle name={ngo.ngo_name} status={ngo.verification_status} badgeNumber={ngo.ca_badge_number} />
               <p className="truncate text-xs text-slate-500">{ngo.ngo_description}</p>
               <p className="truncate text-xs text-slate-400">{ngo.email}</p>
-              <div className="mt-2"><StatusBadge status={ngo.verification_status} reverification={ngo.reverification_pending} /></div>
+              <div className="mt-2"><CaQueueStatusBadge status={ngo.verification_status} reverification={ngo.reverification_pending} /></div>
             </div>
           ))}
         </ColumnCard>
       </div>
+      )}
 
       {/* Item Details Dialog */}
       <Dialog open={!!selectedItem} onOpenChange={() => setSelectedItem(null)}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {selectedType === 'individuals' && selectedItem?.name}
-              {selectedType === 'companies' && selectedItem?.company_name}
-              {selectedType === 'ngos' && selectedItem?.ngo_name}
+              {selectedItem ? (
+                <CaQueueAccountTitle
+                  name={
+                    selectedType === 'companies'
+                      ? selectedItem.company_name || 'Company'
+                      : selectedType === 'ngos'
+                        ? selectedItem.ngo_name || 'NGO'
+                        : selectedItem.name || 'Individual'
+                  }
+                  status={selectedItem.verification_status}
+                  badgeNumber={selectedItem.ca_badge_number}
+                  size="md"
+                  nameClassName="truncate text-lg font-semibold text-gram-ink"
+                />
+              ) : null}
             </DialogTitle>
             <DialogDescription>
               {selectedType
                 ? isCaReviewLocked(selectedItem)
-                  ? 'View verified details'
+                  ? String(selectedItem?.verification_status || '').toLowerCase() === 'unverified'
+                    ? 'View only. Unverified accounts must resubmit before a CA can approve them.'
+                    : 'View verified details'
                   : selectedItem?.reverification_pending
                     ? 'Review updated certificates and re-allot tags'
                     : caReviewDescription(selectedType)

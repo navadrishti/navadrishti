@@ -11,6 +11,7 @@ import {
   ngoIsCsrEligible,
   resolveProjectCsrCoverageEndDate,
   verifyAdminToken,
+  verifyCompanyCAToken,
   verifyToken,
   type UserData,
 } from '@/lib/auth';
@@ -171,15 +172,22 @@ export function getAuthUserFromRequest(request: NextRequest): UserData {
 }
 
 const SESSION_BLOCK_CACHE_MS = 30_000;
-const sessionBlockCache = new Map<number, { reason: string | null; expiresAt: number }>();
+type SessionGate = {
+  reason: string | null;
+  delegatedCompanyCa: boolean;
+  expiresAt: number;
+};
+const sessionBlockCache = new Map<number, SessionGate>();
 
 /**
  * Bans and suspensions must end live sessions too, not only the next sign-in.
  * Cached briefly per instance so every API call does not cost a users lookup.
  */
-export async function findSessionBlockReason(userId: number): Promise<string | null> {
+export async function findSessionGate(userId: number): Promise<Pick<SessionGate, 'reason' | 'delegatedCompanyCa'>> {
   const cached = sessionBlockCache.get(userId);
-  if (cached && cached.expiresAt > Date.now()) return cached.reason;
+  if (cached && cached.expiresAt > Date.now()) {
+    return { reason: cached.reason, delegatedCompanyCa: cached.delegatedCompanyCa };
+  }
 
   const { data, error } = await supabase
     .from('users')
@@ -189,8 +197,13 @@ export async function findSessionBlockReason(userId: number): Promise<string | n
   if (error) throw error;
 
   const reason = data ? getAccountAccessBlockReason(data) : 'This account no longer exists.';
-  sessionBlockCache.set(userId, { reason, expiresAt: Date.now() + SESSION_BLOCK_CACHE_MS });
-  return reason;
+  const delegatedCompanyCa = String(parseJsonObject(data?.profile_data).role || '').toLowerCase() === 'company_ca';
+  sessionBlockCache.set(userId, { reason, delegatedCompanyCa, expiresAt: Date.now() + SESSION_BLOCK_CACHE_MS });
+  return { reason, delegatedCompanyCa };
+}
+
+export async function findSessionBlockReason(userId: number): Promise<string | null> {
+  return (await findSessionGate(userId)).reason;
 }
 
 export function forgetSessionBlockReason(userId: number) {
@@ -442,7 +455,7 @@ export async function getCompanyCAFromRequest(
     throw new Error('Company CA authentication required');
   }
 
-  const user = verifyToken(token);
+  const user = verifyCompanyCAToken(token) ?? verifyToken(token);
   if (!user) {
     throw new Error('Invalid company CA token');
   }

@@ -72,17 +72,32 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 export function getUserFormDefaults(user: User): Partial<VerificationFormData> {
   const profileData: Record<string, unknown> = parseJsonObject(user.profile_data);
+  const category = resolveCategory(user.user_type);
   const documentExpiries = asRecord(profileData.document_expiries) as Record<
     string,
     { valid_until?: string; number?: string } | undefined
   >;
-  const entered = asRecord(asRecord(asRecord(profileData.verification_documents).ngo).entered_fields);
+  const typeBlock = asRecord(asRecord(profileData.verification_documents)[category]);
+  const entered = asRecord(typeBlock.entered_fields);
+  const gst = String(entered.gst || '').trim();
+  const registrationType = String(entered.registration_type || '').trim();
 
   return {
     entityName: user.name || '',
     contactNumber: user.phone || '',
     email: user.email || '',
-    category: resolveCategory(user.user_type),
+    category,
+    panNumber: String(entered.pan || ''),
+    aadhaarNumber: String(entered.aadhaar || ''),
+    registrationNumber: String(entered.registration_number || ''),
+    ngoAssociationNumber: String(entered.association_number || ''),
+    ngoRegistrationType:
+      registrationType === 'Trust' || registrationType === 'Society' || registrationType === 'Section 8'
+        ? registrationType
+        : 'Trust',
+    companyCinNumber: String(entered.cin || ''),
+    companyGstNumber: gst,
+    companyGstApplicable: Boolean(gst),
     ngoTwelveANumber: String(profileData.twelve_a_number || entered.twelve_a || ''),
     ngoEightyGNumber: String(profileData.eighty_g_number || entered.eighty_g || ''),
     ngoCsr1RegistrationNumber: String(profileData.csr1_registration_number || entered.csr1 || ''),

@@ -346,6 +346,7 @@ describe('CA and evidence verification routes', () => {
     ['ca/auth/verify', 'GET'],
     ['ca/queue', 'GET'],
     ['ca/review', 'GET'],
+    ['ca/history', 'GET'],
     ['ca/verification-action', 'POST'],
     ['evidence-verification/change-password', 'POST'],
     ['evidence-verification/payments/create-order', 'POST'],
@@ -362,6 +363,7 @@ describe('CA and evidence verification routes', () => {
   it.each<[string, Method]>([
     ['ca/queue', 'GET'],
     ['ca/review', 'GET'],
+    ['ca/history', 'GET'],
     ['ca/verification-action', 'POST'],
   ])('%s %s rejects a regular user token', async (route, method) => {
     const res = await call(route, method, buildRequest(method, { token: ngo }))

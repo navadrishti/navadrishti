@@ -30,7 +30,7 @@ pnpm start
 pnpm test
 ```
 
-Runs the Vitest suite in `tests/`. `tests/security.test.ts` checks the security headers, source map settings, and that client components do not import server-only modules; the other files cover pricing, auth tokens, need allocation and campaign lead helpers.
+Runs the Vitest suite in `tests/`.
 
 ## Database changes
 

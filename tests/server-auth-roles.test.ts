@@ -21,6 +21,7 @@ import {
   setAuthTokenCookie,
   setPlatformCaTokenCookie,
 } from '@/lib/server-auth'
+import { generateCompanyCAToken } from '@/lib/auth'
 import { requireCA } from '@/lib/ca-review'
 import { supabaseFake } from './support/supabase-fake'
 
@@ -206,6 +207,22 @@ describe('getCompanyCAFromRequest', () => {
     supabaseFake.queue('company_ca_identities', { data: identity })
     await expect(getCompanyCAFromRequest(buildRequest({ header: `Bearer ${userToken}` }))).resolves.toMatchObject({
       user: { id: 12 },
+    })
+  })
+
+  it('accepts a scoped company CA token and platform verifyToken cannot use it', async () => {
+    const scoped = generateCompanyCAToken({
+      id: 12,
+      email: 'ca@acme.com',
+      name: 'Company CA',
+      user_type: 'company',
+    })
+    expect(() => getAuthUserFromRequest(buildRequest({ header: `Bearer ${scoped}` }))).toThrow(
+      'Invalid authentication token'
+    )
+    supabaseFake.queue('company_ca_identities', { data: identity })
+    await expect(getCompanyCAFromRequest(buildRequest({ header: `Bearer ${scoped}` }))).resolves.toMatchObject({
+      user: { id: 12, email: 'ca@acme.com' },
     })
   })
 

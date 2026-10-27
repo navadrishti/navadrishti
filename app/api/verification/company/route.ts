@@ -84,6 +84,7 @@ async function initiateCompanyVerification(
     const verificationPayload: TablesUpdate<'company_verifications'> = {
       company_name: companyName,
       verification_status: 'pending',
+      rejection_reason: null,
     };
     if (entered.gst) verificationPayload.gst_number = entered.gst;
     if (entered.registration_number) verificationPayload.registration_number = entered.registration_number;
@@ -130,7 +131,8 @@ async function initiateCompanyVerification(
             documents: documents || {},
             entered_fields: entered,
             submitted_at: new Date().toISOString(),
-            status: 'pending'
+            status: 'pending',
+            rejection_reason: '',
           }
         }
       },
@@ -220,6 +222,7 @@ async function reverifyCompanyVerification(
             company: {
               ...(existingVerificationDocs.company || {}),
               reverification_status: 'pending',
+              reverification_rejection_reason: '',
               reverification_documents: documents || {},
               reverification_submitted_at: new Date().toISOString(),
               reverification_entered_fields: entered,

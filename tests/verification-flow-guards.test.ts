@@ -12,6 +12,7 @@ import { PATCH as patchUser } from '@/app/api/admin/users/[id]/route'
 import { isTrustedDocumentUrl } from '@/lib/ca-review/document-urls'
 import { initiateNgoVerification, reverifyNgoVerification } from '@/lib/ngo-verification/submission'
 import { approveReverification, rejectReverification } from '@/lib/reverification'
+import type { JsonRecord } from '@/lib/utils'
 import { jsonRequest, tokenFor } from './support/requests'
 import { supabaseFake } from './support/supabase-fake'
 
@@ -436,11 +437,22 @@ describe('admin CA credentials and user downgrade', () => {
     expect(supabaseFake.writes('platform_ca_accounts', 'insert')).toHaveLength(0)
   })
 
-  it('clears stored CA compliance tags when an admin downgrades a user', async () => {
+  it('clears stored CA compliance tags and submitted documents when an admin unverifies a user', async () => {
     supabaseFake.queue('users.select', {
-      data: { id: 5, user_type: 'ngo', profile_data: { ca_badge_number: 'ND-CA-1', ca_compliance_tags: ['csr1'] } },
+      data: {
+        id: 5,
+        user_type: 'ngo',
+        profile_data: {
+          ca_badge_number: 'ND-CA-1',
+          ca_compliance_tags: ['csr1'],
+          ca_review_history: [{ ca_id: 3, action: 'approve' }],
+          verification_documents: { ngo: { documents: { ngoPanCard: 'https://cdn.example.com/pan.pdf' } } },
+        },
+      },
     })
     supabaseFake.queue('users.update', { data: { id: 5 } })
+    supabaseFake.queue('ngo_verifications.update', { data: [{ id: 1 }] })
+    supabaseFake.queue('verification_documents.delete', { data: [] })
     const response = await patchUser(
       jsonRequest('http://localhost/api/admin/users/5', {
         token: adminToken,
@@ -450,8 +462,53 @@ describe('admin CA credentials and user downgrade', () => {
       { params: Promise.resolve({ id: '5' }) }
     )
     expect(response.status).toBe(200)
-    const profile = (supabaseFake.writes('users')[0].payload as { profile_data: Record<string, unknown> }).profile_data
+    const profile = (supabaseFake.writes('users')[0].payload as { profile_data: JsonRecord }).profile_data
     expect(profile.ca_compliance_tags).toEqual([])
     expect(profile).not.toHaveProperty('ca_badge_number')
+    expect(profile.verification_documents.ngo).toEqual({
+      documents: {},
+      entered_fields: {},
+      status: 'unverified',
+    })
+    expect(profile.ca_review_history).toEqual([{ ca_id: 3, action: 'approve' }])
+    expect(supabaseFake.writes('verification_documents', 'delete')).toHaveLength(1)
+  })
+
+  it('keeps previous documents when an admin moves a user to pending and promotes a later reverification pack', async () => {
+    supabaseFake.queue('users.select', {
+      data: {
+        id: 5,
+        user_type: 'company',
+        verification_status: 'verified',
+        profile_data: {
+          ca_badge_number: 'ND-CA-1',
+          reverification_pending: true,
+          verification_documents: {
+            company: {
+              documents: { companyPanCard: 'https://cdn.example.com/old-pan.pdf' },
+              reverification_documents: { companyPanCard: 'https://cdn.example.com/new-pan.pdf' },
+            },
+          },
+        },
+      },
+    })
+    supabaseFake.queue('users.update', { data: { id: 5 } })
+    supabaseFake.queue('company_verifications.update', { data: [{ id: 1 }] })
+    const response = await patchUser(
+      jsonRequest('http://localhost/api/admin/users/5', {
+        token: adminToken,
+        method: 'PATCH',
+        body: { verification_status: 'pending' },
+      }),
+      { params: Promise.resolve({ id: '5' }) }
+    )
+    expect(response.status).toBe(200)
+    const profile = (supabaseFake.writes('users')[0].payload as { profile_data: JsonRecord }).profile_data
+    expect(profile).not.toHaveProperty('ca_badge_number')
+    expect(profile).not.toHaveProperty('reverification_pending')
+    expect(profile.verification_documents.company.documents.companyPanCard).toBe(
+      'https://cdn.example.com/new-pan.pdf'
+    )
+    expect(profile.verification_documents.company).not.toHaveProperty('reverification_documents')
   })
 })

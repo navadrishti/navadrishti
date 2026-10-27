@@ -2,13 +2,6 @@
 
 Platform for NGOs, individuals, and companies to run verified service exchange, CSR campaigns, and field evidence workflows.
 
-## Documentation
-
-- [Technical overview](docs/TECHNICAL_README.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [API reference](docs/API_REFERENCE.md)
-- [Database schema notes](docs/DATABASE_SCHEMA.md)
-
 ## Stack
 
 - Next.js 16 (App Router) and React 19
@@ -23,8 +16,8 @@ Platform for NGOs, individuals, and companies to run verified service exchange, 
 Requires Node.js 18+ and pnpm.
 
 ```bash
-git clone https://github.com/yourusername/Navadrishti.git
-cd Navadrishti
+git clone https://github.com/navadrishti/navadrishti.git
+cd navadrishti
 pnpm install
 cp .env.example .env.local
 pnpm dev
@@ -51,11 +44,22 @@ Copy `.env.example` and set at least:
 - `SUPABASE_SECRET_KEY`
 - `JWT_SECRET`
 
-Additional keys (Razorpay, Cloudinary, cron, Gemini) are listed in `.env.example`.
+The full list is in `.env.example` and [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md).
 
 ## Database
 
 PostgreSQL on Supabase. Application writes go through `lib/db.ts`. Canonical column names live in the local schema dump (`reference/completeschema.txt`, gitignored). Need applications are stored in `service_request_applications` with fulfillments in `service_request_fulfillments`. Capability applications use `service_clients`.
+
+## Docs
+
+- [Docs index](docs/README.md)
+- [Technical overview](docs/TECHNICAL_README.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [API reference](docs/API_REFERENCE.md)
+- [Database schema notes](docs/DATABASE_SCHEMA.md)
+- [Environment](docs/ENVIRONMENT.md)
+- [Deployment](docs/DEPLOYMENT.md)
+- [Verification flow](docs/VERIFICATION_FLOW.md)
 
 ## Scripts
 

@@ -2,6 +2,7 @@ import { getComplianceDocumentUrl } from '@/lib/auth'
 import { reverificationDocumentLabels } from '@/lib/reverification'
 import type { CAReviewDocument } from '@/lib/ca-review-types'
 import { parseJsonObject } from '@/lib/utils'
+import { isTrustedDocumentUrl } from './document-urls'
 
 function fileNameFromUrl(url: string, fallback: string) {
   try {
@@ -30,7 +31,7 @@ function documentsFromMap(map: Record<string, unknown>, prefix: string): CARevie
   return Object.entries(map)
     .map(([key, value]) => {
       const fileUrl = getComplianceDocumentUrl(value)
-      if (!/^https?:\/\//i.test(fileUrl)) return null
+      if (!isTrustedDocumentUrl(fileUrl)) return null
       return {
         id: `${prefix}-${key}`,
         key,
@@ -60,6 +61,7 @@ export function extractDocuments(profileData: Record<string, unknown>, profileKe
   const verificationDocuments = parseJsonObject(profileData.verification_documents)
   const typeBlock = parseJsonObject(verificationDocuments[profileKey])
   const docs = documentsFromMap(parseJsonObject(typeBlock.documents), prefix)
+  const staged = documentsFromMap(parseJsonObject(typeBlock.reverification_documents), `${prefix}-reverify`)
 
   if (profileKey === 'ngo') {
     const compliance = parseJsonObject(profileData.compliance_documents)
@@ -77,10 +79,10 @@ export function extractDocuments(profileData: Record<string, unknown>, profileKe
     }
 
     return overlayDocuments(docs, [
-      ...documentsFromMap(parseJsonObject(typeBlock.reverification_documents), `${prefix}-reverify`),
+      ...staged,
       ...documentsFromMap(parseJsonObject(compliance.pending_reverification), `${prefix}-pending-compliance`),
     ])
   }
 
-  return docs
+  return overlayDocuments(docs, staged)
 }

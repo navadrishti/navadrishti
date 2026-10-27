@@ -100,6 +100,7 @@ export async function initiateNgoVerification(userId: number, input: NgoVerifica
       registration_number: input.registrationNumber,
       registration_type: input.registrationType,
       verification_status: 'pending',
+      rejection_reason: null,
     };
     if (entered.fcra_number) ngoPayload.fcra_number = entered.fcra_number;
 
@@ -155,7 +156,8 @@ export async function initiateNgoVerification(userId: number, input: NgoVerifica
               entered_fields: entered,
               compliance_numbers: submitted,
               submitted_at: submittedAt,
-              status: 'pending'
+              status: 'pending',
+              rejection_reason: '',
             }
           }
         },
@@ -265,6 +267,7 @@ export async function reverifyNgoVerification(userId: number, input: NgoVerifica
             ngo: {
               ...(existingVerificationDocs.ngo || {}),
               reverification_status: 'pending',
+              reverification_rejection_reason: '',
               reverification_documents: documents || {},
               reverification_compliance_numbers: submitted,
               reverification_submitted_at: submittedAt,
