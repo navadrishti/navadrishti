@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useEffectEvent, useCallback, useRef, ReactNode } from 'react';
 import { toast } from 'sonner';
 import { getDocumentExpiryAlertCopy } from './auth';
+import { getVerificationReviewNotice } from './verification-review-notice';
 import { isPlatformLoginRequiredPath, PRODUCT_NAME } from './access-control';
 import { getErrorMessage } from '@/lib/utils';
 import { createClient } from '@/lib/supabase';
@@ -35,6 +36,24 @@ function isAuthRevoked() {
   }
 }
 
+function usableStoredValue(value: string | null): string | null {
+  if (!value || value === 'undefined' || value === 'null') return null;
+  const cleaned = value.replace(/["']/g, '').trim();
+  return cleaned && cleaned !== 'undefined' && cleaned !== 'null' ? cleaned : null;
+}
+
+/** Platform tabs share one account through localStorage. sessionStorage is only a leftover mirror. */
+function readPlatformAuthFromStorage(): { token: string | null; userJson: string | null } {
+  if (typeof window === 'undefined') return { token: null, userJson: null };
+  const rawUser = localStorage.getItem('user');
+  const userJson =
+    !rawUser || rawUser === 'undefined' || rawUser === 'null' ? null : rawUser;
+  return {
+    token: usableStoredValue(localStorage.getItem('token')),
+    userJson,
+  };
+}
+
 function notifyDocumentExpiryForUser(user: User) {
   if (typeof window === 'undefined' || user.user_type !== 'ngo') return;
 
@@ -48,6 +67,35 @@ function notifyDocumentExpiryForUser(user: User) {
   window.setTimeout(() => {
     toast.info(copy.title, {
       description: copy.description,
+      duration: DOCUMENT_EXPIRY_ALERT_DURATION_MS,
+    });
+  }, 800);
+}
+
+function verificationReviewAlertKey(userId: number, kind: string) {
+  return `navadrishti:verification-review-alert:${userId}:${kind}`;
+}
+
+function notifyVerificationReviewForUser(user: User) {
+  if (typeof window === 'undefined') return;
+
+  const notice = getVerificationReviewNotice({
+    userType: user.user_type,
+    verificationStatus: user.verification_status,
+    profileData: user.profile_data || user.profile,
+    reverificationPending: Boolean(
+      user.profile_data?.reverification_pending || user.profile?.reverification_pending
+    ),
+  });
+  if (!notice) return;
+
+  const key = verificationReviewAlertKey(user.id, notice.kind);
+  if (sessionStorage.getItem(key)) return;
+
+  sessionStorage.setItem(key, '1');
+  window.setTimeout(() => {
+    toast.info(notice.title, {
+      description: notice.description,
       duration: DOCUMENT_EXPIRY_ALERT_DURATION_MS,
     });
   }, 800);
@@ -158,6 +206,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [error, setError] = useState<string | null>(null);
   // Bumped on logout so in-flight /me hydrations and Strict Mode remounts cannot revive the session.
   const authEpochRef = useRef(0);
+  const tokenRef = useRef<string | null>(null);
 
   const persistAuthSnapshot = useCallback((nextToken: string | null, nextUser: User | null) => {
     if (nextToken) {
@@ -226,46 +275,42 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [persistAuthSnapshot]);
 
   const syncAuthFromStorage = useCallback(async () => {
-    const epoch = authEpochRef.current;
     try {
       setLoading(true);
+      const { token: storedToken, userJson: storedUser } = readPlatformAuthFromStorage();
 
-      if (isAuthRevoked()) {
+      // Same-tab logout must stay logged out on remount. A login in another tab writes localStorage
+      // and must still be allowed through.
+      if (isAuthRevoked() && !storedToken) {
         persistAuthSnapshot(null, null);
+        tokenRef.current = null;
         setToken(null);
         setUser(null);
         setLoading(false);
         return;
       }
 
-      const storedToken = sessionStorage.getItem('token') || localStorage.getItem('token');
-      const storedUser = sessionStorage.getItem('user') || localStorage.getItem('user');
-
-      if (storedToken && storedToken !== 'undefined' && storedToken !== 'null') {
-        const cleanToken = storedToken.replace(/["']/g, '').trim();
-
-        if (!cleanToken || cleanToken === 'undefined' || cleanToken === 'null') {
-          persistAuthSnapshot(null, null);
-          setToken(null);
-          setUser(null);
-          setLoading(false);
-          return;
+      if (storedToken) {
+        clearAuthRevoked();
+        if (storedToken !== tokenRef.current) {
+          authEpochRef.current += 1;
         }
+        const epoch = authEpochRef.current;
+        tokenRef.current = storedToken;
+        setToken(storedToken);
 
-        setToken(cleanToken);
-
-        if (storedUser && storedUser !== 'undefined' && storedUser !== 'null') {
+        if (storedUser) {
           try {
-            const parsedUser = JSON.parse(storedUser);
-            setUser(parsedUser);
+            setUser(JSON.parse(storedUser));
           } catch (parseError) {
             console.error('Error parsing stored user:', parseError);
           }
         }
 
-        const hydratedUser = await hydrateUserFromServer(cleanToken);
+        const hydratedUser = await hydrateUserFromServer(storedToken);
         if (epoch !== authEpochRef.current) return;
         if (!hydratedUser) {
+          tokenRef.current = null;
           setToken(null);
           setUser(null);
         }
@@ -273,6 +318,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         return;
       }
 
+      if (tokenRef.current) {
+        authEpochRef.current += 1;
+      }
+      persistAuthSnapshot(null, null);
+      tokenRef.current = null;
       setToken(null);
       setUser(null);
       setLoading(false);
@@ -289,8 +339,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, []);
 
   useEffect(() => {
+    tokenRef.current = token;
+  }, [token]);
+
+  useEffect(() => {
     if (loading || !user) return;
     notifyDocumentExpiryForUser(user);
+    notifyVerificationReviewForUser(user);
   }, [loading, user]);
 
   useEffect(() => {
@@ -366,6 +421,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       
       clearAuthRevoked();
       setToken(data.token);
+      tokenRef.current = data.token;
       persistAuthSnapshot(data.token, null);
 
       await hydrateUserFromServer(data.token, data.user);
@@ -411,6 +467,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       
       clearAuthRevoked();
       setToken(data.token);
+      tokenRef.current = data.token;
       persistAuthSnapshot(data.token, null);
 
       await hydrateUserFromServer(data.token, data.user);
@@ -442,6 +499,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     markAuthRevoked();
     setToken(null);
+    tokenRef.current = null;
     setUser(null);
     setError(null);
     persistAuthSnapshot(null, null);
@@ -507,22 +565,31 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   };
 
-  // Rehydrate only on cross-tab storage changes
+  // Keep every platform tab on the same localStorage account. Admin/CA cookies are separate.
   useEffect(() => {
     const rehydrateHandler = () => {
       void syncAuthFromStorage();
     };
 
     const storageListener = (e: StorageEvent) => {
-      if (e.key === 'token' || e.key === 'user') {
+      if (e.key === 'token' || e.key === 'user' || e.key === null) {
         rehydrateHandler();
       }
     };
 
+    const focusListener = () => {
+      const { token: storedToken } = readPlatformAuthFromStorage();
+      if (storedToken !== tokenRef.current) rehydrateHandler();
+    };
+
     window.addEventListener('storage', storageListener);
+    window.addEventListener('focus', focusListener);
+    document.addEventListener('visibilitychange', focusListener);
 
     return () => {
       window.removeEventListener('storage', storageListener);
+      window.removeEventListener('focus', focusListener);
+      document.removeEventListener('visibilitychange', focusListener);
     };
   }, [syncAuthFromStorage]);
 

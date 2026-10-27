@@ -9,6 +9,7 @@ export type CAReviewItem = {
   email?: string
   phone?: string
   verification_status?: string
+  ca_badge_number?: string | null
   submitted_at?: string
   documents?: CAReviewDocument[]
   documents_total?: number
@@ -32,6 +33,7 @@ export type CAReviewItem = {
   eighty_g_expiry?: string
   csr1?: string
   csr1_expiry?: string
+  registration_type?: string
   reverification_pending?: boolean
   allotted_compliance_tags?: string[]
   compliance_tag_options?: CaComplianceTagOption[]

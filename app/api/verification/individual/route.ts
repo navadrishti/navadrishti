@@ -83,6 +83,7 @@ async function initiateVerification(
       updated_at: new Date().toISOString(),
       aadhaar_verified: false,
       pan_verified: false,
+      rejection_reason: null,
     };
     if (entered.aadhaar) verificationPayload.aadhaar_number = entered.aadhaar;
     if (entered.pan) verificationPayload.pan_number = entered.pan;
@@ -110,7 +111,8 @@ async function initiateVerification(
             documents: documents || {},
             entered_fields: entered,
             submitted_at: new Date().toISOString(),
-            status: 'pending'
+            status: 'pending',
+            rejection_reason: '',
           }
         }
       };
@@ -178,6 +180,7 @@ async function reverifyVerification(
           individual: {
             ...(existingVerificationDocs.individual || {}),
             reverification_status: 'pending',
+            reverification_rejection_reason: '',
             reverification_documents: documents || {},
             reverification_submitted_at: new Date().toISOString(),
             reverification_entered_fields: {

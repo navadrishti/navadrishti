@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
+import { getRuntimeServiceFlags, requiredServicesReady } from '@/lib/runtime-services';
 import { getErrorMessage } from '@/lib/utils';
 
 export async function GET() {
   try {
-    // Production health check endpoint
+    const services = getRuntimeServiceFlags();
     const checks = {
       status: 'healthy',
       timestamp: new Date().toISOString(),
@@ -12,8 +13,9 @@ export async function GET() {
       version: process.env.npm_package_version || '1.0.0',
       checks: {
         database: 'unknown',
-        external_services: 'unknown'
-      }
+        core_config: requiredServicesReady(services) ? 'healthy' : 'unhealthy',
+      },
+      services,
     };
 
     try {
@@ -38,37 +40,22 @@ export async function GET() {
       }
     }
 
-    const requiredEnvVars = [
-      'NEXT_PUBLIC_SUPABASE_URL',
-      'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
-      'SUPABASE_SECRET_KEY',
-      'JWT_SECRET'
-    ];
-    
-    const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
-    checks.checks.external_services = missingEnvVars.length === 0 ? 'healthy' : 'degraded';
+    const isHealthy = checks.checks.database === 'healthy' && checks.checks.core_config === 'healthy';
+    checks.status = isHealthy ? 'healthy' : 'unhealthy';
 
-    const isHealthy = checks.checks.database !== 'unhealthy' && 
-                     checks.checks.external_services !== 'unhealthy';
-
-    if (!isHealthy) {
-      checks.status = 'degraded';
-    }
-
-    return NextResponse.json(checks, { 
+    return NextResponse.json(checks, {
       status: isHealthy ? 200 : 503,
       headers: {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
-        'Expires': '0'
-      }
+        'Expires': '0',
+      },
     });
-
   } catch {
     return NextResponse.json({
       status: 'unhealthy',
       timestamp: new Date().toISOString(),
-      error: process.env.NODE_ENV === 'development' ? 'Health check failed' : 'Service unavailable'
+      error: 'Service unavailable',
     }, { status: 503 });
   }
 }

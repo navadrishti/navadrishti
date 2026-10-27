@@ -148,6 +148,50 @@ describe('AuthProvider', () => {
     expect(() => renderHook(() => useAuth())).toThrow('useAuth must be used within an AuthProvider')
   })
 
+  it('ignores a leftover sessionStorage token when localStorage is empty', async () => {
+    sessionStorage.setItem('token', 'stale-tab-token')
+    sessionStorage.setItem('user', JSON.stringify(alice))
+    const fetchMock = mockFetch(() => jsonResponse({ user: alice }))
+
+    renderWithAuth()
+
+    await screen.findByText('loading: false')
+    expect(screen.getByText('user: none')).toBeInTheDocument()
+    expect(screen.getByText('token: none')).toBeInTheDocument()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('logs this tab out when another tab clears the shared token', async () => {
+    localStorage.setItem('token', 'stored-token')
+    localStorage.setItem('user', JSON.stringify(alice))
+    mockFetch((url) => (url === '/api/auth/me' ? jsonResponse({ user: alice }) : jsonResponse({}, 404)))
+
+    renderWithAuth()
+    await screen.findByText('user: Alice')
+
+    localStorage.removeItem('token')
+    localStorage.removeItem('user')
+    window.dispatchEvent(new StorageEvent('storage', { key: 'token' }))
+
+    await screen.findByText('user: none')
+    expect(screen.getByText('token: none')).toBeInTheDocument()
+  })
+
+  it('picks up a login from another tab even after this tab logged out', async () => {
+    sessionStorage.setItem('navadrishti:auth-revoked', '1')
+    const fetchMock = mockFetch(() => jsonResponse({ user: alice }))
+    renderWithAuth()
+    await screen.findByText('loading: false')
+
+    localStorage.setItem('token', 'other-tab-token')
+    localStorage.setItem('user', JSON.stringify(alice))
+    window.dispatchEvent(new StorageEvent('storage', { key: 'token' }))
+
+    await screen.findByText('user: Alice')
+    await waitFor(() => expect(screen.getByText('token: other-tab-token')).toBeInTheDocument())
+    expect(fetchMock).toHaveBeenCalled()
+  })
+
   it('rehydrates when another tab stores a token', async () => {
     const fetchMock = mockFetch(() => jsonResponse({ user: alice }))
     renderWithAuth()

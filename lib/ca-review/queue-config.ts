@@ -14,6 +14,7 @@ export type VerificationQueueRow = {
   gst_number?: string | null
   ngo_name?: string | null
   registration_number?: string | null
+  registration_type?: string | null
   fcra_number?: string | null
 }
 

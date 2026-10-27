@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db, supabase } from '@/lib/db';
-import { comparePassword, generateToken, type UserData } from '@/lib/auth';
+import { comparePassword, generateCompanyCAToken, type UserData } from '@/lib/auth';
 import { ensureCompanyCaIdAssigned } from '@/lib/company-ca';
 import { setEvidenceVerificationTokenCookie } from '@/lib/server-auth';
 import { limitAttempts } from '@/lib/rate-limit';
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
 
     const caId = await ensureCompanyCaIdAssigned(identity.id, identity.company_user_id, identity.ca_id);
 
-    const token = generateToken({
+    const token = generateCompanyCAToken({
       id: user.id,
       email: user.email,
       name: user.name,

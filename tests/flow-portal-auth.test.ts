@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { comparePassword, generateToken, hashPassword, verifyAdminToken, verifyToken, type UserData } from '@/lib/auth'
+import { comparePassword, generateToken, hashPassword, verifyAdminToken, verifyCompanyCAToken, verifyToken, type UserData } from '@/lib/auth'
 import { verifyPlatformCAToken } from '@/lib/platform-ca-auth'
 import { POST as adminLogin } from '@/app/api/admin/auth/route'
 import { POST as adminLogout } from '@/app/api/admin/logout/route'
@@ -247,7 +247,8 @@ describe('evidence verification login', () => {
     expectNoSecrets(body)
     const cookie = response.cookies.get('evidence-verification-token')
     expect(cookie).toMatchObject({ value: body.token, httpOnly: true })
-    expect(verifyToken(body.token)).toMatchObject({ id: 21 })
+    expect(verifyToken(body.token)).toBeNull()
+    expect(verifyCompanyCAToken(body.token)).toMatchObject({ id: 21, email: 'ca@acme.com' })
     expect(response.cookies.get('token')).toBeUndefined()
     expect(fake.writes('company_ca_identities')[0].payload).toHaveProperty('last_login_at')
   })

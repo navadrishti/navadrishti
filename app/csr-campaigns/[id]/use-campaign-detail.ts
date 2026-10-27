@@ -1,4 +1,5 @@
 import { useEffect, useEffectEvent, useState } from "react"
+import { toast } from 'sonner'
 import { useAuth } from '@/lib/auth-context'
 import { isFullyVerifiedAccount } from '@/lib/auth'
 import { isCampaignStarted, isVolunteerRegistrationPastDeadline } from "@/lib/format-date"
@@ -92,7 +93,7 @@ export function useCampaignDetail(campaignId: string) {
 
   const volunteer = async () => {
     if (!token) {
-      alert('Please sign in to volunteer')
+      toast.error('Please sign in to volunteer')
       return
     }
     if (applying) return
@@ -104,14 +105,14 @@ export function useCampaignDetail(campaignId: string) {
       })
       const payload = await res.json().catch(() => null)
       if (!res.ok || !payload?.success) {
-        alert(payload?.error || 'Failed to volunteer')
+        toast.error(payload?.error || 'Failed to volunteer')
       } else {
         await loadCampaign()
-        alert('Applied to volunteer')
+        toast.success('Applied to volunteer')
       }
     } catch (e) {
       console.error(e)
-      alert('Failed to volunteer')
+      toast.error('Failed to volunteer')
     } finally {
       setApplying(false)
     }
@@ -131,13 +132,13 @@ export function useCampaignDetail(campaignId: string) {
       })
       const payload = await res.json().catch(() => null)
       if (!res.ok || !payload?.success) {
-        alert(payload?.error || 'Failed to accept lead role')
+        toast.error(payload?.error || 'Failed to accept lead role')
       } else {
         setCampaign((prev) => (prev ? { ...prev, ...payload.data } : payload.data))
-        alert('Accepted lead role. Volunteer gap calculated and campaign activated.')
+        toast.success('Accepted lead role. Volunteer gap calculated and campaign activated.')
       }
     } catch {
-      alert('Failed to accept lead role')
+      toast.error('Failed to accept lead role')
     } finally {
       setAccepting(false)
     }

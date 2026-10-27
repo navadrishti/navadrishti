@@ -1,12 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useIsClient } from '@/hooks/use-is-client';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { useOtpSender } from '@/hooks/use-otp-sender';
-import { PHONE_VERIFICATION_ENABLED } from '@/lib/auth';
-import { smoothNavigate, getErrorMessage } from '@/lib/utils';
+import { smoothNavigate, smoothScrollToElement, getErrorMessage } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -23,12 +22,17 @@ import {
   getRequiredDocs,
   getUserFormDefaults,
   initialFormData,
+  resolveCategory,
   uploadVerificationDocument
 } from './helpers';
 import { StepProgressCard } from './step-progress-card';
 import type { DocumentKey, FormErrors, Step, VerificationFormData } from './types';
 import { useVerificationStatus } from './use-verification-status';
 import { VerifiedSummaryCard } from './verified-summary-card';
+import { SubmittedReviewCard } from './submitted-review-card';
+import { VerificationReviewDialog } from '@/components/verification-review-dialog';
+import { getVerificationReviewNotice } from '@/lib/verification-review-notice';
+import { getVerificationDashboardView } from '@/lib/verification-dashboard-view';
 
 export default function VerificationPage() {
   const router = useRouter();
@@ -50,19 +54,12 @@ export default function VerificationPage() {
   const isEmailVerified = mounted ? Boolean(baseEmailVerified || otp.otpVerified.email) : false;
   const isPhoneVerified = mounted ? Boolean(authSnapshot?.phone_verified ?? user?.phone_verified ?? false) : false;
   const documentVerificationStatus = authSnapshot?.verification_status ?? user?.verification_status ?? 'unverified';
-  const isDocumentVerified = mounted
-    ? documentVerificationStatus === 'verified' || reverificationPending
-    : false;
-  const isFullyVerified = mounted
-    ? Boolean(
-        isEmailVerified &&
-        (PHONE_VERIFICATION_ENABLED ? isPhoneVerified : true) &&
-        isDocumentVerified
-      )
-    : false;
 
   const [formData, setFormData] = useState<VerificationFormData>(initialFormData);
   const [didSyncUserDefaults, setDidSyncUserDefaults] = useState(false);
+  const [documentFiles, setDocumentFiles] = useState(() => createDocumentMap<File | null>(null));
+  const [uploadedUrls, setUploadedUrls] = useState(() => createDocumentMap(''));
+  const pageTopRef = useRef<HTMLDivElement>(null);
 
   if (mounted && user && !didSyncUserDefaults) {
     setDidSyncUserDefaults(true);
@@ -79,8 +76,11 @@ export default function VerificationPage() {
     }
   }, [mounted, authLoading, user, router]);
 
-  const [documentFiles, setDocumentFiles] = useState(() => createDocumentMap<File | null>(null));
-  const [uploadedUrls, setUploadedUrls] = useState(() => createDocumentMap(''));
+  useEffect(() => {
+    if (!success) return;
+    window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+    smoothScrollToElement('verification-top', { offset: 96, delay: 40, duration: 500 });
+  }, [success]);
 
   const requiredDocs = useMemo(() => getRequiredDocs(formData), [formData]);
 
@@ -127,6 +127,23 @@ export default function VerificationPage() {
     setSuccess(null);
     setError(null);
     setCurrentStep(1);
+  };
+
+  const emptyFormAfterSubmit = (message: string) => {
+    setError(null);
+    setFormErrors({});
+    setOtpInput({ email: '', phone: '' });
+    setCurrentStep(1);
+    setDocumentFiles(createDocumentMap<File | null>(null));
+    setUploadedUrls(createDocumentMap(''));
+    setFormData({
+      ...initialFormData,
+      category: resolveCategory(user?.user_type),
+      entityName: user?.name || '',
+      email: user?.email || '',
+      contactNumber: user?.phone || '',
+    });
+    setSuccess(message);
   };
 
   const submitVerification = async () => {
@@ -183,13 +200,18 @@ export default function VerificationPage() {
           verification_status: 'verified',
           reverification_pending: true
         }));
-        setSuccess(initiateResult.message || 'Reverification submitted. You remain verified while your updated documents are reviewed.');
-        setCurrentStep(1);
-        setDocumentFiles(createDocumentMap<File | null>(null));
-        return;
+      } else {
+        setAuthSnapshot((prev) => ({
+          ...(prev || {}),
+          verification_status: 'pending',
+        }));
       }
-
-      setSuccess('Verification details submitted successfully. Documents uploaded as per your verification type. CA review typically takes 24–48 hours — please check back after that period to see if your verified badge has been issued.');
+      emptyFormAfterSubmit(
+        initiateResult.message ||
+          (reverifyMode
+            ? 'Reverification submitted. You remain verified while your updated documents are reviewed.'
+            : 'Verification submitted successfully. A CA will review your documents. Check back here for your verified badge.')
+      );
     } catch (submissionError) {
       setError(getErrorMessage(submissionError) || 'Failed to submit verification details. Please try again.');
     } finally {
@@ -220,22 +242,77 @@ export default function VerificationPage() {
     );
   }
 
-  if (isFullyVerified && !reverifyMode) {
+  const reviewNotice = getVerificationReviewNotice({
+    userType: user.user_type,
+    verificationStatus: documentVerificationStatus,
+    profileData: user.profile_data || user.profile,
+    reverificationPending,
+  });
+  const dashboardView = getVerificationDashboardView({
+    reverifyMode,
+    verificationStatus: documentVerificationStatus,
+    justSubmitted: Boolean(success),
+    reverificationPending,
+  });
+  const remainVerified =
+    documentVerificationStatus === 'verified' || Boolean(reverificationPending);
+
+  const beginReverify = () => {
+    setReverifyMode(true);
+    resetToFirstStep();
+    setDocumentFiles(createDocumentMap<File | null>(null));
+    setUploadedUrls(createDocumentMap(''));
+    setFormData({
+      ...initialFormData,
+      ...getUserFormDefaults(user),
+    });
+  };
+
+  if (dashboardView === 'verified_summary') {
     return (
-      <VerifiedSummaryCard
-        user={user}
-        reverificationPending={reverificationPending}
+      <>
+        <VerifiedSummaryCard
+          user={user}
+          reverificationPending={reverificationPending}
+          reviewNotice={reviewNotice}
+          onBack={handleBack}
+          onStartReverify={beginReverify}
+        />
+        <VerificationReviewDialog
+          notice={reviewNotice}
+          applyLabel="Apply for reverification"
+          onApply={beginReverify}
+        />
+      </>
+    );
+  }
+
+  if (dashboardView === 'submitted_review') {
+    return (
+      <SubmittedReviewCard
+        title={
+          success
+            ? remainVerified
+              ? 'Reverification submitted'
+              : 'Verification submitted'
+            : remainVerified
+              ? 'Reverification under review'
+              : 'Verification under review'
+        }
+        description={
+          success ||
+          (remainVerified
+            ? 'Your updated documents were submitted successfully. A CA will review them. You remain verified.'
+            : 'Your form was submitted successfully. A CA will review your documents.')
+        }
+        remainVerified={remainVerified}
         onBack={handleBack}
-        onStartReverify={() => {
-          setReverifyMode(true);
-          resetToFirstStep();
-        }}
       />
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
+    <div id="verification-top" ref={pageTopRef} className="max-w-4xl mx-auto p-6 space-y-6">
       <div className="flex items-center gap-2">
         <Button
           variant="ghost"
@@ -256,13 +333,12 @@ export default function VerificationPage() {
         </p>
       </div>
 
-      <Alert>
-        <AlertDescription>
-          CA document verification typically takes 24–48 hours. Please check back after that period to see if your CA-verified badge has been issued.
-        </AlertDescription>
-      </Alert>
-
-      <StepProgressCard currentStep={currentStep} category={formData.category} />
+      {success && (
+        <Alert className="border-green-200 bg-green-50">
+          <CheckCircle className="h-4 w-4 text-green-600" />
+          <AlertDescription className="text-green-700">{success}</AlertDescription>
+        </Alert>
+      )}
 
       {error && (
         <Alert variant="destructive">
@@ -271,12 +347,7 @@ export default function VerificationPage() {
         </Alert>
       )}
 
-      {success && (
-        <Alert className="border-green-200 bg-green-50">
-          <CheckCircle className="h-4 w-4 text-green-600" />
-          <AlertDescription className="text-green-700">{success}</AlertDescription>
-        </Alert>
-      )}
+      <StepProgressCard currentStep={currentStep} category={formData.category} />
 
       {currentStep === 1 && (
         <DetailsStep
@@ -327,6 +398,18 @@ export default function VerificationPage() {
           }}
         />
       )}
+
+      <VerificationReviewDialog
+        notice={reverifyMode ? null : reviewNotice}
+        applyLabel={reviewNotice?.kind === 'reverification_rejected' ? 'Apply for reverification' : 'Apply again'}
+        onApply={() => {
+          if (reviewNotice?.kind === 'reverification_rejected') {
+            beginReverify();
+            return;
+          }
+          resetToFirstStep();
+        }}
+      />
     </div>
   );
 }

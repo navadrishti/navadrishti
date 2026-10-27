@@ -13,7 +13,14 @@ const createCompanyCASchema = z.object({
   name: z.string().min(2),
   email: z.string().trim().toLowerCase().email(),
   password: z.string().min(8),
-  permissions: z.record(z.any()).optional(),
+  permissions: z
+    .object({
+      can_review_evidence: z.boolean().optional(),
+      can_confirm_payments: z.boolean().optional(),
+      can_view_audit: z.boolean().optional(),
+    })
+    .strict()
+    .optional(),
   status: z.enum(['active', 'inactive']).optional(),
   ca_id: z.string().optional(),
   auto_generate_ca_id: z.boolean().default(true)
@@ -114,6 +121,8 @@ export async function POST(request: NextRequest) {
       verification_status: 'verified',
       email_verified: true,
       phone_verified: false,
+      // users.ngo_volunteer_capacity is NOT NULL for every row. Company CAs are not NGOs.
+      ngo_volunteer_capacity: 0,
       profile_data: {
         role: 'company_ca',
         parent_company_user_id: user.id
@@ -140,6 +149,10 @@ export async function POST(request: NextRequest) {
 
     if (identityError) {
       console.error('Failed to create company CA identity:', identityError);
+      const { error: rollbackError } = await supabase.from('users').delete().eq('id', newUser.id);
+      if (rollbackError) {
+        console.error('Failed to roll back company CA user after identity insert failed:', rollbackError);
+      }
       return NextResponse.json({ error: 'Failed to create company CA identity' }, { status: 500 });
     }
 

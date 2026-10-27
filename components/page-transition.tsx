@@ -1,13 +1,3 @@
-/**
- * Page Transition Component with Navigation Progress Bar
- * 
- * Features:
- * - Smooth page enter/exit animations
- * - Top navigation progress bar
- * - Reduced motion support
- * - Hardware-accelerated transitions
- */
-
 "use client"
 
 import { usePathname } from 'next/navigation';
@@ -17,7 +7,6 @@ interface PageTransitionProps {
   children: ReactNode;
 }
 
-// Navigation Progress Bar Component (integrated)
 function NavigationProgress() {
   const pathname = usePathname();
   const [isNavigating, setIsNavigating] = useState(true);
@@ -31,7 +20,6 @@ function NavigationProgress() {
   }
 
   useEffect(() => {
-    // Smooth continuous progress
     const startTime = Date.now();
     const duration = 1200;
     
@@ -75,33 +63,41 @@ function NavigationProgress() {
   );
 }
 
+function transitionGroup(path: string) {
+  if (path.startsWith('/ca/login') || path.startsWith('/ca/change-password')) return path
+  if (path.startsWith('/ca')) return '/ca-console'
+  if (path.startsWith('/admin/login')) return path
+  if (path.startsWith('/admin')) return '/admin-console'
+  return path
+}
+
 export function PageTransition({ children }: PageTransitionProps) {
   const pathname = usePathname();
-  const [displayPath, setDisplayPath] = useState(pathname);
+  const group = transitionGroup(pathname);
+  const [displayPath, setDisplayPath] = useState(group);
   const [settledStage, setTransitionStage] = useState<'entering' | 'visible'>('visible');
-  const transitionStage = pathname !== displayPath ? 'exiting' : settledStage;
+  const transitionStage = group !== displayPath ? 'exiting' : settledStage;
   
   useEffect(() => {
-    // Detect if user prefers reduced motion
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
     if (transitionStage === 'exiting') {
-      // Wait for exit animation to complete
       const exitTimer = setTimeout(() => {
-        setDisplayPath(pathname);
-        setTransitionStage('entering');
-      }, prefersReducedMotion ? 0 : 200);
-      
-      return () => clearTimeout(exitTimer);
-    } else if (transitionStage === 'entering') {
-      // Initial page load
-      const timer = setTimeout(() => {
-        setTransitionStage('visible');
-      }, prefersReducedMotion ? 0 : 50);
-      
-      return () => clearTimeout(timer);
+        setDisplayPath(group)
+        setTransitionStage('entering')
+      }, prefersReducedMotion ? 0 : 200)
+
+      return () => clearTimeout(exitTimer)
     }
-  }, [pathname, transitionStage]);
+
+    if (transitionStage === 'entering') {
+      const timer = setTimeout(() => {
+        setTransitionStage('visible')
+      }, prefersReducedMotion ? 0 : 50)
+
+      return () => clearTimeout(timer)
+    }
+  }, [group, transitionStage])
   
   const getTransitionClass = () => {
     switch (transitionStage) {
