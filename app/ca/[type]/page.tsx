@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import VerificationDetailsPage from '@/components/verification-details-page';
-import { CA_QUEUE_TYPES, type CAQueueType } from '@/lib/ca-review-types';
+import { CA_QUEUE_TYPES, parseCAQueueType } from '@/lib/ca-review-types';
 
 export function generateStaticParams() {
   return CA_QUEUE_TYPES.map((type) => ({ type }));
@@ -19,15 +19,15 @@ export default async function CAQueueTypePage({
   params: Promise<{ type: string }>;
   searchParams: Promise<{ status?: string | string[] }>;
 }) {
-  const { type } = await params;
-  if (!CA_QUEUE_TYPES.includes(type as CAQueueType)) {
+  const type = parseCAQueueType((await params).type);
+  if (!type) {
     notFound();
   }
 
   const query = await searchParams;
   return (
     <VerificationDetailsPage
-      type={type as CAQueueType}
+      type={type}
       initialStatus={queueStatusFromQuery(Array.isArray(query.status) ? query.status[0] : query.status)}
     />
   );

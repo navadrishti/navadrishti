@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { caErrorResponse, listCAQueue, requireCA } from '@/lib/ca-review';
-import { CA_QUEUE_TYPES, type CAQueueType } from '@/lib/ca-review-types';
+import { CA_QUEUE_TYPES, parseCAQueueType } from '@/lib/ca-review-types';
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,10 +9,10 @@ export async function GET(request: NextRequest) {
     const typeParam = request.nextUrl.searchParams.get('type');
 
     if (typeParam) {
-      if (!CA_QUEUE_TYPES.includes(typeParam as CAQueueType)) {
+      const type = parseCAQueueType(typeParam);
+      if (!type) {
         return NextResponse.json({ error: 'Invalid queue type' }, { status: 400 });
       }
-      const type = typeParam as CAQueueType;
       const data = await listCAQueue(type, status);
       return NextResponse.json({
         success: true,

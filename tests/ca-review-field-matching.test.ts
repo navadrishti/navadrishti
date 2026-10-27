@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildCrossDocumentComparisons, pickDocField } from '@/lib/ca-review/cross-field-comparisons'
 import { compactId, valuesMatch } from '@/lib/ca-review/field-matching'
-import { CA_QUEUE_TYPES, type CAFieldComparison, type CAReviewDocument } from '@/lib/ca-review-types'
+import { CA_QUEUE_TYPES, parseCAQueueType, type CAFieldComparison, type CAReviewDocument } from '@/lib/ca-review-types'
 
 function doc(key: string, label: string, fields: Record<string, string> = {}): CAReviewDocument {
   return {
@@ -25,6 +25,15 @@ function byField(rows: CAFieldComparison[], field: string) {
 describe('CA_QUEUE_TYPES', () => {
   it('lists the three queues', () => {
     expect(CA_QUEUE_TYPES).toEqual(['individuals', 'companies', 'ngos'])
+  })
+
+  it('maps known queue names to literals and rejects anything else', () => {
+    expect(parseCAQueueType('individuals')).toBe('individuals')
+    expect(parseCAQueueType('companies')).toBe('companies')
+    expect(parseCAQueueType('ngos')).toBe('ngos')
+    expect(parseCAQueueType('ngos\n')).toBeNull()
+    expect(parseCAQueueType('admins')).toBeNull()
+    expect(parseCAQueueType(null)).toBeNull()
   })
 })
 

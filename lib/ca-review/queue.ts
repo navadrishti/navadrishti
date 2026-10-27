@@ -132,7 +132,7 @@ async function appendPendingReverifications(
     .order('updated_at', { ascending: false })
     .limit(200)
   if (verifiedError) {
-    console.error(`CA queue query failed for ${type} reverifications:`, verifiedError)
+    console.error('CA queue query failed for reverifications:', verifiedError)
     return mapped
   }
 
@@ -156,7 +156,7 @@ export async function listCAQueue(type: CAQueueType, status: string) {
   const { data, error } = await query
 
   if (error) {
-    console.error(`CA queue query failed for ${table}:`, error)
+    console.error('CA queue query failed:', error)
     throw error
   }
 
