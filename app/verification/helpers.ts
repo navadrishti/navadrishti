@@ -1,3 +1,5 @@
+import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 import type { User } from '@/lib/auth-context';
 import { PHONE_VERIFICATION_ENABLED } from '@/lib/auth';
 import { parseJsonObject } from '@/lib/utils';
@@ -196,7 +198,7 @@ export async function uploadVerificationDocument(
   key: DocumentKey,
   category: VerificationCategory
 ): Promise<string> {
-  const token = localStorage.getItem('token');
+  const token = getClientSessionToken();
   if (!token) {
     throw new Error('Authentication required. Please log in again.');
   }
@@ -214,7 +216,7 @@ export async function uploadVerificationDocument(
 
   const result = await response.json();
   if (!response.ok) {
-    throw new Error(result.details || result.error || 'Failed to upload one or more documents');
+    throw new Error(readApiError(result, 'Failed to upload one or more documents'));
   }
 
   return result.data?.url as string;

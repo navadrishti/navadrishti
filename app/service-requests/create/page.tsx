@@ -1,4 +1,6 @@
 'use client'
+import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -110,7 +112,7 @@ export default function CreateServiceRequestPage() {
     try {
       const response = await fetch(`/api/service-offers/${offerId}/clients`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getClientSessionToken()}` },
         body: JSON.stringify({
           client_id: user?.id,
           client_type: user?.user_type,
@@ -121,7 +123,7 @@ export default function CreateServiceRequestPage() {
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({}))
-        toast({ title: 'Apply failed', description: err.error || 'Could not apply to offer', variant: 'destructive' })
+        toast({ title: 'Apply failed', description: readApiError(err, 'Could not apply to offer'), variant: 'destructive' })
         return
       }
 
@@ -157,7 +159,7 @@ export default function CreateServiceRequestPage() {
     setError('')
 
     try {
-      const token = localStorage.getItem('token')
+      const token = getClientSessionToken()
       const creationResults: Array<{ ok: boolean; error?: string }> = []
 
       for (let index = 0; index < needs.length; index += 1) {
@@ -176,7 +178,7 @@ export default function CreateServiceRequestPage() {
 
         const data = await response.json()
         if (!response.ok || !data.success) {
-          creationResults.push({ ok: false, error: data.error || data.message || `Failed on need ${index + 1}` })
+          creationResults.push({ ok: false, error: readApiError(data, `Failed on need ${index + 1}`) })
           break
         }
 

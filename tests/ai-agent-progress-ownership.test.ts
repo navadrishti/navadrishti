@@ -132,4 +132,50 @@ describe('CSR agent ui_state round trip', () => {
       selectedProjectSuggestionId: 's-1',
     })
   })
+
+  it('returns a session id that actually exists instead of a stale profile active id', async () => {
+    supabaseFake.reset((query: FakeQuery) => {
+      if (query.table === 'csr_ai_agent_sessions') {
+        return {
+          data: [
+            { id: OWN_ID, title: 'Mine', status: 'active', project_context: {}, updated_at: '2026-09-01T00:00:00.000Z' },
+          ],
+        }
+      }
+      if (query.table === 'csr_ai_agent_session_state') {
+        return { data: [{ session_id: OWN_ID, ui_state: { legacyId: 'session-older' } }] }
+      }
+      if (query.table === 'users') {
+        return { data: { profile_data: { csr_ai_agent_progress: { activeSessionId: 'missing-session' } } } }
+      }
+      return undefined
+    })
+    const response = await GET(jsonRequest('http://localhost/api/ai-agent/progress?agent=csr', { token: tokenFor(7, 'company') }))
+    const { data } = await response.json()
+    expect(data.activeSessionId).toBe(OWN_ID)
+    expect(data.sessions[0].legacyId).toBe('session-older')
+  })
+
+  it('maps a legacy profile active id onto the stored uuid', async () => {
+    supabaseFake.reset((query: FakeQuery) => {
+      if (query.table === 'csr_ai_agent_sessions') {
+        return {
+          data: [
+            { id: OWN_ID, title: 'Mine', status: 'active', project_context: {}, updated_at: '2026-09-01T00:00:00.000Z' },
+          ],
+        }
+      }
+      if (query.table === 'csr_ai_agent_session_state') {
+        return { data: [{ session_id: OWN_ID, ui_state: { legacyId: 'session-older' } }] }
+      }
+      if (query.table === 'users') {
+        return { data: { profile_data: { csr_ai_agent_progress: { activeSessionId: 'session-older' } } } }
+      }
+      return undefined
+    })
+    const response = await GET(jsonRequest('http://localhost/api/ai-agent/progress?agent=csr', { token: tokenFor(7, 'company') }))
+    const { data } = await response.json()
+    expect(data.activeSessionId).toBe(OWN_ID)
+  })
 })
+

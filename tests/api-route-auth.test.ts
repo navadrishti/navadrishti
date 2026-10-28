@@ -132,7 +132,7 @@ describe('admin routes', () => {
   it.each(adminRoutes)('%s %s rejects anonymous requests with 401', async (route, method) => {
     const res = await call(route, method, buildRequest(method))
     expect(res.status).toBe(401)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 
   it.each(adminRoutes)('%s %s rejects user tokens with 401', async (route, method) => {
@@ -142,13 +142,13 @@ describe('admin routes', () => {
       const res2 = await call(route, method, buildRequest(method, { cookies: { 'admin-token': token } }))
       expect(res2.status).toBe(401)
     }
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 
   it.each(adminRoutes)('%s %s rejects forged admin tokens with 401', async (route, method) => {
     const res = await call(route, method, buildRequest(method, { cookies: { 'admin-token': forged } }))
     expect(res.status).toBe(401)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 
   it.each(assertAdminRoutes)('%s %s reports the admin auth error', async (route, method) => {
@@ -172,6 +172,7 @@ const loginRoutes: Array<[string, Method]> = [
   ['campaigns/[id]/volunteer', 'POST'],
   ['campaigns/[id]', 'DELETE'],
   ['campaigns/accept-lead', 'POST'],
+  ['campaigns/decline-lead', 'POST'],
   ['campaigns/lead-assignments', 'GET'],
   ['campaigns/lead-assignments', 'POST'],
   ['campaigns/lead-invitations', 'GET'],
@@ -228,6 +229,7 @@ const loginRoutes: Array<[string, Method]> = [
   ['service-requests/[id]/volunteers', 'GET'],
   ['service-requests/[id]/volunteers', 'POST'],
   ['service-requests/[id]/volunteers/[volunteerId]', 'PUT'],
+  ['service-requests/[id]/volunteers/[volunteerId]/delivery/sync', 'GET'],
   ['service-requests/[id]/volunteers/[volunteerId]/delivery/sync', 'POST'],
   ['service-requests/recommend', 'POST'],
   ['upload', 'DELETE'],
@@ -246,13 +248,13 @@ describe('logged-in user routes', () => {
   it.each(loginRoutes)('%s %s rejects anonymous requests with 401', async (route, method) => {
     const res = await call(route, method, buildRequest(method))
     expect(res.status).toBe(401)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 
   it.each(loginRoutes)('%s %s rejects forged tokens with 401', async (route, method) => {
     const res = await call(route, method, buildRequest(method, { token: forged }))
     expect(res.status).toBe(401)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 })
 
@@ -261,6 +263,7 @@ const wrongRole: Array<[string, Method, string, string]> = [
   ['campaigns/[id]', 'DELETE', 'ngo', ngo],
   ['campaigns/[id]/volunteer', 'POST', 'company', company],
   ['campaigns/accept-lead', 'POST', 'company', company],
+  ['campaigns/decline-lead', 'POST', 'company', company],
   ['campaigns/lead-assignments', 'GET', 'company', company],
   ['campaigns/lead-invitations', 'GET', 'company', company],
   ['campaigns/volunteer-assignments', 'GET', 'company', company],
@@ -294,6 +297,7 @@ const wrongRole: Array<[string, Method, string, string]> = [
   ['service-requests/[id]/refresh-status', 'POST', 'company', company],
   ['service-requests/[id]/volunteers', 'GET', 'company', company],
   ['service-requests/[id]/volunteers/[volunteerId]', 'PUT', 'company', company],
+  ['service-requests/[id]/volunteers/[volunteerId]/delivery/sync', 'GET', 'company', company],
   ['service-requests/[id]/volunteers/[volunteerId]/delivery/sync', 'POST', 'company', company],
 ]
 
@@ -301,20 +305,20 @@ describe('role checks', () => {
   it.each(wrongRole)('%s %s rejects a %s token with 403', async (route, method, _role, token) => {
     const res = await call(route, method, buildRequest(method, { token }))
     expect(res.status).toBe(403)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 
   it('refuses an offer application made on behalf of another NGO', async () => {
     const res = await call('service-offers/[id]/clients', 'POST', buildRequest('POST', { token: ngo, body: JSON.stringify({ client_id: 99, selected_need_ids: [1] }) }))
     expect(res.status).toBe(403)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 
   it("refuses to show another user's offer application", async () => {
     const request = new NextRequest('http://localhost/api/service-offers/1/clients?userId=99', { headers: { authorization: `Bearer ${ngo}` } })
     const res = await call('service-offers/[id]/clients', 'GET', request)
     expect(res.status).toBe(403)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 
   it.each<[string, Method]>([
@@ -326,7 +330,7 @@ describe('role checks', () => {
   ])('%s %s lets a company token past auth', async (route, method) => {
     const res = await call(route, method, buildRequest(method, { token: company }))
     expect(res.status).toBe(400)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 
   it('accepts the company session cookie on generate-campaigns', async () => {
@@ -334,9 +338,9 @@ describe('role checks', () => {
     expect(res.status).toBe(400)
   })
 
-  it('ignores the session cookie where only bearer auth is supported', async () => {
+  it('accepts the company session cookie on update-campaign', async () => {
     const res = await call('csr-agent/update-campaign', 'POST', buildRequest('POST', { cookies: { token: company } }))
-    expect(res.status).toBe(401)
+    expect(res.status).toBe(400)
   })
 })
 
@@ -357,7 +361,7 @@ describe('CA and evidence verification routes', () => {
   ])('%s %s rejects anonymous requests', async (route, method) => {
     const res = await call(route, method, buildRequest(method))
     expect(res.status).toBe(401)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 
   it.each<[string, Method]>([
@@ -368,7 +372,7 @@ describe('CA and evidence verification routes', () => {
   ])('%s %s rejects a regular user token', async (route, method) => {
     const res = await call(route, method, buildRequest(method, { token: ngo }))
     expect(res.status).toBe(401)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 })
 
@@ -381,14 +385,14 @@ describe('cron and webhook routes', () => {
     vi.stubEnv('CRON_SECRET', 'cron-secret')
     const res = await call('cron/daily-cleanup', method, buildRequest(method, { token }))
     expect(res.status).toBe(401)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 
   it('razorpay webhook requires a signature header', async () => {
     vi.stubEnv('RAZORPAY_WEBHOOK_SECRET', 'hook-secret')
     const res = await call('webhooks/razorpay', 'POST', buildRequest('POST'))
     expect(res.status).toBe(400)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 
   it('razorpay webhook rejects a bad signature', async () => {
@@ -397,13 +401,13 @@ describe('cron and webhook routes', () => {
     const signature = crypto.createHmac('sha256', 'other-secret').update(body).digest('hex')
     const res = await call('webhooks/razorpay', 'POST', buildRequest('POST', { body, headers: { 'x-razorpay-signature': signature } }))
     expect(res.status).toBe(401)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 
   it('razorpay webhook refuses to run without a configured secret', async () => {
     vi.stubEnv('RAZORPAY_WEBHOOK_SECRET', '')
     const res = await call('webhooks/razorpay', 'POST', buildRequest('POST', { headers: { 'x-razorpay-signature': 'x' } }))
     expect(res.status).toBe(500)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 })

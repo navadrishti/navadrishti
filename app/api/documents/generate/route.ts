@@ -4,6 +4,7 @@ import { getAuthUserFromRequest, assertUserType, authErrorResponse } from '@/lib
 import { assembleGeneratedDocument } from '@/lib/document-generation/assemble'
 import type { DocumentTypeId } from '@/lib/document-generation/types'
 import { getErrorMessage } from '@/lib/utils'
+import { zodIssuesToUserMessage } from '@/lib/user-facing-error'
 
 const generateSchema = z.object({
   documentType: z.enum([
@@ -35,14 +36,14 @@ const NGO_ONLY_TYPES = new Set<DocumentTypeId>([
 
 export async function POST(request: NextRequest) {
   try {
-    const user = getAuthUserFromRequest(request)
+    const user = await getAuthUserFromRequest(request)
     assertUserType(user, ['company', 'ngo'])
 
     const body = await request.json().catch(() => null)
     const parsed = generateSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
-        { error: parsed.error.issues[0]?.message || 'Invalid request' },
+        { error: zodIssuesToUserMessage(parsed.error.issues) || 'Please check your request and try again.' },
         { status: 400 }
       )
     }

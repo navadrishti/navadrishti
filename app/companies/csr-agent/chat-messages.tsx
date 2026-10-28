@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { PRODUCT_LOGO_SRC } from "@/lib/access-control"
-import { getEditingMessageContext } from "./helpers"
+import { getEditingMessageContext, stripEditedSuffix } from "./helpers"
 import type { Message } from "./session"
 
 type ChatMessageListProps = {
@@ -55,7 +55,7 @@ export function ChatMessageList({
     const msg = messages[index]
     if (!msg || msg.role !== 'user') return
     setEditingMessageIndex(index)
-    setEditingText(msg.content)
+    setEditingText(stripEditedSuffix(msg.content))
   }
 
   const handleEditCancel = () => {

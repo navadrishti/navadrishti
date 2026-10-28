@@ -6,7 +6,7 @@ import { POST as verifyPayment } from '@/app/api/service-requests/[id]/payments/
 import { POST as refreshStatus } from '@/app/api/service-requests/[id]/refresh-status/route'
 import { GET as listVolunteers, POST as applyToNeed } from '@/app/api/service-requests/[id]/volunteers/route'
 import { PUT as updateVolunteer } from '@/app/api/service-requests/[id]/volunteers/[volunteerId]/route'
-import { POST as syncDelivery } from '@/app/api/service-requests/[id]/volunteers/[volunteerId]/delivery/sync/route'
+import { GET as getDeliveryParties, POST as syncDelivery } from '@/app/api/service-requests/[id]/volunteers/[volunteerId]/delivery/sync/route'
 import { GET as getAttendance } from '@/app/api/service-assignments/[id]/attendance/route'
 import { POST as settleAssignment } from '@/app/api/service-assignments/[id]/settle/route'
 import { contributionOrderNotesError } from '@/lib/service-request-payments'
@@ -349,10 +349,68 @@ describe('delivery sync', () => {
       }))
     })
 
-    it('refuses to book when the project delivery address is incomplete', async () => {
+    it('falls back to the NGO profile address when the project site is missing', async () => {
       bookingDb(application('accepted'))
       const res = await sync(INDIVIDUAL, { action: 'book' })
-      expect(res.status).toBe(409)
+      expect(res.status).toBe(200)
+      expect(mocks.createShipment).toHaveBeenCalledWith(expect.objectContaining({
+        consignee: expect.objectContaining({ name: 'Seva Trust', address: 'NGO Office', pincode: '400001' }),
+      }))
+    })
+
+    it('refuses to book when neither the project nor the NGO has a complete address', async () => {
+      const previous = users[12]
+      users[12] = { id: 12, name: 'Seva Trust', phone: '9123456789', profile_data: {} }
+      try {
+        bookingDb(application('accepted'))
+        const res = await sync(INDIVIDUAL, { action: 'book' })
+        expect(res.status).toBe(422)
+        expect(mocks.createShipment).not.toHaveBeenCalled()
+      } finally {
+        users[12] = previous
+      }
+    })
+
+    it('previews the automatic pickup and delivery parties', async () => {
+      bookingDb(application('accepted'), { exact_address: JSON.stringify({ address_line: 'School, Ward 4', city: 'Nashik', state: 'Maharashtra', pincode: '422001' }) })
+      const res = await getDeliveryParties(
+        jsonRequest('http://localhost/api/service-requests/5/volunteers/9/delivery/sync', { token: INDIVIDUAL }),
+        volunteerParams
+      )
+      expect(res.status).toBe(200)
+      expect(await res.json()).toMatchObject({
+        success: true,
+        data: {
+          pickup: { name: 'Ravi', address: '7 Park St', pincode: '411001' },
+          consignee: { name: 'Seva Trust', address: 'School, Ward 4', pincode: '422001' },
+          consigneeSource: 'project',
+        },
+      })
+    })
+
+    it('books with an edited delivery party', async () => {
+      bookingDb(application('accepted'), { exact_address: JSON.stringify({ address_line: 'NGO Office', city: 'Mumbai', state: 'Maharashtra', pincode: '400001' }) })
+      const res = await sync(INDIVIDUAL, {
+        action: 'book',
+        consignee: {
+          name: 'Site Coordinator',
+          phone: '9000000000',
+          address_line: 'School, Ward 4',
+          city: 'Nashik',
+          state: 'Maharashtra',
+          pincode: '422001',
+        },
+      })
+      expect(res.status).toBe(200)
+      expect(mocks.createShipment).toHaveBeenCalledWith(expect.objectContaining({
+        consignee: expect.objectContaining({ name: 'Site Coordinator', address: 'School, Ward 4', pincode: '422001', phone: '9000000000' }),
+      }))
+    })
+
+    it('rejects an incomplete edited pickup address', async () => {
+      bookingDb(application('accepted'), { exact_address: JSON.stringify({ address_line: 'NGO Office', city: 'Mumbai', state: 'Maharashtra', pincode: '400001' }) })
+      const res = await sync(INDIVIDUAL, { action: 'book', pickup: { address_line: 'Only a street' } })
+      expect(res.status).toBe(400)
       expect(mocks.createShipment).not.toHaveBeenCalled()
     })
 

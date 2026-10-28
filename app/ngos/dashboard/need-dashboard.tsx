@@ -1,5 +1,7 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -121,7 +123,7 @@ export function NgoNeedDashboardInline({
   ) => {
     setUpdatingId(assignment.id);
     try {
-      const token = localStorage.getItem('token');
+      const token = getClientSessionToken();
       if (!token) {
         throw new Error('Please sign in again');
       }
@@ -152,7 +154,7 @@ export function NgoNeedDashboardInline({
 
       const data = await response.json();
       if (!data.success) {
-        throw new Error(data.error || 'Failed to update application');
+        throw new Error(readApiError(data, 'Failed to update application'));
       }
 
       toast({
@@ -167,7 +169,7 @@ export function NgoNeedDashboardInline({
     } catch (error) {
       toast({
         title: 'Could not update application',
-        description: error instanceof Error ? error.message : 'Something went wrong',
+        description: readApiError(error, 'Something went wrong'),
         variant: 'destructive',
       });
     } finally {

@@ -1,3 +1,4 @@
+import { readApiError } from '@/lib/user-facing-error'
 import { useEffect, useEffectEvent, useMemo, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { isFullyVerifiedAccount } from '@/lib/auth';
@@ -32,7 +33,7 @@ export function useProjectDetail(projectId: string) {
       const data = await response.json();
       if (!response.ok || !data?.success) {
         if (!silent) {
-          toast({ title: 'Error', description: data?.error || 'Failed to load project', variant: 'destructive' });
+          toast({ title: 'Error', description: readApiError(data, 'Failed to load project'), variant: 'destructive' });
         }
         return;
       }
@@ -94,7 +95,7 @@ export function useProjectDetail(projectId: string) {
 
       const data = await response.json();
       if (!response.ok || !data?.success) {
-        toast({ title: 'Application failed', description: data?.error || 'Could not apply', variant: 'destructive' });
+        toast({ title: 'Application failed', description: readApiError(data, 'Could not apply'), variant: 'destructive' });
         return;
       }
 

@@ -1,24 +1,13 @@
 'use client';
 
 import { useEffect, useEffectEvent, useState } from 'react';
-import { createClient as createSupabaseClient } from '@/lib/supabase';
+import { clientAuthHeaders } from '@/lib/client-session';
 import type { OfferRequestItem } from '@/lib/offer-requests';
 import type { CapabilityOfferSummary } from '@/lib/service-offers';
 import type { CSRTrackingAssignment } from '@/components/csr-tracking-project-details';
 import type { CompanyProjectOpportunity, NgoDirectoryItem, PublishedCsrCampaign } from './types';
 
-const REALTIME_TABLES = [
-  'service_request_projects',
-  'service_engagement_assignments',
-  'service_attendance_entries',
-  'service_request_applications',
-  'service_clients',
-  'service_request_shipments',
-  'shipment_tracking_events',
-  'campaigns',
-  'csr_project_milestones',
-  'csr_payment_confirmations',
-] as const;
+const DASHBOARD_POLL_MS = 30_000;
 
 export function useCompanyDashboardData({
   userId,
@@ -38,6 +27,7 @@ export function useCompanyDashboardData({
   const [csrTrackingAssignments, setCsrTrackingAssignments] = useState<CSRTrackingAssignment[]>([]);
   const [loadingCSRTrackingAssignments, setLoadingCSRTrackingAssignments] = useState(false);
   const [publishedCsrCampaigns, setPublishedCsrCampaigns] = useState<PublishedCsrCampaign[]>([]);
+  const [draftCsrCampaigns, setDraftCsrCampaigns] = useState<PublishedCsrCampaign[]>([]);
   const [loadingPublishedCsrCampaigns, setLoadingPublishedCsrCampaigns] = useState(false);
   const [ngoDirectory, setNgoDirectory] = useState<NgoDirectoryItem[]>([]);
   const [loadingNgoDirectory, setLoadingNgoDirectory] = useState(false);
@@ -54,20 +44,12 @@ export function useCompanyDashboardData({
   const fetchProjectOpportunities = async () => {
     try {
       setLoadingProjectOpportunities(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setProjectOpportunities([]);
-        return;
-      }
-
       const query = Number.isFinite(highlightedRequestId) && highlightedRequestId > 0
         ? `?mode=company-projects&requestId=${highlightedRequestId}`
         : '?mode=company-projects';
 
       const response = await fetch(`/api/service-request-assignments${query}`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+        headers: clientAuthHeaders()
       });
 
       const payload = await response.json();
@@ -86,16 +68,8 @@ export function useCompanyDashboardData({
   const fetchCSRTrackingAssignments = async () => {
     try {
       setLoadingCSRTrackingAssignments(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setCsrTrackingAssignments([]);
-        return;
-      }
-
-      const response = await fetch('/api/service-request-assignments?mode=csr-tracking', {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+const response = await fetch('/api/service-request-assignments?mode=csr-tracking', {
+        headers: clientAuthHeaders()
       });
 
       const payload = await response.json();
@@ -114,22 +88,29 @@ export function useCompanyDashboardData({
   const fetchPublishedCsrCampaigns = async () => {
     try {
       setLoadingPublishedCsrCampaigns(true);
-      const token = localStorage.getItem('token');
-      if (!token || !userId) {
+      if (!userId) {
         setPublishedCsrCampaigns([]);
+        setDraftCsrCampaigns([]);
         return;
       }
 
       const [response, trackingResponse] = await Promise.all([
-        fetch(`/api/campaigns?company_id=${userId}`),
-        fetch('/api/campaigns/tracking', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`/api/campaigns?company_id=${userId}`, { headers: clientAuthHeaders() }),
+        fetch('/api/campaigns/tracking', { headers: clientAuthHeaders() }),
       ]);
       const payload = await response.json();
       const trackingPayload = trackingResponse.ok ? await trackingResponse.json().catch(() => null) : null;
       const tracking: Record<string, PublishedCsrCampaign['tracking']> = trackingPayload?.data || {};
       if (response.ok && payload?.success) {
         const rows: PublishedCsrCampaign[] = Array.isArray(payload.data) ? payload.data : [];
-        setPublishedCsrCampaigns(rows.map((row) => ({ ...row, tracking: tracking[row.id] ?? null })));
+        setPublishedCsrCampaigns(
+          rows
+            .filter((row) => String(row.status || '').toLowerCase() !== 'draft')
+            .map((row) => ({ ...row, tracking: tracking[row.id] ?? null })),
+        );
+        setDraftCsrCampaigns(
+          rows.filter((row) => String(row.status || '').toLowerCase() === 'draft'),
+        );
       }
       reportLoad('CSR campaigns', response.ok && Boolean(payload?.success));
     } catch (error) {
@@ -160,16 +141,8 @@ export function useCompanyDashboardData({
   const fetchServiceOffers = async () => {
     try {
       setLoadingServiceOffers(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setServiceOffers([]);
-        return;
-      }
-
-      const response = await fetch('/api/service-offers?view=my-offers&include_expired=true&limit=50', {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+const response = await fetch('/api/service-offers?view=my-offers&include_expired=true&limit=50', {
+        headers: clientAuthHeaders()
       });
 
       const payload = await response.json();
@@ -185,16 +158,8 @@ export function useCompanyDashboardData({
   const fetchOfferRequests = async () => {
     try {
       setLoadingOfferRequests(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setOfferRequests([]);
-        return;
-      }
-
-      const response = await fetch('/api/service-offers/requests', {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+const response = await fetch('/api/service-offers/requests', {
+        headers: clientAuthHeaders()
       });
 
       const payload = await response.json();
@@ -213,31 +178,6 @@ export function useCompanyDashboardData({
     void fetchPublishedCsrCampaigns();
   };
 
-  const handleChange = useEffectEvent((table: (typeof REALTIME_TABLES)[number]) => {
-    if (table === 'service_request_projects') {
-      void fetchProjectOpportunities();
-      return;
-    }
-    if (['service_engagement_assignments', 'service_request_applications', 'service_clients'].includes(table)) {
-      void fetchCSRTrackingAssignments();
-      void fetchOfferRequests();
-      return;
-    }
-    if (
-      [
-        'service_attendance_entries',
-        'service_request_shipments',
-        'shipment_tracking_events',
-        'campaigns',
-        'csr_project_milestones',
-        'csr_payment_confirmations',
-      ].includes(table)
-    ) {
-      void fetchPublishedCsrCampaigns();
-      void fetchCSRTrackingAssignments();
-    }
-  });
-
   const reloadDashboard = () =>
     Promise.all([
       fetchServiceOffers(),
@@ -253,23 +193,10 @@ export function useCompanyDashboardData({
 
   useEffect(() => {
     if (!userId) return;
-
-    const realtime = createSupabaseClient();
-    const channel = realtime.channel('realtime-dashboard');
-
-    REALTIME_TABLES.forEach((table) => {
-      channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => handleChange(table));
-    });
-
-    void channel.subscribe();
-
-    return () => {
-      try {
-        realtime.removeChannel(channel);
-      } catch {
-        // ignore
-      }
-    };
+    const poll = window.setInterval(() => {
+      void loadDashboard();
+    }, DASHBOARD_POLL_MS);
+    return () => window.clearInterval(poll);
   }, [userId]);
 
   useEffect(() => {
@@ -291,6 +218,7 @@ export function useCompanyDashboardData({
     loadingCSRTrackingAssignments,
     fetchCSRTrackingAssignments,
     publishedCsrCampaigns,
+    draftCsrCampaigns,
     loadingPublishedCsrCampaigns,
     fetchPublishedCsrCampaigns,
     ngoDirectory,

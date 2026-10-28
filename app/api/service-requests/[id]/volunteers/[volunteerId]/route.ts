@@ -34,7 +34,7 @@ export async function PUT(
   try {
     const { id, volunteerId } = await params;
     
-    const decoded = getTokenClaims(request);
+    const decoded = await getTokenClaims(request);
     if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }

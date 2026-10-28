@@ -1,5 +1,6 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -95,8 +96,8 @@ export default function CALoginPage() {
           router.replace('/ca');
         }
       } else {
-        setError(data.error || 'Login failed');
-        toast.error(data.error || 'Login failed');
+        setError(readApiError(data, 'Login failed'));
+        toast.error(readApiError(data, 'Login failed'));
       }
     } catch {
       setError('Network error. Please try again.');

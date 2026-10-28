@@ -13,14 +13,15 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { PRODUCT_LOGO_SRC } from "@/lib/access-control"
-import { getEditingMessageContext } from "./conversation"
-import type { Message } from "./intake"
+import { getEditingMessageContext, stripEditedSuffix } from "./conversation"
+import type { Message, NeedIntakeData } from "./intake"
 
 type ChatMessageListProps = {
   messages: Message[]
   isTyping: boolean
   containerRef: React.RefObject<HTMLDivElement | null>
   needCount: number | null
+  needsData?: NeedIntakeData[]
   userName?: string
   userAvatar: string
   userInitials: string
@@ -42,6 +43,7 @@ export function ChatMessageList({
   isTyping,
   containerRef,
   needCount,
+  needsData = [],
   userName,
   userAvatar,
   userInitials,
@@ -51,8 +53,8 @@ export function ChatMessageList({
   const [editingText, setEditingText] = useState<string>("")
 
   const editingMessageContext = useMemo(
-    () => getEditingMessageContext(messages, editingMessageIndex, needCount),
-    [editingMessageIndex, messages, needCount]
+    () => getEditingMessageContext(messages, editingMessageIndex, needCount, needsData),
+    [editingMessageIndex, messages, needCount, needsData]
   )
 
   const saveEdit = (messageIndex: number) => {
@@ -128,7 +130,7 @@ export function ChatMessageList({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-36">
-                    <DropdownMenuItem onClick={() => { setEditingMessageIndex(idx); setEditingText(message.content) }}>Edit</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => { setEditingMessageIndex(idx); setEditingText(stripEditedSuffix(message.content)) }}>Edit</DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}

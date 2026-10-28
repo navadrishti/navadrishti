@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { caErrorResponse, getCAReview, requireCA } from '@/lib/ca-review';
 import { parseCAQueueType } from '@/lib/ca-review-types';
+import { getErrorMessage } from '@/lib/utils';
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
     if (handled) return handled;
     console.error('CA review error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to load review' },
+      { error: getErrorMessage(error) || 'Failed to load review' },
       { status: 500 }
     );
   }

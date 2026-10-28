@@ -31,6 +31,7 @@ import {
 import {
   formatInrAmount,
   formatSelectedNeeds,
+  offerRequestTrackHref,
   getOfferRequestBillingDetails,
   getOfferRequestBucket,
   toOfferRentalApplication,
@@ -437,5 +438,11 @@ describe('offer requests', () => {
       response_meta: {},
     })
     expect(formatInrAmount('abc')).toBe('Free')
+  })
+
+  it('tracks engagements on the linked need or the offer, never a missing assignment page', () => {
+    expect(offerRequestTrackHref(offerRequest({ assignment_id: 'asg_1', service_request_id: 9 }))).toBe('/service-requests/9')
+    expect(offerRequestTrackHref(offerRequest({ assignment_id: 'asg_1', response_meta: { service_request_id: 8 } }))).toBe('/service-requests/8')
+    expect(offerRequestTrackHref(offerRequest({ assignment_id: 'asg_1' }))).toBe('/service-offers/2')
   })
 })

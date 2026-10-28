@@ -52,10 +52,13 @@ describe('find service offers InputSchema', () => {
     expect(parsed.budget).toBe(50000)
   })
 
+  it('allows a campaign that starts and ends on the same day', () => {
+    expect(InputSchema.safeParse({ ...offerInput, end_date: '2026-07-01' }).success).toBe(true)
+  })
+
   it.each([
     ['zero budget', { budget: 0 }, 'budget'],
     ['end before start', { end_date: '2026-06-01' }, 'end_date'],
-    ['same start and end', { end_date: '2026-07-01' }, 'end_date'],
     ['missing title', { title: undefined }, 'title'],
   ])('rejects %s', (_label, overrides, path) => {
     const result = InputSchema.safeParse({ ...offerInput, ...overrides })

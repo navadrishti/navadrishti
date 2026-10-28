@@ -1,5 +1,6 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useEffect, useEffectEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { DashboardBodyLayout, DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
@@ -80,13 +81,13 @@ export default function AdminPage() {
       if (overviewResponse.ok && overviewData?.success) {
         setOverview(overviewData.data || null);
       } else {
-        throw new Error(overviewData?.error || 'Failed to load admin overview');
+        throw new Error(readApiError(overviewData, 'Failed to load admin overview'));
       }
 
       if (offersResponse.ok && offersData?.success) {
         setServiceOffers(Array.isArray(offersData.offers) ? offersData.offers : []);
       } else {
-        throw new Error(offersData?.error || 'Failed to load service offers');
+        throw new Error(readApiError(offersData, 'Failed to load service offers'));
       }
 
       setHealth(healthResponse.ok ? healthData : null);

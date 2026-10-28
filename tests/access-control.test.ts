@@ -2,22 +2,29 @@ import jwt from 'jsonwebtoken'
 import { NextRequest } from 'next/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const accounts = vi.hoisted(() => ({ rows: new Map<number, Record<string, unknown> | null>(), lookups: 0 }))
+const accounts = vi.hoisted(() => ({
+  rows: new Map<number, Record<string, unknown> | null>(),
+  caRows: new Map<number, Record<string, unknown> | null>(),
+  lookups: 0,
+}))
 
 vi.mock('@/lib/db', () => ({
   db: {},
   supabase: {
-    from: () => {
-      let userId = 0
+    from: (table: string) => {
+      let lookupId = 0
       const query = {
         select: () => query,
         eq: (_column: string, value: number) => {
-          userId = value
+          lookupId = value
           return query
         },
         maybeSingle: async () => {
+          if (table === 'company_ca_identities') {
+            return { data: accounts.caRows.get(lookupId) ?? null, error: null }
+          }
           accounts.lookups += 1
-          return { data: accounts.rows.get(userId) ?? null, error: null }
+          return { data: accounts.rows.get(lookupId) ?? null, error: null }
         },
       }
       return query
@@ -124,6 +131,8 @@ describe('routes', () => {
     ['/settings/security', true],
     ['/settingsx', false],
     ['/service-requests/edit/5', true],
+    ['/csr-campaigns/create', true],
+    ['/csr-campaigns', false],
     ['/service-requests', false],
     ['', false],
     ['/', false],
@@ -137,6 +146,8 @@ describe('routes', () => {
     ['company', '/ngos/dashboard', false],
     ['individual', '/service-requests/create', false],
     ['ngo', '/service-requests/create', true],
+    ['company', '/csr-campaigns/create', true],
+    ['ngo', '/csr-campaigns/create', false],
     ['company', '/service-offers/create', true],
     ['company', '/unlisted', true],
   ])('canAccessRoute(%s, %s) -> %s', (type, path, expected) => {
@@ -202,6 +213,7 @@ describe('proxy', () => {
       locked_until: null,
       profile_data: { role: 'company_ca', parent_company_user_id: 6 },
     })
+    accounts.caRows.set(45, { id: 'ident-45', user_id: 45, company_user_id: 6 })
     const caApiRequest = (path: string) =>
       new NextRequest(`https://app.example.com${path}`, {
         headers: {
@@ -217,6 +229,16 @@ describe('proxy', () => {
 
     const allowed = await proxy(caApiRequest('/api/evidence-verification/verify'))
     expect(allowed.headers.get('x-middleware-next')).toBe('1')
+  })
+
+  it('does not treat a client-writable profile role as company CA', async () => {
+    accounts.rows.set(46, {
+      account_status: 'active',
+      locked_until: null,
+      profile_data: { role: 'company_ca' },
+    })
+    const response = await proxy(apiRequest(46, '/api/campaigns'))
+    expect(response.headers.get('x-middleware-next')).toBe('1')
   })
 })
 

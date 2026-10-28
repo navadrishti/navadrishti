@@ -1,5 +1,6 @@
 'use client';
 
+import { clientAuthHeaders } from '@/lib/client-session';
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
@@ -67,11 +68,9 @@ function NGODashboardContent() {
   useEffect(() => {
     if (!user?.id || user.user_type !== 'ngo') return;
 
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
     fetch('/api/profile/update?scope=payout', {
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: 'include',
+      headers: clientAuthHeaders(),
     })
       .then((response) => response.json())
       .then((payload) => {
@@ -143,7 +142,7 @@ function NGODashboardContent() {
                   Manage your NGO capability offers, service requests, and CSR projects
                 </p>
                                 </div>
-                </div>
+                                </div>
 
             {allVerified && acceptsPayments === false ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">

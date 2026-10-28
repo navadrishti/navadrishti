@@ -8,7 +8,7 @@ Navadrishti is a Next.js App Router application with a PostgreSQL database on Su
 
 - Next.js 16 App Router
 - Server-rendered pages plus client dashboards
-- Auth state via React context (`lib/auth-context.tsx`)
+- Auth state via React context (`lib/auth-context.tsx`); session cookie is httpOnly
 - Radix / shadcn components and Tailwind CSS
 
 ## Backend
@@ -41,10 +41,11 @@ docs/
 
 ## Authentication
 
-1. User signs in; the API issues a JWT.
-2. Client stores the token and sends `Authorization: Bearer`.
+1. User signs in; the API issues a platform JWT and sets an httpOnly `token` cookie.
+2. The browser keeps a memory copy for Bearer headers after login; it does not persist the JWT in localStorage. Reloads restore the session from `/api/auth/me` using the cookie.
 3. Consoles use separate cookies (`admin-token`, CA tokens) and verify before rendering the shell.
 4. `lib/server-auth.ts` resolves platform users, Navadrishti CAs, and company CAs.
+5. Table access is server-only via `SUPABASE_SECRET_KEY`. The browser Supabase client is publishable-key Auth OTP only. Production RLS does not constrain Next.js handlers; `supabase/rls-lockdown.sql` blocks anon/authenticated on `public`.
 
 ## Service exchange
 
@@ -71,7 +72,7 @@ User-facing agents use product names only. Routes and API paths are unchanged.
 | Codename | Route | Role | Matching (Pulse) |
 |----------|-------|------|------------------|
 | Atlas | `/ngos/ai-agent` | NGO project and need drafting | `POST /api/service-requests/recommend` |
-| Catalyst | `/companies/csr-agent` | CSR campaign intake | `POST /api/csr-agent/get-recommendations`, `POST /api/ngos/score` |
+| Catalyst | `/companies/csr-agent`, `/csr-campaigns/create` | CSR campaign intake (AI or manual) | `POST /api/csr-agent/get-recommendations`, `POST /api/ngos/score` |
 | Pulse | embedded | Rank offers and NGO leads | vector boost + lexical for offers, lexical for NGO leads |
 
 Names, routes and session sync: `lib/ai-agent-sessions.ts`.

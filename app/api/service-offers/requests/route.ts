@@ -26,11 +26,13 @@ function parseSelectedNeeds(meta: Record<string, unknown>): Record<string, unkno
 }
 
 function buildSelectedNeedSummary(meta: Record<string, unknown>) {
+  const linkedServiceRequestId = Number(meta.linked_service_request_id ?? meta.service_request_id ?? 0) || null;
   const selectedNeeds = parseSelectedNeeds(meta);
   if (selectedNeeds.length > 0) {
     return selectedNeeds.slice(0, 3).map((need) => ({
       id: Number(need.id),
       title: String(need.title || 'Need'),
+      service_request_id: Number(need.service_request_id ?? linkedServiceRequestId ?? need.id) || null,
       estimated_budget: need.estimated_budget != null ? Number(need.estimated_budget) : null,
       target_amount: need.target_amount != null ? Number(need.target_amount) : null,
       target_quantity: need.target_quantity != null ? Number(need.target_quantity) : null,
@@ -45,6 +47,7 @@ function buildSelectedNeedSummary(meta: Record<string, unknown>) {
   return selectedNeedIds.slice(0, 3).map((id: number) => ({
     id,
     title: `Need #${id}`,
+    service_request_id: linkedServiceRequestId ?? id,
     estimated_budget: null,
     target_amount: null,
     target_quantity: null,
@@ -54,7 +57,7 @@ function buildSelectedNeedSummary(meta: Record<string, unknown>) {
 
 export async function GET(request: NextRequest) {
   try {
-    const claims = getTokenClaims(request);
+    const claims = await getTokenClaims(request);
     if (!claims) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
@@ -82,6 +85,7 @@ export async function GET(request: NextRequest) {
       .select(`
         id,
         service_offer_id,
+        service_request_id,
         message,
         status,
         response_meta,
@@ -99,9 +103,13 @@ export async function GET(request: NextRequest) {
       const isAssigned = typeof meta.isAssigned === 'boolean' ? meta.isAssigned : request.status === 'accepted';
       const selectedNeedSummary = buildSelectedNeedSummary(meta);
 
+      const linkedNeedId = Number(request.service_request_id || meta.service_request_id || selectedNeedSummary[0]?.service_request_id || 0)
+
       return {
         id: request.id,
         service_offer_id: request.service_offer_id,
+        service_request_id: linkedNeedId > 0 ? linkedNeedId : null,
+        assignment_id: meta.assignment_id != null ? String(meta.assignment_id) : null,
         client: request.client,
         message: request.message,
         status: request.status,

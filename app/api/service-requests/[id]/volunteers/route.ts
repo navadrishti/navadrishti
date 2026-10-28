@@ -19,7 +19,7 @@ export async function GET(
     const url = new URL(request.url);
     const userId = url.searchParams.get('userId');
     
-    const decoded = getTokenClaims(request);
+    const decoded = await getTokenClaims(request);
     if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
@@ -74,7 +74,7 @@ export async function POST(
     const body = await request.json();
     const { message, fulfillment_amount, fulfillment_quantity } = body;
 
-    const claims = getTokenClaims(request);
+    const claims = await getTokenClaims(request);
     if (!claims) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }

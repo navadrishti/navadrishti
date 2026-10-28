@@ -9,7 +9,7 @@ import { VerifiedAccountName } from '@/components/verification-badge';
 import { InlineSkillServiceFulfillment } from '@/components/engagement-fulfillment';
 import { formatStatusLabel } from '@/lib/format-date';
 import { isDailyRentalEngagementMeta } from '@/lib/service-request-allocation';
-import { formatInrAmount, getOfferRequestBillingDetails, toOfferRentalApplication, type OfferRequestItem } from '@/lib/offer-requests';
+import { formatInrAmount, getOfferRequestBillingDetails, offerRequestTrackHref, toOfferRentalApplication, type OfferRequestItem } from '@/lib/offer-requests';
 import { formatDisplayDate } from './helpers';
 
 interface OfferRequestSummaryCardProps {
@@ -110,7 +110,7 @@ export function InProgressOfferRequestCard({ request, onUpdated }: InProgressOff
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Link href={request.assignment_id ? `/service-request-assignments/${request.assignment_id}` : `/service-requests/${request.id ?? request.service_request_id}`}>
+          <Link href={offerRequestTrackHref(request)}>
             <Button size="sm" variant="outline">Track engagement</Button>
           </Link>
         </div>

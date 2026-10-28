@@ -325,6 +325,59 @@ describe('campaign draft updates', () => {
     expect(response.status).toBe(409)
     expect(supabaseFake.find('campaigns', 'update')).toHaveLength(0)
   })
+
+  it('returns success when a draft campaign is updated', async () => {
+    respondWith((query) => {
+      if (query.op === 'update') return { data: { id: CAMPAIGN_ID, title: 'Rural school kits', status: 'draft' } }
+      return {
+        data: {
+          status: 'draft',
+          impact_metrics: { lead_ngo_invites: [{ ngo_id: 6, status: 'invited' }] },
+          updated_at: 'T1',
+          lead_ngo_user_id: null,
+          end_date: '2026-12-31',
+        },
+      }
+    })
+    const response = await updateCampaign(
+      new NextRequest('http://localhost/api/csr-agent/update-campaign', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${tokenFor(3, 'company')}` },
+        body: JSON.stringify({
+          campaign_id: CAMPAIGN_ID,
+          company_id: 3,
+          campaign: {
+            title: 'Rural school kits',
+            description: 'Deliver school kits to 300 students in Gadchiroli this quarter.',
+            category: 'Education',
+            location: 'Gadchiroli, Maharashtra',
+            budget_inr: 500000,
+            schedule_vii: 'Education',
+            start_date: '2026-11-01',
+            end_date: '2026-12-31',
+            impact_metrics: {
+              beneficiaries: 300,
+              duration: '2 months',
+              volunteer_requirement: '12',
+              city: 'Gadchiroli',
+              state: 'Maharashtra',
+            },
+            milestones: [
+              { title: 'Kickoff', description: 'Plan delivery', duration_weeks: 2, budget_allocated: 200000, deliverables: [] },
+            ],
+          },
+        }),
+      })
+    )
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ success: true, data: { id: CAMPAIGN_ID, status: 'draft' } })
+    const [update] = supabaseFake.find('campaigns', 'update')
+    expect((update.payload as { impact_metrics: Row }).impact_metrics).toMatchObject({
+      lead_ngo_invites: [{ ngo_id: 6, status: 'invited' }],
+      volunteer_requirement: '12',
+      beneficiaries: 300,
+    })
+  })
 })
 
 describe('updateCsrCapabilityRentalStatus', () => {

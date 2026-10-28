@@ -10,7 +10,8 @@ import {
   savePayoutAccount,
 } from '@/lib/profile-update/payout';
 import { buildProfileUpdate } from '@/lib/profile-update/profile-fields';
-import { validateNameAndEmail } from '@/lib/profile-update/identity';
+import { isUniqueConstraintError, UNIQUE_EMAIL_EXISTS_MESSAGE, validateNameAndEmail } from '@/lib/profile-update/identity';
+import { zodIssuesToUserMessage } from '@/lib/user-facing-error';
 import {
   normalizeProfileForm,
   PROFILE_RESPONSE_COLUMNS,
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unsupported profile scope' }, { status: 400 });
     }
 
-    const authUser = getAuthUserFromRequest(request);
+    const authUser = await getAuthUserFromRequest(request);
     assertUserType(authUser, ['ngo', 'individual', 'company']);
 
     const user = await loadPayoutUser(authUser.id);
@@ -43,7 +44,7 @@ export async function PATCH(request: NextRequest) {
   let connectAttempt = false;
 
   try {
-    const authUser = getAuthUserFromRequest(request);
+    const authUser = await getAuthUserFromRequest(request);
     assertUserType(authUser, ['ngo', 'individual', 'company']);
 
     const body = await request.json();
@@ -71,7 +72,7 @@ export async function PATCH(request: NextRequest) {
 
     try {
       if (connectAttempt) {
-        await markPayoutConnectFailed(getAuthUserFromRequest(request).id, message);
+        await markPayoutConnectFailed((await getAuthUserFromRequest(request)).id, message);
       }
     } catch {
       // Ignore secondary persistence errors.
@@ -129,6 +130,9 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('Error updating profile:', error);
+      if (isUniqueConstraintError(error)) {
+        return NextResponse.json({ error: UNIQUE_EMAIL_EXISTS_MESSAGE }, { status: 409 });
+      }
       return NextResponse.json(
         { error: 'Failed to update profile' },
         { status: 500 }
@@ -165,10 +169,8 @@ export async function PUT(request: NextRequest) {
     const validationResult = updateProfileSchema.safeParse(body);
     
     if (!validationResult.success) {
-      console.error('Validation failed:', validationResult.error.errors);
       return NextResponse.json({ 
-        error: validationResult.error.errors[0].message,
-        details: validationResult.error.errors
+        error: zodIssuesToUserMessage(validationResult.error.issues),
       }, { status: 400 });
     }
     
@@ -192,6 +194,9 @@ export async function PUT(request: NextRequest) {
 
     if (result.status === 'update_failed') {
       console.error('Error updating profile:', result.error);
+      if (isUniqueConstraintError(result.error)) {
+        return NextResponse.json({ error: UNIQUE_EMAIL_EXISTS_MESSAGE }, { status: 409 });
+      }
       return NextResponse.json(
         { error: 'Failed to update profile' },
         { status: 500 }
@@ -215,7 +220,7 @@ export async function PUT(request: NextRequest) {
     console.error('Error in profile update API (PUT):', error);
     console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     return NextResponse.json(
-      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Something went wrong. Please try again.' },
       { status: 500 }
     );
   }

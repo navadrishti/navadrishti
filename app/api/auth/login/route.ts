@@ -5,6 +5,7 @@ import { comparePassword, generateToken, getAccountAccessBlockReason, type UserD
 import { isCompanyCAUser } from '@/lib/company-ca';
 import { setAuthTokenCookie } from '@/lib/server-auth';
 import { limitAttempts } from '@/lib/rate-limit';
+import { zodIssuesToUserMessage } from '@/lib/user-facing-error';
 
 // Validation schema for login
 const loginSchema = z.object({
@@ -18,7 +19,7 @@ export async function POST(req: NextRequest) {
     const validationResult = loginSchema.safeParse(body);
     
     if (!validationResult.success) {
-      return NextResponse.json({ error: validationResult.error.errors }, { status: 400 });
+      return NextResponse.json({ error: zodIssuesToUserMessage(validationResult.error.issues) }, { status: 400 });
     }
     
     const { email, password } = validationResult.data;

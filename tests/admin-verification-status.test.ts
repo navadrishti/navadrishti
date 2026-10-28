@@ -13,6 +13,7 @@ describe('applyAdminVerificationToProfile', () => {
       {
         ca_badge_number: 'ND-CA-1',
         ca_review_history: [{ ca_id: 3, action: 'approve' }],
+        newsletter_history: [{ id: 'verified-1-a', kind: 'verified', at: '2026-01-01T00:00:00Z' }],
         verification_documents: {
           individual: {
             documents: { individualPanCard: 'https://cdn.example.com/pan.pdf' },
@@ -25,6 +26,7 @@ describe('applyAdminVerificationToProfile', () => {
     )
     expect(next.ca_badge_number).toBeUndefined()
     expect(next.ca_review_history).toEqual([{ ca_id: 3, action: 'approve' }])
+    expect(next.newsletter_history).toEqual([{ id: 'verified-1-a', kind: 'verified', at: '2026-01-01T00:00:00Z' }])
     expect(next.verification_documents.individual).toEqual({
       documents: {},
       entered_fields: {},

@@ -10,8 +10,12 @@ import {
   ensureDelhiveryPickupLocation,
   isCompleteAddress,
   loadDelhiveryParty,
+  overlayDelhiveryParty,
   readStructuredAddress,
+  toPublicDelhiveryParty,
   withAddress,
+  type DelhiveryParty,
+  type PublicDelhiveryParty,
 } from '@/lib/delhivery-parties';
 import {
   isCancelledTrackingStatus,
@@ -209,15 +213,73 @@ export async function syncServiceRequestDelivery(input: {
   return { snapshot, assignment: updated };
 }
 
+function applyBookingPartyOverlay(party: DelhiveryParty, override: unknown, label: string) {
+  try {
+    return overlayDelhiveryParty(party, override);
+  } catch (error) {
+    throw new DeliveryRequestError(
+      error instanceof Error ? error.message.replace(/^Party /, `${label} `) : `Invalid ${label.toLowerCase()}`,
+      400
+    );
+  }
+}
+
+async function resolveServiceRequestDeliveryParties(
+  request: ServiceRequestRow,
+  donorId: number,
+  options?: { requireComplete?: boolean; pickup?: unknown; consignee?: unknown }
+) {
+  const ngoId = Number(request.ngo_id || 0);
+  if (!ngoId) throw new DeliveryRequestError('This need has no NGO to deliver to', 409);
+
+  const requireComplete = options?.requireComplete !== false && options?.pickup == null && options?.consignee == null;
+  const donor = applyBookingPartyOverlay(
+    await loadDelhiveryParty(donorId, 'your', { requireComplete }),
+    options?.pickup,
+    'Pickup'
+  );
+  const ngo = await loadDelhiveryParty(ngoId, "the NGO's", { requireComplete });
+  const site = readStructuredAddress(request.project?.exact_address);
+  const consignee = applyBookingPartyOverlay(
+    isCompleteAddress(site) ? withAddress(ngo, site) : ngo,
+    options?.consignee,
+    'Delivery'
+  );
+
+  return {
+    donor,
+    consignee,
+    consigneeSource: isCompleteAddress(site) ? 'project' as const : 'profile' as const,
+  };
+}
+
+export async function previewServiceRequestDeliveryParties(input: {
+  requestId: number;
+  application: ApiApplication;
+}): Promise<{ pickup: PublicDelhiveryParty; consignee: PublicDelhiveryParty; consigneeSource: 'project' | 'profile' }> {
+  const request = await loadServiceRequest(input.requestId);
+  if (!shouldUseDelhiveryForNeed(request)) {
+    throw new DeliveryRequestError('Delhivery shipping applies to material needs only', 400);
+  }
+  const donorId = getApplicationApplicantUserId(input.application);
+  const parties = await resolveServiceRequestDeliveryParties(request, donorId, { requireComplete: false });
+  return {
+    pickup: toPublicDelhiveryParty(parties.donor),
+    consignee: toPublicDelhiveryParty(parties.consignee),
+    consigneeSource: parties.consigneeSource,
+  };
+}
+
 /**
- * Books Delhivery to collect a material donation from the donor's saved address and deliver it
- * to the need's project site. A project must have a complete delivery address so a valid
- * shipment cannot be created for the wrong destination.
+ * Books Delhivery to collect a material donation from the donor address and deliver it to the
+ * project or NGO. Saved profile/project addresses are used unless the donor edits the parties.
  */
 export async function bookServiceRequestDelivery(input: {
   requestId: number;
   application: ApiApplication;
   actorUserId: number;
+  pickup?: unknown;
+  consignee?: unknown;
 }) {
   const request = await loadServiceRequest(input.requestId);
   if (!shouldUseDelhiveryForNeed(request)) {
@@ -236,19 +298,34 @@ export async function bookServiceRequestDelivery(input: {
   }
 
   const donorId = getApplicationApplicantUserId(application);
-  const ngoId = Number(request.ngo_id || 0);
-  if (!ngoId) throw new DeliveryRequestError('This need has no NGO to deliver to', 409);
-
-  const donor = await loadDelhiveryParty(donorId, 'your');
-  const ngo = await loadDelhiveryParty(ngoId, "the NGO's");
-  const site = readStructuredAddress(request.project?.exact_address);
-  if (!isCompleteAddress(site)) {
+  const { donor, consignee } = await resolveServiceRequestDeliveryParties(request, donorId, {
+    pickup: input.pickup,
+    consignee: input.consignee,
+  });
+  if (!isCompleteAddress({
+    address_line: donor.address,
+    city: donor.city,
+    state: donor.state,
+    pincode: donor.pincode,
+    country: donor.country,
+  })) {
     throw new DeliveryRequestError(
-      'Add a complete project delivery address (street address, city, state and 6-digit pincode) before booking Delhivery',
+      'Add a complete pickup address (street address, city, state and 6-digit pincode) before booking Delhivery',
       409
     );
   }
-  const consignee = withAddress(ngo, site);
+  if (!isCompleteAddress({
+    address_line: consignee.address,
+    city: consignee.city,
+    state: consignee.state,
+    pincode: consignee.pincode,
+    country: consignee.country,
+  })) {
+    throw new DeliveryRequestError(
+      'Add a complete delivery address (street address, city, state and 6-digit pincode) on the project, NGO profile, or booking form before booking Delhivery',
+      409
+    );
+  }
 
   await assertDelhiveryRouteServiceable(donor.pincode, consignee.pincode);
   const pickupLocationName = await ensureDelhiveryPickupLocation(donor);
@@ -281,6 +358,8 @@ export async function bookServiceRequestDelivery(input: {
     delivery_booked_by_user_id: input.actorUserId,
     delivery_tracking_last_status: 'Manifested',
     delivery_tracking_events: [],
+    delivery_pickup: toPublicDelhiveryParty(donor),
+    delivery_consignee: toPublicDelhiveryParty(consignee),
   };
   const booked = await db.serviceRequestApplications.update(applicationId, {
     response_meta: bookedMeta,

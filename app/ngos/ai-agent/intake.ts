@@ -9,6 +9,7 @@ export type ConversationStage = 'entry' | 'need' | 'project' | 'complete'
 
 export type NGOAIAgentSession = {
   id: string
+  legacyId?: string | null
   title: string
   createdAt: string
   updatedAt: string

@@ -174,6 +174,8 @@ describe('project meta', () => {
       impact_description: null,
       contact_info: null,
       pending_company_applications: [],
+      pending_lead_ngo_invites: [],
+      exact_address: null,
     })
   })
 

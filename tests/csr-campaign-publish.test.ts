@@ -5,6 +5,7 @@ import { assertNgoCsr1CoversWork } from '@/lib/server-auth'
 import { jsonRequest, tokenFor } from './support/requests'
 import { eqValue, supabaseFake, type FakeQuery } from './support/supabase-fake'
 import { rental, type Row } from './support/csr-campaign-fixtures'
+import { buildManualCampaignBody, createEmptyCampaignForm } from '@/app/csr-campaigns/create/helpers'
 
 vi.mock('@/lib/db', async () => {
   const { supabaseFake: fake } = await import('./support/supabase-fake')
@@ -223,6 +224,82 @@ describe('campaign drafts', () => {
       campaign: { budget_inr: '1500.4', sdg_alignment: ['6', 13.2], impact_metrics: { beneficiaries: '99.6', duration: '6 months' } },
     })
     expect(parsed.campaign).toEqual({ budget_inr: 1500, sdg_alignment: [6, 13], impact_metrics: { beneficiaries: 100, duration: '6 months' } })
+  })
+
+  it('keeps client impact fields used by the manual campaign form', () => {
+    const parsed = UpdateSelectedCampaignSchema.parse({
+      ...valid,
+      campaign: {
+        impact_metrics: {
+          beneficiaries: 40,
+          duration: '8 weeks',
+          volunteer_requirement: '12',
+          volunteer_limit: 12,
+          city: 'Pune',
+          state: 'Maharashtra',
+          selected_existing_project_id: null,
+        },
+      },
+    })
+    expect(parsed.campaign?.impact_metrics).toEqual({
+      beneficiaries: 40,
+      duration: '8 weeks',
+      volunteer_requirement: '12',
+      volunteer_limit: 12,
+      city: 'Pune',
+      state: 'Maharashtra',
+      selected_existing_project_id: null,
+    })
+  })
+
+  it('accepts a later save from the manual campaign form', () => {
+    const body = buildManualCampaignBody(
+      {
+        ...createEmptyCampaignForm(),
+        campaignName: 'Rural school kits',
+        requirementDetails: 'Deliver school kits to 300 students in Gadchiroli this quarter.',
+        category: 'Education and Livelihood Enhancement',
+        city: 'Gadchiroli',
+        state: 'Maharashtra',
+        budget: '500000',
+        volunteerRequirement: '12',
+        startDate: '2026-11-01',
+        endDate: '2026-12-31',
+        beneficiaries: '300',
+        milestones: [
+          { title: 'Kickoff', description: 'Plan delivery', budgetTarget: '200000', startDate: '2026-11-01', endDate: '2026-11-15' },
+          { title: 'Delivery', description: 'Distribute kits', budgetTarget: '300000', startDate: '2026-11-16', endDate: '2026-12-31' },
+        ],
+      },
+      { selectedProjectId: 'p-9' },
+    )
+    const parsed = UpdateSelectedCampaignSchema.safeParse({
+      ...valid,
+      campaign: {
+        title: body.title,
+        description: body.description,
+        category: body.category,
+        location: body.location,
+        budget_inr: body.budget_inr,
+        schedule_vii: body.schedule_vii,
+        start_date: body.start_date,
+        end_date: body.end_date,
+        impact_metrics: {
+          ...body.impact_metrics,
+          beneficiaries: 300,
+          duration: String(body.impact_metrics.duration || ''),
+        },
+        milestones: body.milestones,
+      },
+    })
+    expect(parsed.success).toBe(true)
+    if (!parsed.success) return
+    expect(parsed.data.campaign?.impact_metrics).toMatchObject({
+      volunteer_requirement: '12',
+      volunteer_limit: 12,
+      selected_existing_project_id: 'p-9',
+    })
+    expect(parsed.data.campaign?.milestones).toHaveLength(2)
   })
 
   it.each([

@@ -26,6 +26,7 @@ export {
 export {
   autoBookCsrCapabilityDelhivery,
   bookCsrCapabilityRentalDelhivery,
+  previewCsrCapabilityDelhiveryParties,
   retryCsrCapabilityDelhiveryBooking,
   syncAllCsrCapabilityRentalsDelhivery,
 } from "./campaign/delhivery-booking";

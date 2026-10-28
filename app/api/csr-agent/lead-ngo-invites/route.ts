@@ -161,8 +161,8 @@ export async function POST(request: NextRequest) {
     const volunteerRequirement = String(body?.volunteerRequirement || '').trim()
     let draftCampaignId = String(body?.draftCampaignId || '').trim()
 
-    if (!sessionId) {
-      return NextResponse.json({ error: 'sessionId is required' }, { status: 400 })
+    if (!sessionId && !draftCampaignId) {
+      return NextResponse.json({ error: 'sessionId or draftCampaignId is required' }, { status: 400 })
     }
     if (!['invite', 'revoke', 'save_draft'].includes(action)) {
       return NextResponse.json({ error: 'Unsupported action' }, { status: 400 })
@@ -185,7 +185,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Draft campaign not found' }, { status: 404 })
       }
       campaign = data
-    } else {
+    } else if (sessionId) {
       campaign = await findDraftBySession(sessionId, user.id)
       if (campaign?.id) draftCampaignId = String(campaign.id)
     }
@@ -276,6 +276,9 @@ export async function POST(request: NextRequest) {
     const endDate = readProjectEndDate(projectData, campaign)
 
     if (!campaign) {
+      if (!sessionId) {
+        return NextResponse.json({ error: 'Draft campaign not found' }, { status: 404 })
+      }
       const payload = buildDraftPayload(user.id, sessionId, projectData, volunteerRequirement, invites)
       const { data: inserted, error: insertError } = await supabase
         .from('campaigns')
@@ -289,9 +292,9 @@ export async function POST(request: NextRequest) {
     } else {
       const nextImpact = {
         ...impact,
-        csr_agent_session_id: sessionId,
         volunteer_requirement: volunteerRequirement || impact.volunteer_requirement || '',
         lead_ngo_invites: invites,
+        ...(sessionId ? { csr_agent_session_id: sessionId } : {}),
       }
 
       const { data: updated, error: updateError } = await supabase

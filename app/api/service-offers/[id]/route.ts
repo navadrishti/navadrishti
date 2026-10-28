@@ -16,6 +16,7 @@ import {
   assertUserRazorpayPayoutActiveForCapabilities,
   CAPABILITY_LISTING_REQUIRES_PAYOUT_MESSAGE,
 } from '@/lib/razorpay-route'
+import { toUserFacingError } from '@/lib/user-facing-error'
 
 function parseOfferId(id: string): number | null {
   if (!/^\d+$/.test(id)) return null
@@ -40,7 +41,7 @@ export async function GET(
       return NextResponse.json({ error: 'Service offer not found' }, { status: 404 })
     }
 
-    const claims = getTokenClaims(request)
+    const claims = await getTokenClaims(request)
     const isOwner = claims !== null && serviceOffer.creator_id === claims.id
     const isPublic = serviceOffer.status === 'active' && serviceOffer.admin_status === 'approved'
 
@@ -98,7 +99,7 @@ export async function PUT(
   try {
     const { id } = await params
 
-    const decoded = getTokenClaims(request)
+    const decoded = await getTokenClaims(request)
     if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
@@ -112,7 +113,7 @@ export async function PUT(
 
     const validationError = validateOfferBody(body)
     if (validationError) {
-      return NextResponse.json({ error: validationError }, { status: 400 })
+      return NextResponse.json({ error: toUserFacingError(validationError) }, { status: 400 })
     }
 
     const existingOffer = await db.serviceOffers.getById(offerId)
@@ -155,13 +156,14 @@ export async function PUT(
       }
     }
 
-    const needsReview = existingOffer.admin_status === 'approved'
-      && changedOfferFields(existingOffer, offerRow, OFFER_REVIEWED_FIELDS).length > 0
+    const adminStatus = String(existingOffer.admin_status || '').toLowerCase()
+    const reviewedChanged = changedOfferFields(existingOffer, offerRow, OFFER_REVIEWED_FIELDS).length > 0
+    const needsReview = (adminStatus === 'approved' && reviewedChanged) || adminStatus === 'rejected'
 
     const updateData = {
       ...offerRow,
       ...(needsReview
-        ? { admin_status: 'pending' as const, status: 'inactive' as const, submitted_for_review_at: nowIso }
+        ? { admin_status: 'pending' as const, status: 'inactive' as const, is_listed: false, submitted_for_review_at: nowIso }
         : {}),
       updated_at: nowIso,
     }
@@ -217,7 +219,7 @@ export async function DELETE(
   try {
     const { id } = await params
 
-    const decoded = getTokenClaims(request)
+    const decoded = await getTokenClaims(request)
     if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }

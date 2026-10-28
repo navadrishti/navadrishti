@@ -1,5 +1,6 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -97,7 +98,7 @@ export default function EvidenceVerificationSettingsPage() {
       const payload = await response.json();
 
       if (!response.ok || !payload?.success) {
-        setErrorMessage(payload?.error || 'Password change failed.');
+        setErrorMessage(readApiError(payload, 'Password change failed.'));
         return;
       }
 

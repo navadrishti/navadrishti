@@ -75,7 +75,7 @@ export default function ProtectedRoute({
     }
   }, [user, loading, router, userTypes, requireVerification, permission, mounted]);
 
-  if (!mounted || loading) {
+  if (!mounted || (loading && !user)) {
     return <PageSkeleton userType={user?.user_type || userTypes?.[0]} />;
   }
 

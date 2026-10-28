@@ -1,3 +1,4 @@
+import { readApiError } from '@/lib/user-facing-error'
 import { useEffect, useEffectEvent, useState, type Dispatch, type SetStateAction } from 'react';
 import { toast as sonnerToast } from 'sonner';
 import { getErrorMessage } from '@/lib/utils';
@@ -39,7 +40,7 @@ export function useSupportPanelState({
       if (q) params.set('q', q);
       const response = await fetch(`/api/admin/support-tickets?${params.toString()}`, { credentials: 'include' });
       const data = await response.json();
-      if (!response.ok || !data?.success) throw new Error(data?.error || 'Failed to fetch tickets');
+      if (!response.ok || !data?.success) throw new Error(readApiError(data, 'Failed to fetch tickets'));
       setTickets(Array.isArray(data.tickets) ? data.tickets : []);
     } catch (err) {
       sonnerToast.error(getErrorMessage(err) || 'Failed to load tickets');
@@ -54,7 +55,7 @@ export function useSupportPanelState({
       setDetailLoading(true);
       const response = await fetch(`/api/admin/support-tickets/${encodeURIComponent(ticketId)}`, { credentials: 'include' });
       const data = await response.json();
-      if (!response.ok || !data?.success) throw new Error(data?.error || 'Failed to load ticket details');
+      if (!response.ok || !data?.success) throw new Error(readApiError(data, 'Failed to load ticket details'));
       setSelectedTicketDetail(data.ticket || null);
       setMessages(Array.isArray(data.messages) ? data.messages : []);
       setStatusUpdate((data.ticket?.status || 'open') as SupportTicketStatus);
@@ -89,7 +90,7 @@ export function useSupportPanelState({
         body: JSON.stringify({ trackingId }),
       });
       const data = await response.json();
-      if (!response.ok || !data?.success) throw new Error(data?.error || 'Failed to fetch tracking');
+      if (!response.ok || !data?.success) throw new Error(readApiError(data, 'Failed to fetch tracking'));
       setTrackingSnapshot(data.data || null);
       sonnerToast.success('Tracking synced');
     } catch (err) {
@@ -114,7 +115,7 @@ export function useSupportPanelState({
         body: JSON.stringify({ status: statusUpdate, reply_message: replyMessage }),
       });
       const data = await response.json();
-      if (!response.ok || !data?.success) throw new Error(data?.error || 'Failed to send reply');
+      if (!response.ok || !data?.success) throw new Error(readApiError(data, 'Failed to send reply'));
       sonnerToast.success('Reply sent');
       setSelectedTicketDetail(data.ticket || null);
       setTickets((prev) => prev.map((t) => (t.ticket_id === data.ticket.ticket_id ? data.ticket : t)));
@@ -138,7 +139,7 @@ export function useSupportPanelState({
         body: JSON.stringify({ status: statusUpdate }),
       });
       const data = await response.json();
-      if (!response.ok || !data?.success) throw new Error(data?.error || 'Failed to update ticket');
+      if (!response.ok || !data?.success) throw new Error(readApiError(data, 'Failed to update ticket'));
       sonnerToast.success('Ticket updated');
       setSelectedTicketDetail(data.ticket || null);
       setTickets((prev) => prev.map((t) => (t.ticket_id === data.ticket.ticket_id ? data.ticket : t)));

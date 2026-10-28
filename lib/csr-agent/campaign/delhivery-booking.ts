@@ -4,9 +4,12 @@ import {
   ensureDelhiveryPickupLocation,
   isCompleteAddress,
   loadDelhiveryParty,
+  overlayDelhiveryParty,
   readStructuredAddress,
+  toPublicDelhiveryParty,
   withAddress,
   type DelhiveryParty,
+  type PublicDelhiveryParty,
 } from "@/lib/delhivery-parties";
 import { isCancelledTrackingStatus } from "@/lib/service-request-allocation";
 import { parseJsonObject } from "@/lib/utils";
@@ -25,8 +28,11 @@ function readOfferDetails(offer: Record<string, unknown>): Record<string, unknow
   return parseJsonObject(offer.offer_details);
 }
 
-async function loadProviderParty(offer: Record<string, unknown>): Promise<DelhiveryParty> {
-  const provider = await loadDelhiveryParty(Number(offer.creator_id || 0), "the capability provider's");
+async function loadProviderParty(
+  offer: Record<string, unknown>,
+  options?: { requireComplete?: boolean }
+): Promise<DelhiveryParty> {
+  const provider = await loadDelhiveryParty(Number(offer.creator_id || 0), "the capability provider's", options);
   const pickupAddress = readStructuredAddress(readOfferDetails(offer).pickup_address);
   return isCompleteAddress(pickupAddress) ? withAddress(provider, pickupAddress) : provider;
 }
@@ -34,13 +40,14 @@ async function loadProviderParty(offer: Record<string, unknown>): Promise<Delhiv
 /** The lead NGO receives the material, at the campaign site when it has a complete address. */
 async function loadCampaignSiteParty(
   campaign: Record<string, unknown>,
-  leadNgoUserId: number | null
+  leadNgoUserId: number | null,
+  options?: { requireComplete?: boolean }
 ): Promise<DelhiveryParty> {
   const leadId = Number(leadNgoUserId || 0);
   if (leadId <= 0) {
     throw new Error("A lead NGO must accept the campaign before Delhivery can deliver the material");
   }
-  const leadNgo = await loadDelhiveryParty(leadId, "the lead NGO's");
+  const leadNgo = await loadDelhiveryParty(leadId, "the lead NGO's", options);
   const site = buildCsrDeliveryLocation(campaign);
   const siteAddress = readStructuredAddress({
     address_line: site?.location,
@@ -49,6 +56,36 @@ async function loadCampaignSiteParty(
     pincode: site?.pincode,
   });
   return isCompleteAddress(siteAddress) ? withAddress(leadNgo, siteAddress) : leadNgo;
+}
+
+function overlayBookingParty(party: DelhiveryParty, override: unknown, label: string) {
+  try {
+    return overlayDelhiveryParty(party, override);
+  } catch (error) {
+    throw new Error(
+      error instanceof Error ? error.message.replace(/^Party /, `${label} `) : `Invalid ${label.toLowerCase()}`
+    );
+  }
+}
+
+async function resolveCsrCapabilityParties(input: {
+  campaign: Record<string, unknown>;
+  rental: CsrCapabilityRentalRecord;
+  offer: Record<string, unknown>;
+  leg: DeliveryLegName;
+  pickup?: unknown;
+  consignee?: unknown;
+  requireComplete?: boolean;
+}) {
+  const requireComplete = input.requireComplete !== false && input.pickup == null && input.consignee == null;
+  const siteParty = await loadCampaignSiteParty(input.campaign, input.rental.lead_ngo_user_id || null, { requireComplete });
+  const providerParty = await loadProviderParty(input.offer, { requireComplete });
+  const sellerBase = input.leg === "outbound" ? providerParty : siteParty;
+  const consigneeBase = input.leg === "outbound" ? siteParty : providerParty;
+  return {
+    seller: overlayBookingParty(sellerBase, input.pickup, "Pickup"),
+    consignee: overlayBookingParty(consigneeBase, input.consignee, "Delivery"),
+  };
 }
 
 function toShipmentParty(party: DelhiveryParty) {
@@ -133,6 +170,8 @@ export async function retryCsrCapabilityDelhiveryBooking(input: {
   leg: DeliveryLegName;
   bookedByUserId: number;
   companyId?: number;
+  pickup?: unknown;
+  consignee?: unknown;
 }) {
   const { rental } = await loadCampaignRentalByOffer(input.campaignId, input.offerId);
   const legData = input.leg === "outbound" ? rental.outbound_delivery : rental.return_delivery;
@@ -143,7 +182,32 @@ export async function retryCsrCapabilityDelhiveryBooking(input: {
       leg: input.leg,
     });
   }
-  return autoBookCsrCapabilityDelhivery(input);
+  return bookCsrCapabilityRentalDelhivery(input);
+}
+
+export async function previewCsrCapabilityDelhiveryParties(input: {
+  campaignId: string;
+  offerId: number;
+  leg: DeliveryLegName;
+}): Promise<{ pickup: PublicDelhiveryParty; consignee: PublicDelhiveryParty }> {
+  const { campaign, rental } = await loadCampaignRentalByOffer(input.campaignId, input.offerId);
+  const { data: offer, error: offerError } = await supabase
+    .from("service_offers")
+    .select("*")
+    .eq("id", input.offerId)
+    .single();
+  if (offerError || !offer) throw new Error("Capability offer not found");
+  const parties = await resolveCsrCapabilityParties({
+    campaign,
+    rental,
+    offer,
+    leg: input.leg,
+    requireComplete: false,
+  });
+  return {
+    pickup: toPublicDelhiveryParty(parties.seller),
+    consignee: toPublicDelhiveryParty(parties.consignee),
+  };
 }
 
 export async function bookCsrCapabilityRentalDelhivery(input: {
@@ -151,6 +215,8 @@ export async function bookCsrCapabilityRentalDelhivery(input: {
   offerId: number;
   leg: DeliveryLegName;
   bookedByUserId: number;
+  pickup?: unknown;
+  consignee?: unknown;
 }) {
   const { campaign, rental } = await loadCampaignRentalByOffer(input.campaignId, input.offerId);
   if (!shouldUseDelhiveryForCsrCapabilityRental(rental)) {
@@ -170,11 +236,14 @@ export async function bookCsrCapabilityRentalDelhivery(input: {
   if (offerError || !offer) throw new Error("Capability offer not found");
 
   const offerRecord: Record<string, unknown> = offer;
-  const siteParty = await loadCampaignSiteParty(campaign, rental.lead_ngo_user_id || null);
-  const providerParty = await loadProviderParty(offerRecord);
-
-  const seller = input.leg === "outbound" ? providerParty : siteParty;
-  const consignee = input.leg === "outbound" ? siteParty : providerParty;
+  const { seller, consignee } = await resolveCsrCapabilityParties({
+    campaign,
+    rental,
+    offer: offerRecord,
+    leg: input.leg,
+    pickup: input.pickup,
+    consignee: input.consignee,
+  });
 
   await assertDelhiveryRouteServiceable(seller.pincode, consignee.pincode);
   const pickupLocationName = await ensureDelhiveryPickupLocation(seller);

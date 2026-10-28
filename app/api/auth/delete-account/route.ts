@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { db, supabase } from '@/lib/db';
 import { comparePassword, hashPassword } from '@/lib/auth';
 import { clearAuthTokenCookie, findAuthUser } from '@/lib/server-auth';
+import { zodIssuesToUserMessage } from '@/lib/user-facing-error';
 
 // Validation schema
 const deleteAccountSchema = z.object({
@@ -68,7 +69,7 @@ export async function DELETE(req: NextRequest) {
     
     if (!validationResult.success) {
       return NextResponse.json({ 
-        error: validationResult.error.errors[0].message 
+        error: zodIssuesToUserMessage(validationResult.error.issues)
       }, { status: 400 });
     }
     

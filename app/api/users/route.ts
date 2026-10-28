@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     const verified_only = searchParams.get('verified') === 'true'
     
     // Authenticate user for this request
-    const decoded = getTokenClaims(request)
+    const decoded = await getTokenClaims(request)
     if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }

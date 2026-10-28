@@ -97,6 +97,7 @@ describe('profile update', () => {
       account_status: 'active',
       locked_until: null,
       profile_data: {
+        role: 'company_ca',
         ca_badge_number: 'ND-CA-FAKE99',
         admin_moderation: { permanently_banned: false },
         payout_account: { account_number: '999999999999' },
@@ -131,6 +132,14 @@ describe('profile update', () => {
     expect(payload).not.toHaveProperty('email_verified')
     expect(payload).not.toHaveProperty('phone_verified')
     expect(mocks.findByEmail).not.toHaveBeenCalled()
+  })
+
+  it('maps a unique-email database conflict to 409', async () => {
+    useDb({ 'users.update': [{ data: null, error: { code: '23505', message: 'duplicate key' } }] })
+    expect(await update({ email: 'taken@example.org' })).toEqual({
+      status: 409,
+      body: { error: 'An account with this email already exists' },
+    })
   })
 
   it('refuses an email owned by another account', async () => {

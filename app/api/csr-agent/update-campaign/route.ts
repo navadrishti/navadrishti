@@ -19,9 +19,9 @@ function safeSignatureMatch(expected: string, received: string): boolean {
   return crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
 }
 
-function authenticatedCompanyId(req: NextRequest): number | NextResponse {
+async function authenticatedCompanyId(req: NextRequest): Promise<number | NextResponse> {
   try {
-    const user = getAuthUserFromRequest(req);
+    const user = await getAuthUserFromRequest(req);
     assertUserType(user, ['company']);
     return Number(user.id);
   } catch (error) {
@@ -30,7 +30,7 @@ function authenticatedCompanyId(req: NextRequest): number | NextResponse {
 }
 
 export async function POST(req: NextRequest) {
-  const companyId = authenticatedCompanyId(req);
+  const companyId = await authenticatedCompanyId(req);
   if (companyId instanceof NextResponse) {
     return companyId;
   }
@@ -83,20 +83,21 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ error: 'Unsupported action' }, { status: 400 });
   } catch (error) {
+    const raw = error instanceof Error ? error.message : ''
     const message = getErrorMessage(error) || 'Internal Server Error';
-    const lower = message.toLowerCase();
+    const lower = raw.toLowerCase();
     const status =
       error instanceof PayeeNotConnectedError ? 409 :
       lower.includes('not found') ? 404 :
-      lower.includes('lead ngo') || lower.includes('not captured') || lower.includes('concurrently') || lower.includes('already paid') ? 409 :
-      /invalid|does not match|mismatch|only inr|unable to fetch payment/.test(lower) ? 400 :
+      lower.includes('lead ngo') || lower.includes('not captured') || lower.includes('concurrently') || lower.includes('already paid') || lower.includes('already rented') || lower.includes('not available') ? 409 :
+      /invalid|does not match|mismatch|only inr|unable to fetch payment|rental rate/.test(lower) ? 400 :
       500;
     return NextResponse.json({ error: message }, { status });
   }
 }
 
 export async function PUT(req: NextRequest) {
-  const authCompanyId = authenticatedCompanyId(req);
+  const authCompanyId = await authenticatedCompanyId(req);
   if (authCompanyId instanceof NextResponse) {
     return authCompanyId;
   }
@@ -160,17 +161,18 @@ export async function PUT(req: NextRequest) {
       }
     }
 
-    // Passes strictly typed 'campaign' object to the service
     const result = await updateCampaignDb(campaign_id, company_id, campaign);
-    return NextResponse.json(result);
+    return NextResponse.json({ success: true, data: result });
 
   } catch (error) {
+    const raw = error instanceof Error ? error.message : ''
     const message = getErrorMessage(error) || "Internal Server Error";
+    const lower = raw.toLowerCase();
 
     const status =
-        message.toLowerCase().includes("not found") ? 404 :
-        message.toLowerCase().includes("concurrently") || message === "Update failed" ? 409 :
-        message.toLowerCase().includes("invalid") ? 400 :
+        lower.includes("not found") ? 404 :
+        lower.includes("concurrently") || raw === "Update failed" ? 409 :
+        lower.includes("invalid") ? 400 :
         500;
 
     return NextResponse.json({ error: message }, { status });

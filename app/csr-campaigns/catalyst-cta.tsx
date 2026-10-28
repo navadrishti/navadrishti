@@ -1,7 +1,10 @@
 import Link from "next/link"
-import { Sparkles, ArrowRight } from "lucide-react"
+import { Sparkles, ArrowRight, Plus } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AGENT_NAMES, AGENT_ROUTES } from "@/lib/ai-agent-sessions"
+
+const actionButtonClass =
+  "flex h-auto items-center rounded-md border border-gram-border bg-white px-8 py-4 text-base font-medium text-black shadow-sm transition-all duration-300 hover:bg-gram-page"
 
 export function CatalystCtaSkeleton() {
   return (
@@ -26,16 +29,24 @@ export function CatalystCta() {
             Launch New CSR Campaign?
           </h2>
           <p className="text-gray-700 text-base max-w-md font-medium">
-            Create structured campaign plans through {AGENT_NAMES.catalyst}. Manual campaign creation is disabled.
+            Create structured campaign plans yourself or through {AGENT_NAMES.catalyst}.
           </p>
         </div>
-        <Link href={AGENT_ROUTES.catalyst}>
-          <button className="flex h-auto items-center rounded-md border border-gram-border bg-white px-8 py-4 text-base font-medium text-black shadow-sm transition-all duration-300 hover:bg-gram-page">
-            <Sparkles size={20} className="mr-3" />
-            Use {AGENT_NAMES.catalyst}
-            <ArrowRight size={16} className="ml-3" />
-          </button>
-        </Link>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Link href="/csr-campaigns/create">
+            <button className={actionButtonClass}>
+              <Plus size={20} className="mr-3" />
+              Create campaign
+            </button>
+          </Link>
+          <Link href={AGENT_ROUTES.catalyst}>
+            <button className={actionButtonClass}>
+              <Sparkles size={20} className="mr-3" />
+              Use {AGENT_NAMES.catalyst}
+              <ArrowRight size={16} className="ml-3" />
+            </button>
+          </Link>
+        </div>
       </div>
     </div>
   )

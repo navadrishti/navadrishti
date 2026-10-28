@@ -1,3 +1,4 @@
+import { readApiError } from '@/lib/user-facing-error'
 import { useState, type ChangeEvent } from 'react'
 
 import {
@@ -44,7 +45,7 @@ export function useServiceOfferForm(token: string | null) {
 
         const data = await response.json()
         if (!response.ok || !data.success || !data.data?.url) {
-          throw new Error(data.error || 'Failed to upload image')
+          throw new Error(readApiError(data, 'Failed to upload image'))
         }
 
         urls.push(data.data.url)

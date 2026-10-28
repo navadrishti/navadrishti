@@ -106,6 +106,98 @@ export function agentLoadingLabel(name: string) {
   return `Loading ${name}...`
 }
 
+export type AgentSessionIdentity = {
+  id: string
+  legacyId?: string | null
+}
+
+export function findSessionByClientId<T extends AgentSessionIdentity>(
+  sessions: T[],
+  clientId: string | undefined | null,
+): T | undefined {
+  if (!clientId) return undefined
+  return sessions.find((session) => session.id === clientId || session.legacyId === clientId)
+}
+
+export function pickPreferredActiveSessionId<T extends AgentSessionIdentity>(
+  sessions: T[],
+  preferredId?: string | null,
+  fallbackId?: string | null,
+): string {
+  const preferred = findSessionByClientId(sessions, preferredId)
+  if (preferred) return preferred.id
+  const fallback = findSessionByClientId(sessions, fallbackId)
+  if (fallback) return fallback.id
+  return sessions[0]?.id || ''
+}
+
+/** Keeps a user-selected (or newly created) chat when a later hydrate/cloud payload arrives. */
+export function resolveHydratedActiveSession<T extends AgentSessionIdentity>(
+  incoming: T[],
+  current: T[],
+  preferredId?: string | null,
+  fallbackId?: string | null,
+): { sessions: T[]; activeSessionId: string } {
+  if (preferredId) {
+    const incomingMatch = findSessionByClientId(incoming, preferredId)
+    if (incomingMatch) {
+      return { sessions: incoming, activeSessionId: incomingMatch.id }
+    }
+    const currentMatch = current.find((session) => session.id === preferredId)
+    if (currentMatch) {
+      return {
+        sessions: [currentMatch, ...incoming.filter((session) => session.id !== currentMatch.id)],
+        activeSessionId: currentMatch.id,
+      }
+    }
+  }
+
+  return {
+    sessions: incoming,
+    activeSessionId: pickPreferredActiveSessionId(incoming, fallbackId),
+  }
+}
+
+export function keepActiveAndMeaningfulSessions<T extends AgentSessionIdentity>(
+  sessions: T[],
+  activeId: string | undefined,
+  isMeaningful: (session: T) => boolean,
+): T[] {
+  return sessions.filter((session) => session.id === activeId || isMeaningful(session))
+}
+
+export function openAgentSessionList<T extends AgentSessionIdentity>(
+  stored: T[],
+  fresh: T,
+  options: {
+    startFresh: boolean
+    current: T[]
+    preferredId?: string | null
+    storedActiveId?: string | null
+    isMeaningful: (session: T) => boolean
+  },
+): { sessions: T[]; activeSessionId: string } {
+  const preferred = options.preferredId
+  const userAlreadyChose = Boolean(
+    preferred &&
+      (findSessionByClientId(stored, preferred) || options.current.some((session) => session.id === preferred)),
+  )
+
+  if (options.startFresh && !userAlreadyChose) {
+    const storedMeaningful = stored.filter((session) => session.id === fresh.id || options.isMeaningful(session))
+    return {
+      sessions: [fresh, ...storedMeaningful.filter((session) => session.id !== fresh.id)],
+      activeSessionId: fresh.id,
+    }
+  }
+
+  const resolved = resolveHydratedActiveSession(stored, options.current, preferred, options.storedActiveId)
+  return {
+    sessions: keepActiveAndMeaningfulSessions(resolved.sessions, resolved.activeSessionId, options.isMeaningful),
+    activeSessionId: resolved.activeSessionId,
+  }
+}
+
 export const AGENT_GREETINGS = {
   atlas:
     "Hello! I'm Atlas. Do you want to post a standalone Need (for individuals) or a CSR Project (for companies)? Reply with Need or Project.",

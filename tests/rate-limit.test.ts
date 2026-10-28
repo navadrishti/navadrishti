@@ -91,6 +91,16 @@ describe('rateLimit', () => {
     expect((await rateLimit('k', WINDOW)).allowed).toBe(false)
   })
 
+  it('denies auth attempts in production when the shared store is missing', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    mocks.rpc.mockReset().mockImplementation(missingAuthStoreRpc)
+
+    expect(await rateLimit('k', WINDOW)).toEqual({ allowed: false, remaining: 0, retryAfterSeconds: 30 })
+    expect(mocks.rpc).toHaveBeenCalledTimes(1)
+    vi.unstubAllEnvs()
+  })
+
   it('falls back to memory and warns once when the function is not deployed', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     mocks.rpc.mockReset().mockImplementation(missingAuthStoreRpc)
@@ -112,7 +122,7 @@ describe('rateLimit', () => {
     expect(mocks.rpc).toHaveBeenCalledTimes(1)
   })
 
-  it('stays open on other database errors, limiting per instance and retrying the database next time', async () => {
+  it('stays open on other database errors in non-production, limiting per instance and retrying the database next time', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     mocks.rpc.mockReset().mockResolvedValue({ data: null, error: { code: '57014', message: 'statement timeout' } })
 
@@ -122,6 +132,15 @@ describe('rateLimit', () => {
 
     expect(error).toHaveBeenCalledTimes(2)
     expect(mocks.rpc).toHaveBeenCalledTimes(2)
+  })
+
+  it('denies auth attempts in production when the rate-limit RPC errors', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    mocks.rpc.mockReset().mockResolvedValue({ data: null, error: { code: '57014', message: 'statement timeout' } })
+
+    expect(await rateLimit('k', WINDOW)).toEqual({ allowed: false, remaining: 0, retryAfterSeconds: 30 })
+    vi.unstubAllEnvs()
   })
 })
 

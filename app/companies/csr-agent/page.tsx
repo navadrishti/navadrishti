@@ -130,11 +130,11 @@ function CSRAgentPage() {
     canUseCampaignActions,
     activeQuestion,
   } = useQuestionnaireProgress({
+      messages,
       projectData,
       milestoneCount,
       milestoneInputs,
     conversationStage,
-      projectStep,
       milestoneQuestionIndex,
     generatedCampaignCount: generatedCampaigns.length,
       selectedProjectSuggestionId,
@@ -306,10 +306,6 @@ function CSRAgentPage() {
     persistSnapshot: persistCurrentSessionSnapshot,
     lockMobileChatScroll,
     scrollToBottom,
-    canPersist,
-    sessions,
-    persistSessions,
-    normalizeSessionFromState,
   })
 
   useEffect(() => {
@@ -324,6 +320,8 @@ function CSRAgentPage() {
     mounted,
     userId: user?.id,
     token,
+    sessions,
+    activeSessionId,
     setSessions,
     setActiveSessionId,
     applySession,

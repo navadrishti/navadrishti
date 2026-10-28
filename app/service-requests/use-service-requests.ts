@@ -1,4 +1,6 @@
 'use client'
+import { readApiError } from '@/lib/user-facing-error'
+import { clientAuthHeaders } from '@/lib/client-session';
 
 import { useState, useEffect, useEffectEvent, useMemo } from 'react'
 import { useIsClient } from '@/hooks/use-is-client'
@@ -68,10 +70,7 @@ export function useServiceRequests() {
     try {
       const res = await fetch(`/api/service-requests/${id}`, {
         method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json',
-        },
+        headers: clientAuthHeaders({ 'Content-Type': 'application/json' }),
       })
       const data = await res.json()
 
@@ -79,7 +78,7 @@ export function useServiceRequests() {
         toast({ title: 'Success', description: 'Need deleted' })
         fetchNeeds()
       } else {
-        toast({ title: 'Error', description: data.error || 'Delete failed', variant: 'destructive' })
+        toast({ title: 'Error', description: readApiError(data, 'Delete failed'), variant: 'destructive' })
       }
     } catch {
       toast({ title: 'Error', description: 'Delete failed', variant: 'destructive' })
@@ -95,10 +94,7 @@ export function useServiceRequests() {
     try {
       const res = await fetch(`/api/service-request-projects/${id}`, {
         method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json',
-        },
+        headers: clientAuthHeaders({ 'Content-Type': 'application/json' }),
       })
       const data = await res.json().catch(() => null)
 
@@ -106,7 +102,7 @@ export function useServiceRequests() {
         toast({ title: 'Success', description: 'Project deleted' })
         fetchProjects()
       } else {
-        toast({ title: 'Error', description: data?.error || 'Delete failed', variant: 'destructive' })
+        toast({ title: 'Error', description: readApiError(data, 'Delete failed'), variant: 'destructive' })
       }
     } catch {
       toast({ title: 'Error', description: 'Delete failed', variant: 'destructive' })
@@ -136,7 +132,7 @@ export function useServiceRequests() {
       if (data.success) {
         setRequests(Array.isArray(data.data) ? data.data : [])
       } else {
-        setError(data.error || 'Failed to load needs')
+        setError(readApiError(data, 'Failed to load needs'))
       }
     } catch {
       setError('Network error')
@@ -162,7 +158,7 @@ export function useServiceRequests() {
       if (data.success) {
         setProjects(Array.isArray(data.data) ? data.data : [])
       } else {
-        setError(data.error || 'Failed to load projects')
+        setError(readApiError(data, 'Failed to load projects'))
       }
     } catch {
       setError('Network error')

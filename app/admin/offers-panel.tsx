@@ -1,5 +1,6 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast as sonnerToast } from 'sonner';
@@ -37,7 +38,7 @@ export function useOffersPanelState({ onReviewed }: { onReviewed: () => Promise<
 
       const data = await response.json();
       if (!response.ok || !data?.success) {
-        throw new Error(data?.error || `Failed to ${action} service offer`);
+        throw new Error(readApiError(data, `Failed to ${action} service offer`));
       }
 
       sonnerToast.success(`Service offer ${action}d successfully`);

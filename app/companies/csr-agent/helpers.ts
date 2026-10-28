@@ -1,19 +1,21 @@
 import { CSR_SCHEDULE_VII_CATEGORIES } from "@/lib/categories"
 import type { CsrCapabilityRentalRecord } from "@/lib/service-engagement"
 import {
+  type ConversationStage,
   type CSRAgentSession,
   type LeadNgoInvite,
   type Message,
   type MilestoneInput,
   type ProjectIntakeData,
   type SessionPayload,
+  CITY_STATE_MAP,
   DAY_MS,
-  buildEmptySession,
   buildMilestonePhasePlan,
   fixedBudgetOptions,
   fixedMilestoneCountOptions,
   formatDateOnlyFromUtc,
   milestoneQuestions,
+  normalizeCategory,
   normalizeDateInput,
   normalizeLeadNgoInvites,
   normalizeSessionPayload,
@@ -42,46 +44,337 @@ type StoredMilestoneInput = MilestoneInput & {
   end_date?: string
 }
 
+export function stripEditedSuffix(content: string) {
+  return String(content || '').replace(/\s*\(edited\)\s*$/i, '').trim()
+}
+
+export const CSR_MILESTONE_COUNT_PROMPT =
+  "Good. Do you want me to suggest full milestone sets for this project, or would you like to enter milestones manually? Use the buttons to choose."
+
+export const CSR_MILESTONE_COUNT_LABEL = "How many milestones should I plan?"
+
+type ProjectQuestion = (typeof projectQuestions)[number]
+type ProjectQuestionKey = ProjectQuestion["key"]
+
+export type CsrPromptTarget =
+  | { type: "project"; index: number; key: ProjectQuestionKey }
+  | { type: "milestone-count" }
+  | { type: "milestone"; milestoneIndex: number; questionIndex: number }
+
+export function isFilledProjectValue(value: unknown) {
+  return String(value ?? "").trim().length > 0
+}
+
+export function firstUnfilledProjectIndex(data: ProjectIntakeData, fromIndex = 0) {
+  for (let i = Math.max(0, fromIndex); i < projectQuestions.length; i++) {
+    if (!isFilledProjectValue(data[projectQuestions[i].key])) return i
+  }
+  return projectQuestions.length
+}
+
+export function matchCsrQuestionFromAssistant(content: string): CsrPromptTarget | null {
+  const text = String(content || "").trim()
+  if (!text) return null
+
+  let projectMatch: Extract<CsrPromptTarget, { type: "project" }> | null = null
+  for (let i = 0; i < projectQuestions.length; i++) {
+    const question = projectQuestions[i]
+    if (text === question.question || text.includes(question.question)) {
+      projectMatch = { type: "project", index: i, key: question.key }
+    }
+  }
+  if (projectMatch) return projectMatch
+
+  if (/how many milestones|suggest full milestone sets|enter milestones manually|pick a number between 1 and 10|please tell me how many milestones/i.test(text)) {
+    return { type: "milestone-count" }
+  }
+
+  const questionIndex = milestoneQuestions.findIndex((question) => text.includes(question.question))
+  if (questionIndex >= 0) {
+    const numbered = text.match(/milestone\s+(\d+)/i)
+    const milestoneIndex = numbered ? Math.max(0, Number(numbered[1]) - 1) : 0
+    return { type: "milestone", milestoneIndex, questionIndex }
+  }
+
+  return null
+}
+
+export function resolveCsrPromptBefore(messages: Message[], beforeIndex: number): CsrPromptTarget | null {
+  const end = Math.min(Math.max(0, beforeIndex), messages.length)
+  for (let i = end - 1; i >= 0; i--) {
+    if (messages[i]?.role !== "assistant") continue
+    const matched = matchCsrQuestionFromAssistant(messages[i].content)
+    if (matched) return matched
+  }
+  return null
+}
+
+function clearProjectFieldsFrom(data: ProjectIntakeData, fromIndex: number): ProjectIntakeData {
+  const next = { ...data }
+  for (let i = Math.max(0, fromIndex); i < projectQuestions.length; i++) {
+    next[projectQuestions[i].key] = ""
+  }
+  return next
+}
+
+export type CsrProjectAnswerResult =
+  | { ok: false; error: string }
+  | {
+      ok: true
+      projectData: ProjectIntakeData
+      projectStep: number
+      conversationStage: Extract<ConversationStage, "project" | "milestone-count">
+      assistantPrompt: string
+    }
+
+export function applyCsrProjectAnswer(args: {
+  projectData: ProjectIntakeData
+  questionIndex: number
+  value: string
+  rewindFollowing?: boolean
+}): CsrProjectAnswerResult {
+  const current = projectQuestions[args.questionIndex]
+  if (!current) {
+    return {
+      ok: true,
+      projectData: args.projectData,
+      projectStep: projectQuestions.length,
+      conversationStage: "milestone-count",
+      assistantPrompt: CSR_MILESTONE_COUNT_PROMPT,
+    }
+  }
+
+  const trimmed = String(args.value || "").trim()
+  if (!trimmed) return { ok: false, error: "Please enter an answer to continue." }
+
+  const nextProjectData: ProjectIntakeData = { ...args.projectData }
+  const writtenKeys = new Set<ProjectQuestionKey>([current.key])
+
+  if (current.key === "budget") {
+    const parsedBudget = parseMoneyValue(trimmed)
+    if (!parsedBudget) {
+      return { ok: false, error: "Please enter a valid budget value like INR 1,50,000 or 150000." }
+    }
+    nextProjectData.budget = String(parsedBudget)
+  } else if (current.key === "startDate" || current.key === "endDate") {
+    const parsedDate = parseDateOnly(trimmed)
+    if (parsedDate === null) {
+      return { ok: false, error: "Please enter a valid date in DD/MM/YYYY format." }
+    }
+    if (current.key === "endDate") {
+      const start = parseDateOnly(nextProjectData.startDate)
+      if (start !== null && parsedDate < start) {
+        return { ok: false, error: "End date must be on or after the start date." }
+      }
+    }
+    nextProjectData[current.key] = formatDateOnlyFromUtc(parsedDate)
+  } else if (current.key === "category") {
+    nextProjectData.category = normalizeCategory(trimmed)
+  } else if (current.key === "city") {
+    const parts = trimmed.split(",").map((part) => part.trim()).filter(Boolean)
+    if (parts.length >= 2) {
+      nextProjectData.city = parts[0]
+      nextProjectData.state = parts.slice(1).join(", ")
+      writtenKeys.add("state")
+    } else {
+      nextProjectData.city = trimmed
+      const inferredState = CITY_STATE_MAP[trimmed.toLowerCase()]
+      if (inferredState) {
+        nextProjectData.state = inferredState
+        writtenKeys.add("state")
+      }
+    }
+  } else {
+    nextProjectData[current.key] = trimmed
+  }
+
+  let nextIndex = args.questionIndex + 1
+  while (nextIndex < projectQuestions.length && writtenKeys.has(projectQuestions[nextIndex].key)) {
+    nextIndex += 1
+  }
+
+  const projectData = args.rewindFollowing
+    ? clearProjectFieldsFrom(nextProjectData, nextIndex)
+    : nextProjectData
+
+  if (nextIndex >= projectQuestions.length) {
+    return {
+      ok: true,
+      projectData,
+      projectStep: projectQuestions.length,
+      conversationStage: "milestone-count",
+      assistantPrompt: CSR_MILESTONE_COUNT_PROMPT,
+    }
+  }
+
+  const inferredCity = current.key === "city" && writtenKeys.has("state") && CITY_STATE_MAP[String(projectData.city || "").toLowerCase()]
+  const prefix = inferredCity ? `Got it — using ${projectData.city} (${projectData.state}). ` : ""
+
+  return {
+    ok: true,
+    projectData,
+    projectStep: nextIndex,
+    conversationStage: "project",
+    assistantPrompt: `${prefix}${projectQuestions[nextIndex].question}`.trim(),
+  }
+}
+
+function applyMilestoneCountAnswer(value: string) {
+  const parsed = Number.parseInt(String(value || "").replace(/[^\d]/g, ""), 10)
+  if (!Number.isFinite(parsed) || parsed < 1 || parsed > 10) {
+    return { ok: false as const, error: "Please choose a milestone count between 1 and 10." }
+  }
+  const count = Math.floor(parsed)
+  return {
+    ok: true as const,
+    milestoneCount: count,
+    milestoneInputs: Array.from({ length: count }, () => ({ title: "", description: "", budgetTarget: "" })),
+    assistantPrompt: `Great. Let’s fill milestone 1 of ${count}. ${milestoneQuestions[0].question}`,
+  }
+}
+
+export function applyEditedCsrUserAnswer(args: {
+  messages: Message[]
+  projectData: ProjectIntakeData
+  milestoneCount: number | null
+  milestoneInputs: MilestoneInput[]
+  index: number
+  text: string
+}) {
+  const newContent = stripEditedSuffix(args.text)
+  if (!newContent) return null
+
+  const nextMessages = args.messages
+    .slice(0, args.index + 1)
+    .map((message, idx) => (idx === args.index ? { ...message, content: newContent } : message))
+
+  const target = resolveCsrPromptBefore(args.messages, args.index)
+
+  let nextProjectData = { ...args.projectData }
+  let nextMilestoneCount = args.milestoneCount
+  let nextMilestoneInputs = args.milestoneInputs.map((item) => ({ ...item }))
+  let conversationStage: ConversationStage = "project"
+  let projectStep = firstUnfilledProjectIndex(args.projectData)
+  let milestoneIndex = 0
+  let milestoneQuestionIndex = 0
+  let assistantPrompt = "Edited. Please continue from here."
+
+  if (!target || target.type === "project") {
+    const questionIndex = target?.type === "project"
+      ? target.index
+      : Math.min(firstUnfilledProjectIndex(args.projectData), projectQuestions.length - 1)
+    const applied = applyCsrProjectAnswer({
+      projectData: nextProjectData,
+      questionIndex,
+      value: newContent,
+      rewindFollowing: true,
+    })
+    nextMilestoneCount = null
+    nextMilestoneInputs = []
+    if (!applied.ok) {
+      assistantPrompt = applied.error
+      conversationStage = "project"
+      projectStep = questionIndex
+    } else {
+      nextProjectData = applied.projectData
+      conversationStage = applied.conversationStage
+      projectStep = applied.projectStep
+      assistantPrompt = applied.assistantPrompt
+    }
+  } else if (target.type === "milestone-count") {
+    const applied = applyMilestoneCountAnswer(newContent)
+    projectStep = projectQuestions.length
+    if (!applied.ok) {
+      assistantPrompt = applied.error
+      conversationStage = "milestone-count"
+    } else {
+      nextMilestoneCount = applied.milestoneCount
+      nextMilestoneInputs = applied.milestoneInputs
+      assistantPrompt = applied.assistantPrompt
+      conversationStage = "milestones"
+      milestoneIndex = 0
+      milestoneQuestionIndex = 0
+    }
+  } else {
+    const currentMilestoneIndex = target.milestoneIndex
+    const questionIndex = target.questionIndex
+    const key = milestoneQuestions[questionIndex]?.key
+    const kept = nextMilestoneInputs.slice(0, currentMilestoneIndex + 1)
+    if (key) {
+      kept[currentMilestoneIndex] = {
+        ...(kept[currentMilestoneIndex] ?? { description: "", budgetTarget: "" }),
+        [key]: newContent,
+      }
+    }
+    projectStep = projectQuestions.length
+    if (questionIndex === 0) {
+      kept[currentMilestoneIndex] = { ...kept[currentMilestoneIndex], budgetTarget: "" }
+      assistantPrompt = milestoneQuestions[1].question
+      milestoneQuestionIndex = 1
+      milestoneIndex = currentMilestoneIndex
+      conversationStage = "milestones"
+    } else {
+      const nextMilestone = currentMilestoneIndex + 1
+      if (nextMilestoneCount && nextMilestone < nextMilestoneCount) {
+        kept.length = nextMilestone
+        while (kept.length < nextMilestoneCount) kept.push({ title: "", description: "", budgetTarget: "" })
+        assistantPrompt = `Milestone ${nextMilestone + 1} of ${nextMilestoneCount}. ${milestoneQuestions[0].question}`
+        milestoneIndex = nextMilestone
+        milestoneQuestionIndex = 0
+        conversationStage = "milestones"
+      } else {
+        assistantPrompt = "Updated. Continue from here with the new details."
+        milestoneIndex = currentMilestoneIndex
+        milestoneQuestionIndex = 1
+        conversationStage = "complete"
+      }
+    }
+    nextMilestoneInputs = kept
+  }
+
+  nextMessages.push({ role: "assistant", content: assistantPrompt })
+
+  return {
+    messages: nextMessages,
+    projectData: nextProjectData,
+    milestoneCount: nextMilestoneCount,
+    milestoneInputs: nextMilestoneInputs,
+    conversationStage,
+    projectStep,
+    milestoneIndex,
+    milestoneQuestionIndex,
+  }
+}
+
 export function getEditingMessageContext(messages: Message[], editingMessageIndex: number | null, milestoneCount: number | null) {
   if (editingMessageIndex === null || editingMessageIndex < 0 || editingMessageIndex >= messages.length) return null
+  if (messages[editingMessageIndex]?.role !== "user") return null
 
-  const userMessageIndexes = messages
-    .map((message, index) => ({ message, index }))
-    .filter(({ message }) => message.role === "user")
-    .map(({ index }) => index)
-
-  const userPosition = userMessageIndexes.indexOf(editingMessageIndex)
-  if (userPosition < 0) return null
-
-  if (userPosition < projectQuestions.length) {
-    const question = projectQuestions[userPosition]
+  const target = resolveCsrPromptBefore(messages, editingMessageIndex)
+  if (target?.type === "project") {
+    const question = projectQuestions[target.index]
     const options = question.key === "category"
       ? CSR_SCHEDULE_VII_CATEGORIES
       : question.key === "budget"
         ? fixedBudgetOptions
         : []
+    return { label: question.question, options }
+  }
 
+  if (target?.type === "milestone-count") {
+    return { label: CSR_MILESTONE_COUNT_LABEL, options: [...fixedMilestoneCountOptions] }
+  }
+
+  if (target?.type === "milestone") {
+    const question = milestoneQuestions[target.questionIndex]
     return {
-      label: question.question,
-      options,
+      label: `Milestone ${target.milestoneIndex + 1}: ${question.question}`,
+      options: question.key === "budgetTarget" ? [...fixedBudgetOptions] : [],
     }
   }
 
-  if (userPosition === projectQuestions.length) {
-    return {
-      label: "How many milestones should I plan?",
-      options: fixedMilestoneCountOptions,
-    }
-  }
-
-  const milestoneOffset = userPosition - projectQuestions.length - 1
-  if (milestoneCount && milestoneOffset >= 0 && milestoneOffset < milestoneCount * milestoneQuestions.length) {
-    const questionIndex = milestoneOffset % milestoneQuestions.length
-    const question = milestoneQuestions[questionIndex]
-    return {
-      label: `Milestone ${Math.floor(milestoneOffset / milestoneQuestions.length) + 1}: ${question.question}`,
-      options: question.key === "budgetTarget" ? fixedBudgetOptions : [],
-    }
+  if (milestoneCount) {
+    return null
   }
 
   return null
@@ -304,11 +597,6 @@ function sessionRichnessScore(session: CSRAgentSession) {
 
 export function sessionPayloadScore(payload: SessionPayload<CSRAgentSession> | null) {
   return (payload?.sessions || []).reduce((total, session) => total + sessionRichnessScore(session), 0)
-}
-
-export function withFreshSessionFirst(source: { sessions: CSRAgentSession[]; activeSessionId: string }) {
-  const fresh = buildEmptySession()
-  return { sessions: [fresh, ...source.sessions], activeSessionId: fresh.id }
 }
 
 export function acceptedLeadNgoFromRemote(data: RemoteInviteState): LeadNgoInvite | null {

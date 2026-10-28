@@ -30,7 +30,7 @@ The app runs on `http://localhost:3000`; the admin console is at `/admin`.
 ## AI suite
 
 - **Atlas**: NGO project and need drafting (`/ngos/ai-agent`)
-- **Catalyst**: CSR campaign drafting (`/companies/csr-agent`)
+- **Catalyst**: CSR campaign drafting (`/companies/csr-agent`); companies can also create the same campaign manually at `/csr-campaigns/create`
 - **Pulse**: offer and NGO matching used inside both flows
 
 Labels live in `lib/ai-agent-sessions.ts`.

@@ -1,3 +1,4 @@
+import { readApiError } from '@/lib/user-facing-error'
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react"
 import { fetchScoredNgoDirectory } from "./api"
 import { type RemoteInviteState, acceptedLeadNgoFromRemote, isPendingLeadInvite, leadInvitesFromRemote } from "./helpers"
@@ -199,7 +200,7 @@ export function useLeadNgoInvites({
           await syncLeadInviteStatuses()
           return
         }
-        throw new Error(payload?.error || 'Failed to update lead NGO invite')
+        throw new Error(readApiError(payload, 'Failed to update lead NGO invite'))
       }
 
       applyRemoteInviteState(payload.data || {})
@@ -217,7 +218,7 @@ export function useLeadNgoInvites({
           : `Invited ${ngo.name} as a lead NGO candidate. They can accept from their dashboard. You can publish once a lead NGO accepts and is assigned.`,
       )
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to update lead NGO invite'
+      const message = readApiError(error, 'Failed to update lead NGO invite')
       appendAssistantMessage(message)
     }
   }
@@ -241,7 +242,7 @@ export function useLeadNgoInvites({
     })
     const payload = await response.json().catch(() => null)
     if (!response.ok || !payload?.success || !payload.data?.draftCampaignId) {
-      throw new Error(payload?.error || 'Could not save the campaign draft')
+      throw new Error(readApiError(payload, 'Could not save the campaign draft'))
     }
 
     applyRemoteInviteState(payload.data)

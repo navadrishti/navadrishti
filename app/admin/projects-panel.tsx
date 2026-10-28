@@ -1,5 +1,6 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import { toast as sonnerToast } from 'sonner';
 import { PencilLine, Trash2 } from 'lucide-react';
@@ -92,7 +93,7 @@ export function useProjectsPanelState({
 
       const data = await response.json();
       if (!response.ok || !data?.success) {
-        throw new Error(data?.error || 'Failed to update project');
+        throw new Error(readApiError(data, 'Failed to update project'));
       }
 
       sonnerToast.success('CSR project updated');
@@ -124,7 +125,7 @@ export function useProjectsPanelState({
 
       const data = await response.json();
       if (!response.ok || !data?.success) {
-        throw new Error(data?.error || 'Failed to delete project');
+        throw new Error(readApiError(data, 'Failed to delete project'));
       }
 
       sonnerToast.success('CSR project deleted');

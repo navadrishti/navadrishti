@@ -110,6 +110,7 @@ export function CampaignAssignmentDetails({
                   offerId={offerId}
                   leg="outbound"
                   delivery={rental.outbound_delivery}
+                  canSync={row.role !== 'lead_ngo'}
                   onUpdated={() => void onRentalUpdated?.()}
                 />
                 {showReturn ? (

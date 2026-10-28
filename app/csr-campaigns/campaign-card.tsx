@@ -144,12 +144,14 @@ export function CampaignCard({ campaign, isOwner, isDeleting, volunteerState, on
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem asChild>
-                  <Link href={`/companies/csr-agent?campaign_id=${campaign.id}`} className="cursor-pointer">
-                    <Pencil className="mr-2 h-4 w-4" />
-                    Edit
-                  </Link>
-                </DropdownMenuItem>
+                {String(campaign.status || '').toLowerCase() === 'draft' ? (
+                  <DropdownMenuItem asChild>
+                    <Link href={`/csr-campaigns/create?campaign_id=${campaign.id}`} className="cursor-pointer">
+                      <Pencil className="mr-2 h-4 w-4" />
+                      Edit
+                    </Link>
+                  </DropdownMenuItem>
+                ) : null}
                 <DropdownMenuItem
                   disabled={isDeleting}
                   className="text-red-700 focus:text-red-700"

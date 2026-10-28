@@ -333,38 +333,92 @@ export async function attachCsrCapabilityAfterPayment(input: RentalPaymentInput)
     throw new Error("CSR capability rental was updated concurrently. Refresh and try again.");
   }
 
-  const { data: clientRow, error: clientError } = await supabase
-    .from("service_clients")
-    .insert({
-      service_offer_id: input.offerId,
-      client_id: leadNgoId || input.companyId,
-      message: `CSR project rental for campaign ${campaign.title || input.campaignId}`,
-      status: "accepted",
-      accepted_at: paidAt,
-      assigned_at: paidAt,
-      response_meta: {
-        flow: "csr_capability_rental",
-        campaign_id: input.campaignId,
-        company_user_id: input.companyId,
-        payment_status: "paid",
-        payment_amount_inr: rental.rental_amount_inr,
-        material_total_worth_inr: rental.material_total_worth_inr,
-        outbound_dispatch_due_at: addDaysIso(paidAt, CSR_OUTBOUND_DISPATCH_DAYS),
-        delivery_location: rental.delivery_location,
-      },
-    })
-    .select("*")
-    .single();
+  const clientId = leadNgoId || input.companyId
+  const rentalClientPayload = {
+    service_offer_id: input.offerId,
+    client_id: clientId,
+    message: `CSR project rental for campaign ${campaign.title || input.campaignId}`,
+    status: "accepted",
+    accepted_at: paidAt,
+    assigned_at: paidAt,
+    response_meta: {
+      flow: "csr_capability_rental",
+      campaign_id: input.campaignId,
+      company_user_id: input.companyId,
+      payment_status: "paid",
+      payment_amount_inr: rental.rental_amount_inr,
+      material_total_worth_inr: rental.material_total_worth_inr,
+      outbound_dispatch_due_at: addDaysIso(paidAt, CSR_OUTBOUND_DISPATCH_DAYS),
+      delivery_location: rental.delivery_location,
+    },
+  }
 
-  if (clientError || !clientRow) {
+  const { data: existingClient, error: existingClientError } = await supabase
+    .from("service_clients")
+    .select("*")
+    .eq("service_offer_id", input.offerId)
+    .eq("client_id", clientId)
+    .maybeSingle();
+
+  if (existingClientError) {
     await saveCampaignImpactIfUnchanged({
       campaignId: input.campaignId,
       companyId: input.companyId,
       previousUpdatedAt: claimedAt,
       impactMetrics: impact,
     }).catch(() => null);
-    throw new Error(clientError?.message || "Failed to attach capability after payment");
+    throw new Error(existingClientError.message || "Failed to attach capability after payment");
   }
+
+  const rollbackPaidClaim = async () => {
+    await saveCampaignImpactIfUnchanged({
+      campaignId: input.campaignId,
+      companyId: input.companyId,
+      previousUpdatedAt: claimedAt,
+      impactMetrics: impact,
+    }).catch(() => null);
+  }
+
+  let clientRow = existingClient
+  if (!clientRow) {
+    const { data: insertedClient, error: clientError } = await supabase
+      .from("service_clients")
+      .insert(rentalClientPayload)
+      .select("*")
+      .single();
+
+    if (clientError?.code === "23505") {
+      const { data: racedClient, error: racedError } = await supabase
+        .from("service_clients")
+        .select("*")
+        .eq("service_offer_id", input.offerId)
+        .eq("client_id", clientId)
+        .maybeSingle();
+      if (racedError || !racedClient) {
+        await rollbackPaidClaim();
+        throw new Error(racedError?.message || clientError.message || "Failed to attach capability after payment");
+      }
+      clientRow = racedClient
+    } else if (clientError || !insertedClient) {
+      await rollbackPaidClaim();
+      throw new Error(clientError?.message || "Failed to attach capability after payment");
+    } else {
+      clientRow = insertedClient
+    }
+  }
+
+  const { data: updatedClient, error: updateClientError } = await supabase
+    .from("service_clients")
+    .update(rentalClientPayload)
+    .eq("id", clientRow.id)
+    .select("*")
+    .single();
+
+  if (updateClientError || !updatedClient) {
+    await rollbackPaidClaim();
+    throw new Error(updateClientError?.message || "Failed to attach capability after payment");
+  }
+  clientRow = updatedClient
 
   const assignmentMeta = buildAssignmentMeta({
     targetType: "csr_project",
@@ -383,34 +437,63 @@ export async function attachCsrCapabilityAfterPayment(input: RentalPaymentInput)
     applicationId: clientRow.id,
   });
 
-  const { data: assignment } = await supabase
+  const { data: existingAssignment, error: existingAssignmentError } = await supabase
     .from("service_engagement_assignments")
-    .insert({
-      target_type: assignmentMeta.target_type,
-      target_id: assignmentMeta.target_id,
-      application_table: assignmentMeta.application_table,
-      application_id: assignmentMeta.application_id,
-      owner_user_id: offer.creator_id,
-      assignee_user_id: leadNgoId || input.companyId,
-      assigned_by_user_id: input.companyId,
-      status: "active",
-      billing_cycle: assignmentMeta.billing_cycle,
-      payment_mode: assignmentMeta.payment_mode,
-      valid_until: assignmentMeta.valid_until,
-      assigned_at: assignmentMeta.assigned_at,
-      rate_per_unit: assignmentMeta.rate_per_unit,
-      rate_currency: assignmentMeta.currency,
-      meta: {
-        ...assignmentMeta,
-        flow: "csr_capability_rental",
-        campaign_id: input.campaignId,
-        material_total_worth_inr: rental.material_total_worth_inr,
-        outbound_dispatch_due_at: addDaysIso(paidAt, CSR_OUTBOUND_DISPATCH_DAYS),
-        delivery_location: rental.delivery_location,
-      },
-    })
     .select("id")
-    .single();
+    .eq("application_table", "service_clients")
+    .eq("application_id", String(clientRow.id))
+    .maybeSingle();
+
+  if (existingAssignmentError) throw new Error(existingAssignmentError.message || "Failed to look up engagement assignment");
+
+  let assignment = existingAssignment
+  if (!assignment) {
+    const { data: insertedAssignment, error: assignmentError } = await supabase
+      .from("service_engagement_assignments")
+      .insert({
+        target_type: assignmentMeta.target_type,
+        target_id: assignmentMeta.target_id,
+        application_table: assignmentMeta.application_table,
+        application_id: assignmentMeta.application_id,
+        owner_user_id: offer.creator_id,
+        assignee_user_id: leadNgoId || input.companyId,
+        assigned_by_user_id: input.companyId,
+        status: "active",
+        billing_cycle: assignmentMeta.billing_cycle,
+        payment_mode: assignmentMeta.payment_mode,
+        valid_until: assignmentMeta.valid_until,
+        assigned_at: assignmentMeta.assigned_at,
+        rate_per_unit: assignmentMeta.rate_per_unit,
+        rate_currency: assignmentMeta.currency,
+        meta: {
+          ...assignmentMeta,
+          flow: "csr_capability_rental",
+          campaign_id: input.campaignId,
+          material_total_worth_inr: rental.material_total_worth_inr,
+          outbound_dispatch_due_at: addDaysIso(paidAt, CSR_OUTBOUND_DISPATCH_DAYS),
+          delivery_location: rental.delivery_location,
+        },
+      })
+      .select("id")
+      .single();
+
+    if (assignmentError?.code === "23505") {
+      const { data: racedAssignment, error: racedAssignmentError } = await supabase
+        .from("service_engagement_assignments")
+        .select("id")
+        .eq("application_table", "service_clients")
+        .eq("application_id", String(clientRow.id))
+        .maybeSingle();
+      if (racedAssignmentError || !racedAssignment) {
+        throw new Error(racedAssignmentError?.message || assignmentError.message || "Failed to create engagement assignment");
+      }
+      assignment = racedAssignment
+    } else if (assignmentError || !insertedAssignment) {
+      throw new Error(assignmentError?.message || "Failed to create engagement assignment");
+    } else {
+      assignment = insertedAssignment
+    }
+  }
 
   const offerDetails = parseJsonObject(offer.offer_details);
   await supabase

@@ -1,5 +1,7 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useIsClient } from '@/hooks/use-is-client';
 import { useRouter } from 'next/navigation';
@@ -164,7 +166,7 @@ export default function VerificationPage() {
       }
       setUploadedUrls(uploaded);
 
-      const token = localStorage.getItem('token');
+      const token = getClientSessionToken();
       if (!token || !user?.user_type) {
         throw new Error('Authentication required. Please log in again.');
       }
@@ -189,7 +191,7 @@ export default function VerificationPage() {
 
       const initiateResult = await initiateResponse.json();
       if (!initiateResponse.ok) {
-        throw new Error(initiateResult.error || 'Failed to initiate verification');
+        throw new Error(readApiError(initiateResult, 'Failed to initiate verification'));
       }
 
       if (reverifyMode) {

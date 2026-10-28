@@ -1,4 +1,5 @@
 "use client"
+import { getClientSessionToken } from '@/lib/client-session';
 
 import { useEffect, useState } from 'react'
 import { formatStatusLabel } from '@/lib/format-date'
@@ -86,7 +87,7 @@ export function PaymentHistoryPanel({
       try {
         setLoading(true)
         setLoadError(false)
-        const token = localStorage.getItem('token')
+        const token = getClientSessionToken()
         if (!token) {
           setPayments([])
           return

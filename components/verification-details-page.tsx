@@ -1,5 +1,6 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useState, useEffect, useEffectEvent, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -53,7 +54,7 @@ export default function VerificationDetailsPage({
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setLoadError(data.error || 'The verification queue could not be loaded.');
+        setLoadError(readApiError(data, 'The verification queue could not be loaded.'));
         return;
       }
       setItems((data.data || []).map((item: VerificationDetail) => sanitizeCaReviewItem(item)));
@@ -132,7 +133,7 @@ export default function VerificationDetailsPage({
         setRejectionReason('');
         setComplianceTags([]);
       } else {
-        toast.error(data.error || 'Failed to process action');
+        toast.error(readApiError(data, 'Failed to process action'));
       }
     } catch (error) {
       console.error('Action failed:', error);

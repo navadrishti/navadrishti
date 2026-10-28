@@ -9,7 +9,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const user = getAuthUserFromRequest(request);
+    const user = await getAuthUserFromRequest(request);
     assertUserType(user, ['ngo']);
 
     const { id: milestoneId } = await params;
@@ -89,7 +89,11 @@ export async function POST(
 
     if (evidenceError) {
       console.error('Failed to submit evidence:', evidenceError);
-      return NextResponse.json({ error: 'Failed to submit evidence' }, { status: 500 });
+      const status = evidenceError.code === '23505' ? 409 : 500;
+      return NextResponse.json(
+        { error: status === 409 ? 'Evidence for this milestone was already submitted' : 'Failed to submit evidence' },
+        { status }
+      );
     }
 
     if (Array.isArray(media) && media.length > 0) {
@@ -106,7 +110,12 @@ export async function POST(
         }));
 
       if (mediaRows.length > 0) {
-        await supabase.from('csr_milestone_evidence_media').insert(mediaRows);
+        const { error: mediaError } = await supabase.from('csr_milestone_evidence_media').insert(mediaRows);
+        if (mediaError) {
+          console.error('Failed to save evidence media:', mediaError);
+          await supabase.from('csr_milestone_evidence').delete().eq('id', evidence.id);
+          return NextResponse.json({ error: 'Failed to save evidence media' }, { status: 500 });
+        }
       }
     }
 
@@ -122,7 +131,13 @@ export async function POST(
         }));
 
       if (documentRows.length > 0) {
-        await supabase.from('csr_milestone_evidence_documents').insert(documentRows);
+        const { error: documentError } = await supabase.from('csr_milestone_evidence_documents').insert(documentRows);
+        if (documentError) {
+          console.error('Failed to save evidence documents:', documentError);
+          await supabase.from('csr_milestone_evidence_media').delete().eq('evidence_id', evidence.id);
+          await supabase.from('csr_milestone_evidence').delete().eq('id', evidence.id);
+          return NextResponse.json({ error: 'Failed to save evidence documents' }, { status: 500 });
+        }
       }
     }
 

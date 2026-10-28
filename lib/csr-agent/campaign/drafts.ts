@@ -32,6 +32,12 @@ const CampaignDraftSchema = z.object({
   impact_metrics: z.object({
     beneficiaries: coerceInteger(z.number().int().nonnegative()),
     duration:      z.string(),
+    volunteer_requirement: z.union([z.string(), z.number()]).optional(),
+    volunteer_limit: z.number().int().nonnegative().optional(),
+    expected_beneficiaries: z.number().int().nonnegative().optional(),
+    city: z.string().optional(),
+    state: z.string().optional(),
+    selected_existing_project_id: z.string().nullable().optional(),
   }),
   milestones: z.array(
     z.object({

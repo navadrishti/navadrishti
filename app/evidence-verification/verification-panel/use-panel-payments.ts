@@ -1,3 +1,4 @@
+import { readApiError } from '@/lib/user-facing-error'
 import { useState } from 'react';
 import { openRazorpayCheckout } from '@/lib/razorpay-checkout';
 import { getErrorMessage } from '@/lib/utils';
@@ -42,11 +43,17 @@ export function usePanelPayments({
 
       const orderPayload = await orderRes.json();
       if (!orderRes.ok || !orderPayload?.success) {
-        setPanelMessage(orderPayload?.error || flow.messages.createOrderFailed);
+        setPanelMessage(readApiError(orderPayload, flow.messages.createOrderFailed));
         return;
       }
 
       const order = orderPayload.data;
+      if (!order?.paymentRequired) {
+        setPanelMessage(order?.message || 'No payment is due.');
+        await onPaid();
+        return;
+      }
+
       await openRazorpayCheckout({
         keyId: order.keyId,
         orderId: order.orderId,
@@ -63,7 +70,7 @@ export function usePanelPayments({
           });
           const verifyPayload = await verifyRes.json();
           if (!verifyRes.ok || !verifyPayload?.success) {
-            setPanelMessage(verifyPayload?.error || flow.messages.verifyFailed);
+            setPanelMessage(readApiError(verifyPayload, flow.messages.verifyFailed));
             return;
           }
 

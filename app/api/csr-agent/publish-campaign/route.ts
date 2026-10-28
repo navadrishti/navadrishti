@@ -10,6 +10,7 @@ import {
 import { verifyPaidCsrOffersForPublish } from '@/lib/csr-agent/campaign'
 import { CSR_WORK_END_DATE_REQUIRED_MESSAGE } from '@/lib/auth'
 import { getErrorMessage, parseJsonObject } from '@/lib/utils';
+import { newsletterEventId, withNewsletterHistory } from '@/lib/platform-newsletter/history'
 
 const BUDGET_TOLERANCE_INR = 1
 
@@ -51,7 +52,7 @@ function validateBudgetAllocation(campaign: Record<string, unknown>): string | n
 
 export async function POST(request: NextRequest) {
   try {
-    const user = getAuthUserFromRequest(request)
+    const user = await getAuthUserFromRequest(request)
     assertUserType(user, ['company'])
 
     const body = await request.json()
@@ -115,14 +116,24 @@ export async function POST(request: NextRequest) {
     const location = resolveCampaignLocationInput(campaign)
     const campaignUrl = `${resolveAppOrigin(request)}/csr-campaigns/${campaignId}`
 
-    const nextImpact = {
-      ...impact,
-      ...pickClientImpactMetrics(campaign.impact_metrics),
-      invited_offer_ids: invitedOfferIds,
-      lead_ngo_accepted: true,
-      campaign_public_url: campaignUrl,
-      published_at: new Date().toISOString(),
-    }
+    const publishedAt = new Date().toISOString()
+    const nextImpact = withNewsletterHistory(
+      {
+        ...impact,
+        ...pickClientImpactMetrics(campaign.impact_metrics),
+        invited_offer_ids: invitedOfferIds,
+        lead_ngo_accepted: true,
+        campaign_public_url: campaignUrl,
+        published_at: publishedAt,
+      },
+      {
+        id: newsletterEventId('campaign', campaignId, publishedAt),
+        kind: 'campaign',
+        at: publishedAt,
+        source: 'user',
+        href: `/csr-campaigns/${campaignId}`,
+      }
+    )
 
     const { data: updated, error: updateError } = await supabase
       .from('campaigns')

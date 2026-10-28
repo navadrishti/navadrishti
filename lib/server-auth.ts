@@ -22,7 +22,7 @@ import {
   type PlatformCATokenPayload,
 } from '@/lib/platform-ca-auth';
 import { supabase } from '@/lib/db';
-import { ensureCompanyCaIdAssigned } from '@/lib/company-ca';
+import { ensureCompanyCaIdAssigned, isCompanyCAUser } from '@/lib/company-ca';
 import { parseJsonObject } from '@/lib/utils';
 
 export const AUTH_TOKEN_COOKIE = 'token';
@@ -148,33 +148,44 @@ export function findAuthUser(
   request: NextRequest,
   options: { allowCookie?: boolean } = {}
 ): UserData | null {
+  const allowCookie = options.allowCookie !== false;
   const token =
     extractBearerToken(request.headers.get('authorization')) ??
-    (options.allowCookie ? request.cookies.get(AUTH_TOKEN_COOKIE)?.value?.trim() || null : null);
+    (allowCookie ? request.cookies.get(AUTH_TOKEN_COOKIE)?.value?.trim() || null : null);
 
   return token ? verifyToken(token) : null;
 }
 
-export function getAuthUserFromRequest(request: NextRequest): UserData {
-  const authHeader = request.headers.get('authorization');
-  const token = extractBearerToken(authHeader);
-
-  if (!token) {
-    throw new AuthError('Authentication required');
+export async function overlayLiveUserType<T extends { id: number; user_type: string }>(claims: T): Promise<T> {
+  try {
+    const live = await findSessionGate(Number(claims.id));
+    if (live.userType && live.userType !== claims.user_type) {
+      return { ...claims, user_type: live.userType };
+    }
+  } catch {
+    // Tests and brief DB outages keep the JWT claims rather than failing the request.
   }
+  return claims;
+}
 
-  const user = verifyToken(token);
+export async function getAuthUserFromRequest(request: NextRequest): Promise<UserData> {
+  const user = findAuthUser(request);
   if (!user) {
-    throw new AuthError('Invalid authentication token');
+    throw new AuthError(
+      extractBearerToken(request.headers.get('authorization')) || request.cookies.get(AUTH_TOKEN_COOKIE)?.value
+        ? 'Invalid authentication token'
+        : 'Authentication required'
+    );
   }
 
-  return user;
+  return overlayLiveUserType(user);
 }
 
 const SESSION_BLOCK_CACHE_MS = 30_000;
 type SessionGate = {
   reason: string | null;
   delegatedCompanyCa: boolean;
+  userType: UserData['user_type'] | null;
   expiresAt: number;
 };
 const sessionBlockCache = new Map<number, SessionGate>();
@@ -183,23 +194,28 @@ const sessionBlockCache = new Map<number, SessionGate>();
  * Bans and suspensions must end live sessions too, not only the next sign-in.
  * Cached briefly per instance so every API call does not cost a users lookup.
  */
-export async function findSessionGate(userId: number): Promise<Pick<SessionGate, 'reason' | 'delegatedCompanyCa'>> {
+export async function findSessionGate(
+  userId: number
+): Promise<Pick<SessionGate, 'reason' | 'delegatedCompanyCa' | 'userType'>> {
   const cached = sessionBlockCache.get(userId);
   if (cached && cached.expiresAt > Date.now()) {
-    return { reason: cached.reason, delegatedCompanyCa: cached.delegatedCompanyCa };
+    return { reason: cached.reason, delegatedCompanyCa: cached.delegatedCompanyCa, userType: cached.userType };
   }
 
   const { data, error } = await supabase
     .from('users')
-    .select('account_status, locked_until, profile_data')
+    .select('account_status, locked_until, profile_data, user_type')
     .eq('id', userId)
     .maybeSingle();
   if (error) throw error;
 
   const reason = data ? getAccountAccessBlockReason(data) : 'This account no longer exists.';
-  const delegatedCompanyCa = String(parseJsonObject(data?.profile_data).role || '').toLowerCase() === 'company_ca';
-  sessionBlockCache.set(userId, { reason, delegatedCompanyCa, expiresAt: Date.now() + SESSION_BLOCK_CACHE_MS });
-  return { reason, delegatedCompanyCa };
+  const delegatedCompanyCa = data ? await isCompanyCAUser(userId) : false;
+  const userType = data?.user_type === 'ngo' || data?.user_type === 'company' || data?.user_type === 'individual'
+    ? data.user_type
+    : null;
+  sessionBlockCache.set(userId, { reason, delegatedCompanyCa, userType, expiresAt: Date.now() + SESSION_BLOCK_CACHE_MS });
+  return { reason, delegatedCompanyCa, userType };
 }
 
 export async function findSessionBlockReason(userId: number): Promise<string | null> {

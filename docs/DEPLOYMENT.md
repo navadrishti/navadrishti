@@ -20,9 +20,23 @@ pnpm start
 - Cron: `vercel.json` calls `/api/cron/daily-cleanup` daily at 12:00 UTC; the route requires `CRON_SECRET`
 - Pushes to non-production branches create preview deployments
 
+## Go-live (production database with RLS)
+
+The Next.js API uses `SUPABASE_SECRET_KEY` (service role) on the server. That role bypasses RLS. Do not expect prod RLS to constrain API routes. RLS plus `supabase/rls-lockdown.sql` exist so the **publishable** key cannot dump tables if it leaks.
+
+1. In the Vercel production environment, paste the **production** project values. Never commit them and never paste them into git or chat.
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (anon / publishable only)
+   - `SUPABASE_SECRET_KEY` (service role / secret only)
+   - `JWT_SECRET` (app signing secret, at least 32 characters; this is not the Supabase JWT secret)
+   - Admin, Cloudinary, Razorpay **live** keys, `CRON_SECRET`, `NEXT_PUBLIC_APP_URL`
+2. In the production Supabase SQL editor, run `supabase/rls-lockdown.sql` once. It enables RLS and revokes `anon` / `authenticated` on `public`. Re-run is safe.
+3. Deploy. `GET /api/health` must return 200. A 503 includes `config_issues` naming missing or swapped keys (not the values).
+4. The server refuses to boot in production if the publishable and secret keys are swapped, if `JWT_SECRET` is a placeholder, or if Razorpay is still on `rzp_test_`.
+
 ## Health check
 
-`GET /api/health` returns service status and checks database connectivity.
+`GET /api/health` returns service status and checks database connectivity. In production it also fails if go-live secrets are missing or the wrong kind.
 
 ## Tests
 

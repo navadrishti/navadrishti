@@ -1,5 +1,6 @@
 "use client"
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
@@ -224,7 +225,7 @@ export function ImpactReportsPanel({ audience }: ImpactReportsPanelProps) {
 
       const payload = await response.json().catch(() => null)
       if (!response.ok || !payload?.success || !payload?.html) {
-        throw new Error(payload?.error || "Failed to generate document")
+        throw new Error(readApiError(payload, "Failed to generate document"))
       }
 
       downloadHtml(String(payload.filename || "gram-document.html"), String(payload.html))

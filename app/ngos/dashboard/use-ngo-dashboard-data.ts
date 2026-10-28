@@ -1,7 +1,8 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useEffect, useEffectEvent, useState } from 'react';
-import { createClient as createSupabaseClient } from '@/lib/supabase';
+import { clientAuthHeaders } from '@/lib/client-session';
 import type { OfferRequestItem } from '@/lib/offer-requests';
 import type { CapabilityOfferSummary } from '@/lib/service-offers';
 import type { CSRTrackingAssignment } from '@/components/csr-tracking-project-details';
@@ -10,6 +11,7 @@ import type {
   CampaignLeadAssignment,
   CampaignVolunteerAssignment,
   CampaignLeadInvitation,
+  ProjectLeadInvitation,
   NgoNeedDashboardItem,
   CsrCapabilityRentalRow,
   CsrProjectEvidence,
@@ -26,10 +28,12 @@ export function useNgoDashboardData(userId: number | undefined) {
   const [csrTrackingAssignments, setCsrTrackingAssignments] = useState<CSRTrackingAssignment[]>([]);
   const [loadingCSRTrackingAssignments, setLoadingCSRTrackingAssignments] = useState(false);
   const [campaignLeadInvitations, setCampaignLeadInvitations] = useState<CampaignLeadInvitation[]>([]);
+  const [projectLeadInvitations, setProjectLeadInvitations] = useState<ProjectLeadInvitation[]>([]);
   const [campaignLeadAssignments, setCampaignLeadAssignments] = useState<CampaignLeadAssignment[]>([]);
   const [campaignVolunteerAssignments, setCampaignVolunteerAssignments] = useState<CampaignVolunteerAssignment[]>([]);
   const [loadingCampaignVolunteerAssignments, setLoadingCampaignVolunteerAssignments] = useState(false);
   const [loadingCampaignLeadInvitations, setLoadingCampaignLeadInvitations] = useState(false);
+  const [loadingProjectLeadInvitations, setLoadingProjectLeadInvitations] = useState(false);
   const [loadingCampaignLeadAssignments, setLoadingCampaignLeadAssignments] = useState(false);
   const [csrCapabilityRentals, setCsrCapabilityRentals] = useState<CsrCapabilityRentalRow[]>([]);
   const [ongoingNeeds, setOngoingNeeds] = useState<NgoNeedDashboardItem[]>([]);
@@ -37,6 +41,7 @@ export function useNgoDashboardData(userId: number | undefined) {
   const [csrProjects, setCsrProjects] = useState<NgoCsrProject[]>([]);
   const [projectEvidenceById, setProjectEvidenceById] = useState<Record<string, CsrProjectEvidence>>({});
   const [loadingEvidenceProjectId, setLoadingEvidenceProjectId] = useState<string | null>(null);
+  const [submittingEvidenceProjectId, setSubmittingEvidenceProjectId] = useState<string | null>(null);
   const [loadingCSRProjects, setLoadingCSRProjects] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
   const [loadingOfferApplications, setLoadingOfferApplications] = useState(false);
@@ -44,13 +49,8 @@ export function useNgoDashboardData(userId: number | undefined) {
 
   const fetchServiceOffers = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
-      const response = await fetch('/api/service-offers?view=my-offers&include_expired=true&limit=50', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+const response = await fetch('/api/service-offers?view=my-offers&include_expired=true&limit=50', {
+        headers: clientAuthHeaders()
       });
 
       const data = await response.json();
@@ -66,15 +66,12 @@ export function useNgoDashboardData(userId: number | undefined) {
 
   const fetchServiceRequests = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
-      const [ongoingResponse, historyResponse] = await Promise.all([
+const [ongoingResponse, historyResponse] = await Promise.all([
         fetch('/api/service-request-assignments?view=ongoing', {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: clientAuthHeaders()
         }),
         fetch('/api/service-request-assignments?view=history', {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: clientAuthHeaders()
         })
       ]);
 
@@ -95,16 +92,8 @@ export function useNgoDashboardData(userId: number | undefined) {
   const fetchOfferApplications = async () => {
     try {
       setLoadingOfferApplications(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setOfferApplications([]);
-        return;
-      }
-
-      const response = await fetch('/api/service-offers?view=my-responses&limit=20', {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+const response = await fetch('/api/service-offers?view=my-responses&limit=20', {
+        headers: clientAuthHeaders()
       });
 
       const data = await response.json();
@@ -120,16 +109,8 @@ export function useNgoDashboardData(userId: number | undefined) {
   const fetchOfferRequests = async () => {
     try {
       setLoadingOfferRequests(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setOfferRequests([]);
-        return;
-      }
-
-      const response = await fetch('/api/service-offers/requests', {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+const response = await fetch('/api/service-offers/requests', {
+        headers: clientAuthHeaders()
       });
 
       const data = await response.json();
@@ -145,16 +126,8 @@ export function useNgoDashboardData(userId: number | undefined) {
   const fetchCompanyProjectApplications = async () => {
     try {
       setLoadingCompanyProjectApplications(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setCompanyProjectApplications([]);
-        return;
-      }
-
-      const response = await fetch('/api/service-request-assignments?mode=ngo-company-applications', {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+const response = await fetch('/api/service-request-assignments?mode=ngo-company-applications', {
+        headers: clientAuthHeaders()
       });
 
       const payload = await response.json();
@@ -174,16 +147,8 @@ export function useNgoDashboardData(userId: number | undefined) {
   const fetchCSRTrackingAssignments = async () => {
     try {
       setLoadingCSRTrackingAssignments(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setCsrTrackingAssignments([]);
-        return;
-      }
-
-      const response = await fetch('/api/service-request-assignments?mode=csr-tracking', {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+const response = await fetch('/api/service-request-assignments?mode=csr-tracking', {
+        headers: clientAuthHeaders()
       });
 
       const payload = await response.json();
@@ -203,16 +168,8 @@ export function useNgoDashboardData(userId: number | undefined) {
   const fetchCampaignLeadInvitations = async () => {
     try {
       setLoadingCampaignLeadInvitations(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setCampaignLeadInvitations([]);
-        return;
-      }
-
       const response = await fetch('/api/campaigns/lead-invitations', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: clientAuthHeaders(),
       });
 
       const payload = await response.json();
@@ -229,16 +186,31 @@ export function useNgoDashboardData(userId: number | undefined) {
     }
   };
 
+  const fetchProjectLeadInvitations = async () => {
+    try {
+      setLoadingProjectLeadInvitations(true);
+      const response = await fetch('/api/service-request-assignments?mode=ngo-lead-invitations', {
+        headers: clientAuthHeaders(),
+      });
+
+      const payload = await response.json();
+      if (response.ok && payload?.success) {
+        setProjectLeadInvitations(Array.isArray(payload.data) ? payload.data : []);
+      } else {
+        setProjectLeadInvitations([]);
+      }
+    } catch (error) {
+      console.error('Error fetching project lead invitations:', error);
+      setProjectLeadInvitations([]);
+    } finally {
+      setLoadingProjectLeadInvitations(false);
+    }
+  };
+
   const fetchCampaignLeadAssignments = async () => {
     try {
       setLoadingCampaignLeadAssignments(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setCampaignLeadAssignments([]);
-        return;
-      }
-
-      const headers = { Authorization: `Bearer ${token}` };
+      const headers = clientAuthHeaders();
       const [response, trackingResponse] = await Promise.all([
         fetch('/api/campaigns/lead-assignments', { headers }),
         fetch('/api/campaigns/tracking', { headers }),
@@ -263,14 +235,8 @@ export function useNgoDashboardData(userId: number | undefined) {
 
   const fetchCsrCapabilityRentals = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setCsrCapabilityRentals([]);
-        return;
-      }
-
-      const response = await fetch('/api/campaigns/lead-assignments?rentals=1', {
-        headers: { Authorization: `Bearer ${token}` },
+const response = await fetch('/api/campaigns/lead-assignments?rentals=1', {
+        headers: clientAuthHeaders(),
       });
       const payload = await response.json();
       if (response.ok && payload?.success) {
@@ -287,14 +253,8 @@ export function useNgoDashboardData(userId: number | undefined) {
   const fetchCampaignVolunteerAssignments = async () => {
     try {
       setLoadingCampaignVolunteerAssignments(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setCampaignVolunteerAssignments([]);
-        return;
-      }
-
-      const response = await fetch('/api/campaigns/volunteer-assignments', {
-        headers: { Authorization: `Bearer ${token}` }
+const response = await fetch('/api/campaigns/volunteer-assignments', {
+        headers: clientAuthHeaders()
       });
       const data = await response.json();
       if (response.ok && data?.success) {
@@ -313,16 +273,8 @@ export function useNgoDashboardData(userId: number | undefined) {
   const fetchCSRProjects = async () => {
     try {
       setLoadingCSRProjects(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setCsrProjects([]);
-        return;
-      }
-
-      const response = await fetch('/api/csr-projects', {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+const response = await fetch('/api/csr-projects', {
+        headers: clientAuthHeaders()
       });
 
       const data = await response.json();
@@ -342,15 +294,8 @@ export function useNgoDashboardData(userId: number | undefined) {
   const fetchProjectEvidenceTimeline = async (projectId: string) => {
     try {
       setLoadingEvidenceProjectId(projectId);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        return;
-      }
-
-      const response = await fetch(`/api/csr-projects/${projectId}/evidence`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+const response = await fetch(`/api/csr-projects/${projectId}/evidence`, {
+        headers: clientAuthHeaders()
       });
 
       const data = await response.json();
@@ -361,6 +306,29 @@ export function useNgoDashboardData(userId: number | undefined) {
       console.error('Error fetching project evidence timeline:', error);
     } finally {
       setLoadingEvidenceProjectId(null);
+    }
+  };
+
+  const submitProjectEvidence = async (projectId: string, milestoneId: string, description: string) => {
+    setSubmittingEvidenceProjectId(projectId);
+    try {
+      const response = await fetch(`/api/milestones/${milestoneId}/evidence`, {
+        method: 'POST',
+        headers: clientAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          device_id: `web:${projectId}`,
+          captured_at: new Date().toISOString(),
+          description: description.trim() || `Web evidence for project ${projectId}`,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success) {
+        throw new Error(readApiError(payload, 'Failed to submit evidence'));
+      }
+      await fetchProjectEvidenceTimeline(projectId);
+      await fetchCSRProjects();
+    } finally {
+      setSubmittingEvidenceProjectId(null);
     }
   };
 
@@ -375,6 +343,7 @@ export function useNgoDashboardData(userId: number | undefined) {
       fetchCompanyProjectApplications(),
       fetchCSRTrackingAssignments(),
       fetchCampaignLeadInvitations(),
+      fetchProjectLeadInvitations(),
       fetchCampaignLeadAssignments(),
       fetchCampaignVolunteerAssignments(),
       fetchCSRProjects(),
@@ -389,15 +358,9 @@ export function useNgoDashboardData(userId: number | undefined) {
 
     const runAutoUpdate = async () => {
       try {
-        const token = localStorage.getItem('token');
-        if (!token) return;
-
         await fetch('/api/auto-update-statuses', {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
+          headers: clientAuthHeaders({ 'Content-Type': 'application/json' }),
         });
       } catch (autoUpdateError) {
         console.error('Auto-update error (non-critical):', autoUpdateError);
@@ -413,67 +376,11 @@ export function useNgoDashboardData(userId: number | undefined) {
 
     loadData();
 
-    const realtime = createSupabaseClient();
-    const channel = realtime.channel('realtime-ngo-dashboard');
+    const poll = window.setInterval(() => {
+      void refreshDashboardOnLoad();
+    }, 30_000);
 
-    const handleChange = (table: string) => {
-      if (table === 'service_request_projects') {
-        void fetchCSRProjects();
-        return;
-      }
-      if (table === 'service_requests') {
-        void fetchServiceRequests();
-        return;
-      }
-      if (table === 'service_offers') {
-        void fetchServiceOffers();
-        void fetchOfferRequests();
-        return;
-      }
-      if (['service_engagement_assignments', 'service_request_applications', 'service_clients'].includes(table)) {
-        void fetchCSRTrackingAssignments();
-        void fetchCampaignLeadAssignments();
-        void fetchCampaignVolunteerAssignments();
-        return;
-      }
-      if (
-        [
-          'service_attendance_entries',
-          'service_request_shipments',
-          'shipment_tracking_events',
-          'campaigns',
-          'csr_project_milestones',
-          'csr_payment_confirmations',
-        ].includes(table)
-      ) {
-        void fetchCampaignLeadAssignments();
-        void fetchCampaignVolunteerAssignments();
-        void fetchCsrCapabilityRentals();
-        void fetchCSRProjects();
-      }
-    };
-
-    [
-      'service_request_projects',
-      'service_requests',
-      'service_offers',
-      'service_engagement_assignments',
-      'service_request_applications',
-      'service_clients',
-      'service_attendance_entries',
-      'service_request_shipments',
-      'shipment_tracking_events',
-      'campaigns',
-      'csr_project_milestones',
-      'csr_payment_confirmations',
-    ].forEach((table) => {
-      channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => handleChange(table));
-    });
-    void channel.subscribe();
-
-    return () => {
-      try { realtime.removeChannel(channel); } catch { /* channel may already be closed */ }
-    };
+    return () => window.clearInterval(poll);
   }, [userId]);
 
   return {
@@ -486,10 +393,12 @@ export function useNgoDashboardData(userId: number | undefined) {
     csrTrackingAssignments,
     loadingCSRTrackingAssignments,
     campaignLeadInvitations,
+    projectLeadInvitations,
     campaignLeadAssignments,
     campaignVolunteerAssignments,
     loadingCampaignVolunteerAssignments,
     loadingCampaignLeadInvitations,
+    loadingProjectLeadInvitations,
     loadingCampaignLeadAssignments,
     csrCapabilityRentals,
     ongoingNeeds,
@@ -497,6 +406,7 @@ export function useNgoDashboardData(userId: number | undefined) {
     csrProjects,
     projectEvidenceById,
     loadingEvidenceProjectId,
+    submittingEvidenceProjectId,
     loadingCSRProjects,
     loadingData,
     loadingOfferApplications,
@@ -506,10 +416,13 @@ export function useNgoDashboardData(userId: number | undefined) {
     fetchCompanyProjectApplications,
     fetchCSRTrackingAssignments,
     fetchCampaignLeadInvitations,
+    fetchProjectLeadInvitations,
     fetchCampaignLeadAssignments,
+    fetchCampaignVolunteerAssignments,
     fetchCsrCapabilityRentals,
     fetchCSRProjects,
     fetchProjectEvidenceTimeline,
+    submitProjectEvidence,
   };
 }
 

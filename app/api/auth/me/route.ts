@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
-import { withAuth, type AuthenticatedRequest, backfillNgoComplianceProfileData, backfillNgoDocumentExpiries, summarizeDocumentExpiries, ngoIsCsrEligible, getCaComplianceTags, getAccountAccessBlockReason } from '@/lib/auth';
+import { withAuth, type AuthenticatedRequest, backfillNgoComplianceProfileData, backfillNgoDocumentExpiries, summarizeDocumentExpiries, ngoIsCsrEligible, getCaComplianceTags, getAccountAccessBlockReason, generateToken, type UserData } from '@/lib/auth';
 import { applyCaBadgeToProfile } from '@/lib/platform-ca-auth';
 import { parseJsonObject, type JsonRecord } from '@/lib/utils';
 
@@ -110,7 +110,18 @@ async function handler(req: AuthenticatedRequest) {
       }
     }
     
+    const sessionToken = generateToken({
+      id: Number(freshUserData.id),
+      email: String(freshUserData.email || ''),
+      name: String(freshUserData.name || ''),
+      user_type: freshUserData.user_type as UserData['user_type'],
+      verification_status: (verificationStatus || 'unverified') as UserData['verification_status'],
+      email_verified: Boolean(freshUserData.email_verified),
+      phone_verified: Boolean(freshUserData.phone_verified),
+    });
+
     return NextResponse.json({
+      token: sessionToken,
       user: {
         id: freshUserData.id,
         email: freshUserData.email,

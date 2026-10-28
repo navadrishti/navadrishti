@@ -3,6 +3,7 @@ import { supabase } from "@/lib/db";
 import { emailService } from "@/lib/email";
 import { isPickedUpTrackingStatus } from "@/lib/service-request-allocation";
 import { getErrorMessage, parseJsonObject } from "@/lib/utils";
+import type { Json } from "@/lib/database.types";
 import {
   accrueCsrFine,
   addDaysIso,
@@ -14,6 +15,7 @@ import {
 } from "@/lib/service-engagement";
 import { autoBookCsrCapabilityDelhivery } from "./delhivery-booking";
 import { saveCampaignImpactIfUnchanged } from "./rental-store";
+import { newsletterEventId, withNewsletterHistory } from "@/lib/platform-newsletter/history";
 
 export async function processCsrCapabilityDailyCompliance() {
   const { data: campaigns } = await supabase
@@ -280,7 +282,7 @@ async function sendCsrFineReminder(companyUserId: number, pendingTotalInr: numbe
 async function loadCampaignForCompletion(campaignId: string) {
   const { data } = await supabase
     .from("campaigns")
-    .select("id, company_id, impact_metrics, updated_at")
+    .select("id, company_id, status, impact_metrics, updated_at")
     .eq("id", campaignId)
     .maybeSingle();
   return data;
@@ -321,11 +323,26 @@ export async function markCsrProjectCompleted(input: {
     rentals = parseCsrCapabilityRentals(campaign.impact_metrics).map((rental) => rentalAtProjectEnd(rental, completedAt));
 
     const updatedAt = new Date().toISOString();
+    const alreadyCompleted = String(campaign.status || "").toLowerCase() === "completed";
+    let impactMetrics: Record<string, unknown> = {
+      ...parseJsonObject(campaign.impact_metrics),
+      csr_capability_rentals: rentals,
+      completed_at: completedAt,
+    };
+    if (!alreadyCompleted) {
+      impactMetrics = withNewsletterHistory(impactMetrics, {
+        id: newsletterEventId("campaign_finished", input.campaignId, completedAt),
+        kind: "campaign_finished",
+        at: completedAt,
+        source: "system",
+        href: `/csr-campaigns/${input.campaignId}`,
+      });
+    }
     const query = supabase
       .from("campaigns")
       .update({
         status: "completed",
-        impact_metrics: { ...parseJsonObject(campaign.impact_metrics), csr_capability_rentals: rentals, completed_at: completedAt },
+        impact_metrics: impactMetrics as Json,
         updated_at: updatedAt,
       })
       .eq("id", input.campaignId);

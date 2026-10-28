@@ -28,6 +28,7 @@ export interface OfferRequestItem {
     target_amount?: number | null;
     target_quantity?: number | null;
     beneficiary_count?: number | null;
+    service_request_id?: number | null;
   }>;
   status: 'pending' | 'accepted' | 'rejected' | 'active' | 'completed' | 'cancelled';
   isAssigned: boolean;
@@ -93,6 +94,18 @@ export const getOfferRequestBillingDetails = (request: OfferRequestItem) => {
     paymentRequired
   };
 };
+
+export function offerRequestTrackHref(request: Pick<OfferRequestItem, 'id' | 'service_offer_id' | 'service_request_id' | 'response_meta' | 'selected_need_summary'>): string {
+  const meta = parseJsonObject(request.response_meta)
+  const linkedNeedId = Number(
+    request.service_request_id ||
+    meta.service_request_id ||
+    request.selected_need_summary?.[0]?.service_request_id ||
+    0
+  )
+  if (linkedNeedId > 0) return `/service-requests/${linkedNeedId}`
+  return `/service-offers/${request.service_offer_id}`
+}
 
 export const toOfferRentalApplication = (request: OfferRequestItem) => {
   const billing = getOfferRequestBillingDetails(request);

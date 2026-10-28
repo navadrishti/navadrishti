@@ -8,6 +8,7 @@ import {
   getCompanyCaIdSuccessionOptions,
   isCompanyCaIdReusableForSuccession,
 } from '@/lib/company-ca';
+import { zodIssuesToUserMessage } from '@/lib/user-facing-error';
 
 const createCompanyCASchema = z.object({
   name: z.string().min(2),
@@ -28,7 +29,7 @@ const createCompanyCASchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    const user = getAuthUserFromRequest(request);
+    const user = await getAuthUserFromRequest(request);
     assertUserType(user, ['company']);
 
     const url = new URL(request.url);
@@ -68,14 +69,14 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const user = getAuthUserFromRequest(request);
+    const user = await getAuthUserFromRequest(request);
     assertUserType(user, ['company']);
 
     const body = await request.json();
     const parsed = createCompanyCASchema.safeParse(body);
 
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.issues[0]?.message || 'Invalid payload' }, { status: 400 });
+      return NextResponse.json({ error: zodIssuesToUserMessage(parsed.error.issues) || 'Please check your details and try again.' }, { status: 400 });
     }
 
     const { name, email, password, permissions, status, ca_id, auto_generate_ca_id } = parsed.data;

@@ -1,5 +1,6 @@
 import { readCampaignCategory, readCampaignDuration, readCampaignLocation } from "@/lib/campaign-schema"
 import { buildRequirementDetails, scoreProjectSuggestions } from "@/lib/csr-agent/recommendation-utils"
+import { readApiError } from "@/lib/user-facing-error"
 import {
   type GeneratedCampaign,
   type LeadNgoInvite,
@@ -123,7 +124,7 @@ export async function fetchScoredNgoDirectory(token: string, projectData: Projec
 
   const payload = await response.json().catch(() => null)
   if (!response.ok) {
-    throw new Error(payload?.error || 'Failed to load lead NGO suggestions')
+    throw new Error(readApiError(payload, 'Failed to load lead NGO suggestions'))
   }
 
   const rows: ScoredNgoRow[] = Array.isArray(payload?.data) ? payload.data : []
@@ -170,12 +171,9 @@ export async function requestServiceRecommendations(
   const result = (await response.json()) as RecommendationApiResponse
 
   if (!response.ok || !result?.success) {
-    const detailText = result?.details && typeof result.details === "object"
-      ? Object.entries(result.details)
-          .map(([key, values]) => `${key}: ${Array.isArray(values) ? values.join(", ") : "invalid"}`)
-          .join(" | ")
-      : ""
-    return { error: [result?.error || "Failed to fetch recommendations", detailText].filter(Boolean).join(". ") }
+    return {
+      error: readApiError(result, "Failed to fetch recommendations"),
+    }
   }
 
   return {
@@ -221,7 +219,7 @@ export async function requestCampaignDrafts(input: {
 
   const result = await response.json()
   if (!response.ok || !result?.success || !Array.isArray(result?.data)) {
-    throw new Error(result?.error || "Failed to generate CSR campaign drafts")
+    throw new Error(readApiError(result, "Failed to generate CSR campaign drafts"))
   }
 
   return {
@@ -290,7 +288,7 @@ export async function publishCampaignDraft(
 
   const payload = await response.json().catch(() => null)
   if (!response.ok || !payload?.success) {
-    throw new Error(payload?.error || 'Failed to publish campaign')
+    throw new Error(readApiError(payload, 'Failed to publish campaign'))
   }
   return { id: payload.data?.id, campaignUrl: payload.campaign_url }
 }
@@ -303,6 +301,6 @@ export async function deleteServerSession(sessionId: string, token: string | nul
   })
   const body = await response.json().catch(() => ({}))
   if (!response.ok && response.status !== 404) {
-    throw new Error(body?.error || 'Failed to delete conversation')
+    throw new Error(readApiError(body, 'Failed to delete conversation'))
   }
 }

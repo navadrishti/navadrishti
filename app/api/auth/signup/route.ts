@@ -5,6 +5,7 @@ import { hashPassword, generateToken, validateNgoHeadquartersLocation, validateC
 import { setAuthTokenCookie } from '@/lib/server-auth';
 import { stripServerOwnedProfileKeys } from '@/lib/profile-update/profile-fields';
 import { limitAttempts } from '@/lib/rate-limit';
+import { zodIssuesToUserMessage } from '@/lib/user-facing-error';
 
 const parseInteger = (value: unknown): number | null => {
   if (value === null || value === undefined) return null;
@@ -97,10 +98,8 @@ export async function POST(req: NextRequest) {
     const validationResult = signupSchema.safeParse(body);
     
     if (!validationResult.success) {
-      const firstIssue = validationResult.error.issues[0];
-      const validationMessage = firstIssue?.message || 'Please check your details and try again.';
       return NextResponse.json({
-        error: validationMessage,
+        error: zodIssuesToUserMessage(validationResult.error.issues) || 'Please check your details and try again.',
         code: 'VALIDATION_ERROR'
       }, { status: 400 });
     }
@@ -227,6 +226,10 @@ export async function POST(req: NextRequest) {
       state_province,
       pincode: normalizedPincode,
       country,
+      age: user_type === 'individual' ? parseInteger(profile.age) : null,
+      industry: typeof profile.industry === 'string' ? profile.industry : undefined,
+      company_size: typeof profile.company_size === 'string' ? profile.company_size : undefined,
+      website: typeof profile.website === 'string' ? profile.website : undefined,
       location: location || (user_type === 'ngo'
         ? buildNgoLocationDisplay({
             address_line: String((profile.ngo_headquarters as Record<string, unknown> | undefined)?.address_line || ''),

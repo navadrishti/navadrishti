@@ -315,6 +315,27 @@ describe('Delhivery tracking', () => {
 describe('Delhivery booking', () => {
   const input = { campaignId: 'c1', offerId: 7, leg: 'outbound' as const, bookedByUserId: 40 }
 
+  it('books an outbound shipment with an edited delivery party', async () => {
+    seed([rental()])
+    await bookCsrCapabilityRentalDelhivery({
+      ...input,
+      consignee: {
+        name: 'Camp office',
+        phone: '9111122233',
+        address_line: 'Camp Gate',
+        city: 'Pune',
+        state: 'Maharashtra',
+        pincode: '411045',
+      },
+    })
+    expect(createRequestBody().shipments[0]).toMatchObject({
+      name: 'Camp office',
+      add: 'Camp Gate',
+      pin: '411045',
+      phone: '9111122233',
+    })
+  })
+
   it('books an outbound shipment from the provider to the campaign site', async () => {
     seed([rental()])
     const updated = await bookCsrCapabilityRentalDelhivery(input)

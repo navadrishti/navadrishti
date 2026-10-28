@@ -7,7 +7,7 @@ const MAX_RECEIPT_SIZE = 10 * 1024 * 1024
 
 export async function POST(request: NextRequest) {
   try {
-    const decoded = getTokenClaims(request)
+    const decoded = await getTokenClaims(request)
     if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }

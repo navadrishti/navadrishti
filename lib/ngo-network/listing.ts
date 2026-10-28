@@ -29,7 +29,7 @@ import {
 type ProjectCounts = { completed: number; ongoing: number; active: number };
 
 export async function loadRecommendationViewer(request: NextRequest): Promise<ViewerRecommendationProfile | null> {
-  const claims = getTokenClaims(request);
+  const claims = await getTokenClaims(request);
   if (!claims) return null;
 
   try {

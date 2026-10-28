@@ -174,3 +174,23 @@ export function isVolunteeringBanned(profileData: unknown): {
   }
   return { banned: false }
 }
+
+export function attendanceSummaryFromEntries(
+  entries: Array<{ attendance_date?: string | null; attendance_status?: string | null }> | null | undefined
+) {
+  const rows = Array.isArray(entries) ? entries : []
+  const presentDates = [
+    ...new Set(
+      rows
+        .filter((entry) => String(entry.attendance_status || '').toLowerCase() === 'present')
+        .map((entry) => String(entry.attendance_date || '').slice(0, 10))
+        .filter(Boolean)
+    ),
+  ].sort()
+
+  return {
+    days_attended: presentDates.length,
+    total_entries: rows.length,
+    last_attendance_at: presentDates.at(-1) || null,
+  }
+}

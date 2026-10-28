@@ -1,4 +1,6 @@
 'use client'
+import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 
 import React, { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
@@ -23,9 +25,6 @@ type UploadProgressState = {
   total: number
 }
 
-const timelinePattern = /^(?:\d+\s*(?:day|days|week|weeks|month|months|year|years)|\d{4}-\d{2}-\d{2})$/i
-
-const isValidTimelineValue = (value: string) => timelinePattern.test(value.trim())
 const isValidPositiveInteger = (value: string) => /^\d+$/.test(value.trim()) && Number(value) > 0
 
 export default function EditServiceRequestPage({ params }: { params: Promise<{ id: string }> }) {
@@ -85,14 +84,14 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
 
     const fetchRequest = async () => {
       try {
-        const token = localStorage.getItem('token')
+        const token = getClientSessionToken()
         const response = await fetch(`/api/service-requests/${resolvedParams.id}`, {
           headers: { Authorization: `Bearer ${token}` }
         })
         const data = await response.json()
 
         if (!data.success) {
-          toast({ title: 'Error', description: data.error || 'Failed to fetch need details', variant: 'destructive' })
+          toast({ title: 'Error', description: readApiError(data, 'Failed to fetch need details'), variant: 'destructive' })
           router.push('/service-requests')
           return
         }
@@ -117,9 +116,9 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
           images: Array.isArray(req.images) ? req.images.join('\n') : String(req.images || requirements?.images || req.image_url || ''),
           request_type: requirements.request_type || req.category || '',
           category: req.category || '',
-          location: req.location || '',
+          location: req.location || requestProject?.exact_address || requestProject?.location || '',
           urgency: req.urgency_level || 'medium',
-          timeline: requirements.timeline || req.timeline || '',
+          timeline: requirements.timeline || req.timeline || requestProject?.timeline || '',
           budget: requirements.budget || 'Not specified',
           estimated_budget: requirements.estimated_budget || '',
           beneficiary_count: String(requirements.beneficiary_count || 1),
@@ -171,7 +170,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
   ) => {
     if (!files || files.length === 0) return { urls: [] as string[], failures: [] as string[] }
 
-    const token = localStorage.getItem('token')
+    const token = getClientSessionToken()
     const urls: string[] = []
     const failures: string[] = []
     const total = Array.from(files).length
@@ -190,7 +189,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
 
         const data = await response.json()
         if (!response.ok || !data.success || !data.data?.url) {
-          throw new Error(data.error || 'Failed to upload image')
+          throw new Error(readApiError(data, 'Failed to upload image'))
         }
 
         urls.push(data.data.url)
@@ -246,8 +245,13 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
       return
     }
 
-    if (!isValidTimelineValue(formData.timeline)) {
-      toast({ title: 'Validation Error', description: 'Timeline must be a duration like 4 weeks or a date like 2026-05-15.', variant: 'destructive' })
+    const trimmedTimeline = String(formData.timeline || formData.project_timeline || '').trim()
+    if (trimmedTimeline.toLowerCase() === 'anytime') {
+      toast({ title: 'Validation Error', description: 'Timeline cannot be "Anytime"; provide a duration or a date.', variant: 'destructive' })
+      return
+    }
+    if (trimmedTimeline.length < 2) {
+      toast({ title: 'Validation Error', description: 'Timeline must be at least 2 characters.', variant: 'destructive' })
       return
     }
 
@@ -271,7 +275,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
     }
 
     try {
-      const token = localStorage.getItem('token')
+      const token = getClientSessionToken()
 
       const response = await fetch(`/api/service-requests/${resolvedParams.id}`, {
         method: 'PUT',
@@ -281,6 +285,8 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
         },
         body: JSON.stringify({
           ...formData,
+          location: formData.location || formData.project_location,
+          timeline: formData.timeline || formData.project_timeline,
           images: parseImageUrls(formData.images),
           category: formData.project_category,
           project_category: formData.project_category,
@@ -295,7 +301,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
         toast({ title: 'Success', description: 'Need updated successfully' })
         router.push('/service-requests?view=my-requests')
       } else {
-        toast({ title: 'Error', description: data.error || 'Failed to update need', variant: 'destructive' })
+        toast({ title: 'Error', description: readApiError(data, 'Failed to update need'), variant: 'destructive' })
       }
     } catch {
       toast({ title: 'Error', description: 'Failed to update need', variant: 'destructive' })

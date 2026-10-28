@@ -1,5 +1,6 @@
 import { useRef, useState } from "react"
 import { AGENT_NAMES } from "@/lib/ai-agent-sessions"
+import { toUserFacingError } from "@/lib/user-facing-error"
 import { buildPublishCampaignBody, publishCampaignDraft, requestCampaignDrafts } from "./api"
 import {
   type CSRAgentSession,
@@ -133,7 +134,7 @@ export function useCampaignDrafts({
       appendAssistantMessage(`Done. I generated ${generated.length} campaign draft${generated.length === 1 ? "" : "s"}. The drafts are ready in the right panel.`)
     } catch (error) {
       setConversationStage("milestones")
-      const message = error instanceof Error ? error.message : "Failed to generate campaign drafts"
+      const message = toUserFacingError(error instanceof Error ? error.message : "Could not generate campaign drafts. Please try again.")
       setGenerationError(message)
       appendAssistantMessage(message)
     } finally {
@@ -192,7 +193,7 @@ export function useCampaignDrafts({
       const campaignUrl = published.campaignUrl || `/csr-campaigns/${campaignId}`
       appendAssistantMessage(`Campaign published successfully. It is now listed on CSR Campaigns: ${campaignUrl}`)
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to publish campaign'
+      const message = toUserFacingError(error instanceof Error ? error.message : 'Failed to publish campaign')
       appendAssistantMessage(message)
     } finally {
       publishingRef.current = false

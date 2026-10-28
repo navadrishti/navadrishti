@@ -79,6 +79,20 @@ export interface CampaignVolunteerAssignment {
   };
 }
 
+export interface ProjectLeadInvitation {
+  id: string;
+  status: string;
+  note?: string;
+  invited_at?: string;
+  project_id: string;
+  project_title: string;
+  project_location?: string;
+  project_timeline?: string;
+  company_id: number;
+  company_name: string;
+  company_email?: string;
+}
+
 export interface CampaignLeadInvitation {
   id: string;
   campaign_id: string;
@@ -156,4 +170,13 @@ export type CsrProjectEvidence = {
     confirmed_funds?: number;
     next_milestone?: Tables<'csr_project_milestones'> | null;
   };
+  timeline?: Array<{
+    milestone: Tables<'csr_project_milestones'>;
+    evidence: Array<{
+      id: string;
+      submission_status?: string | null;
+      description?: string | null;
+    }>;
+    latest_review?: { status?: string | null } | null;
+  }>;
 };

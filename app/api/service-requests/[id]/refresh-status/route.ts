@@ -5,7 +5,7 @@ import { getTokenClaims } from '@/lib/auth';
 // POST - Manually refresh service request status based on volunteer completion
 export async function POST(request: NextRequest) {
   try {
-    const claims = getTokenClaims(request);
+    const claims = await getTokenClaims(request);
     if (!claims) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }

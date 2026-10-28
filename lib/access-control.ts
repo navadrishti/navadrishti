@@ -206,6 +206,7 @@ const PLATFORM_LOGIN_REQUIRED_PREFIXES = [
   '/service-requests/create',
   '/service-requests/edit',
   '/service-requests/projects/create',
+  '/csr-campaigns/create',
   '/service-offers/create',
   '/service-offers/edit',
   '/help-support',
@@ -231,6 +232,7 @@ export function canAccessRoute(userType: UserType | undefined, routePath: string
     '/companies/dashboard': ['company'],
     '/service-requests/create': ['ngo'],
     '/service-offers/create': ['ngo', 'company', 'individual'],
+    '/csr-campaigns/create': ['company'],
   };
   
   const allowedUserTypes = routeAccess[routePath];

@@ -1,5 +1,6 @@
 'use client'
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
@@ -44,7 +45,7 @@ export function useContribution({ request, canPayForRequest, fetchRequestDetails
       if (!orderRes.ok || !orderPayload?.success) {
         toast({
           title: 'Unable to start payment',
-          description: orderPayload?.error || 'Failed to create payment order',
+          description: readApiError(orderPayload, 'Failed to create payment order'),
           variant: 'destructive'
         })
         return
@@ -76,7 +77,7 @@ export function useContribution({ request, canPayForRequest, fetchRequestDetails
           if (!verifyRes.ok || !verifyPayload?.success) {
             toast({
               title: 'Payment verification failed',
-              description: verifyPayload?.error || 'Please contact support with payment reference.',
+              description: readApiError(verifyPayload, 'Please contact support with payment reference.'),
               variant: 'destructive'
             })
             return
@@ -101,7 +102,7 @@ export function useContribution({ request, canPayForRequest, fetchRequestDetails
       console.error('Contribution error:', error)
       toast({
         title: 'Payment failed',
-        description: error instanceof Error ? error.message : 'Could not open online payment.',
+        description: readApiError(error, 'Could not open online payment.'),
         variant: 'destructive'
       })
     } finally {

@@ -7,7 +7,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const getAuthenticatedUser = async (request: NextRequest) => {
-  const claims = getTokenClaims(request);
+  const claims = await getTokenClaims(request);
   if (!claims) return null;
   const user = await db.users.findById(claims.id);
   if (!user) return null;

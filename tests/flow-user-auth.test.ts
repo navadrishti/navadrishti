@@ -198,6 +198,30 @@ describe('signup', () => {
     expect(mocks.users[0].email).toBe('new@example.org')
   })
 
+  it('copies individual age and company profile fields onto the user row', async () => {
+    await signup(post('/api/auth/signup', {
+      ...signupBodies.individual,
+      profile_data: { age: '29' },
+    }))
+    expect(mocks.users[0]).toMatchObject({ age: 29 })
+
+    mocks.users = []
+    await signup(post('/api/auth/signup', {
+      ...signupBodies.company,
+      profile_data: {
+        company_headquarters: { address_line: '9 Marine Drive' },
+        industry: 'technology',
+        company_size: '11-50',
+        website: 'https://acme.com',
+      },
+    }))
+    expect(mocks.users[0]).toMatchObject({
+      industry: 'technology',
+      company_size: '11-50',
+      website: 'https://acme.com',
+    })
+  })
+
   it('strips server-owned profile keys', async () => {
     const profile_data = {
       bio: 'Hello',
@@ -408,7 +432,7 @@ describe('change password', () => {
     ['wrong current password', { currentPassword: 'not-it', newPassword: 'brand-new-pass' }, 'Current password is incorrect'],
     ['same password', { currentPassword: PASSWORD, newPassword: PASSWORD }, 'New password must be different from current password'],
     ['short new password', { currentPassword: PASSWORD, newPassword: 'short' }, 'New password must be at least 8 characters'],
-    ['missing current password', { newPassword: 'brand-new-pass' }, 'Required'],
+    ['missing current password', { newPassword: 'brand-new-pass' }, 'Please fill in the current password.'],
   ])('rejects %s', async (_label, body, message) => {
     addUser()
     const response = await changePassword(post('/api/auth/change-password', body, auth()))
@@ -417,13 +441,19 @@ describe('change password', () => {
     expect(mocks.update).not.toHaveBeenCalled()
   })
 
-  it.each([
-    ['cookie-only session', { cookie: `token=${generateToken(session)}` }],
-    ['admin token', { authorization: `Bearer ${generateAdminToken()}` }],
-  ])('requires a bearer user token, not a %s', async (_label, headers) => {
+  it('accepts a cookie-only session', async () => {
     addUser()
     const response = await changePassword(
-      post('/api/auth/change-password', { currentPassword: PASSWORD, newPassword: 'brand-new-pass' }, headers)
+      post('/api/auth/change-password', { currentPassword: PASSWORD, newPassword: 'brand-new-pass' }, { cookie: `token=${generateToken(session)}` })
+    )
+    expect(response.status).toBe(200)
+    expect(mocks.update).toHaveBeenCalled()
+  })
+
+  it('rejects an admin token', async () => {
+    addUser()
+    const response = await changePassword(
+      post('/api/auth/change-password', { currentPassword: PASSWORD, newPassword: 'brand-new-pass' }, { authorization: `Bearer ${generateAdminToken()}` })
     )
     expect(response.status).toBe(401)
     expect(mocks.update).not.toHaveBeenCalled()

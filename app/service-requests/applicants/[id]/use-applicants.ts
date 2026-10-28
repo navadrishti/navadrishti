@@ -1,3 +1,5 @@
+import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
@@ -45,7 +47,7 @@ export function useApplicants(requestId: string) {
 
     const fetchData = async () => {
       try {
-        const token = localStorage.getItem('token')
+        const token = getClientSessionToken()
 
         const requestResponse = await fetch(`/api/service-requests/${requestId}`, {
           headers: {
@@ -59,7 +61,7 @@ export function useApplicants(requestId: string) {
         } else {
           toast({
             title: "Error",
-            description: requestData.error || "Failed to fetch need details",
+            description: readApiError(requestData, "Failed to fetch need details"),
             variant: "destructive",
           })
           router.push('/service-requests')
@@ -97,7 +99,7 @@ export function useApplicants(requestId: string) {
   const handleVolunteerStatusUpdate = async (volunteer: Volunteer, newStatus: string) => {
     setUpdating(volunteer.id)
     try {
-      const token = localStorage.getItem('token')
+      const token = getClientSessionToken()
       const payload: Record<string, unknown> = { status: newStatus }
 
       // Accepting allocates the applicant's offer, capped at what the need still requires.
@@ -151,7 +153,7 @@ export function useApplicants(requestId: string) {
       } else {
         toast({
           title: "Error",
-          description: data.error || "Failed to update volunteer status",
+          description: readApiError(data, "Failed to update volunteer status"),
           variant: "destructive",
         })
       }

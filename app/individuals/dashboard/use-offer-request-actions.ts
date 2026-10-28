@@ -1,5 +1,7 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 import { useState, type Dispatch, type SetStateAction } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import type { OfferRequestItem } from '@/lib/offer-requests';
@@ -9,8 +11,15 @@ export function useOfferRequestActions(setOfferRequests: Dispatch<SetStateAction
   const [updatingOfferRequestId, setUpdatingOfferRequestId] = useState<number | null>(null);
 
   const handleOfferRequestStatusUpdate = async (requestId: number, newStatus: 'accepted' | 'rejected') => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
+    const token = getClientSessionToken();
+    if (!token) {
+      toast({
+        title: 'Error',
+        description: 'Please sign in again',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     try {
       setUpdatingOfferRequestId(requestId);
@@ -25,10 +34,10 @@ export function useOfferRequestActions(setOfferRequests: Dispatch<SetStateAction
       });
 
       const data = await response.json();
-      if (!data.success) {
+      if (!response.ok || !data.success) {
         toast({
           title: 'Error',
-          description: data.error || 'Failed to update request status',
+          description: readApiError(data, 'Failed to update request status'),
           variant: 'destructive'
         });
         return;

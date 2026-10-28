@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 import { parseJsonObject } from '@/lib/utils'
 import { enrichProjectRecord, formatProjectLocation, redactProjectSensitiveFields } from '@/lib/service-request-allocation'
+import { redactNeedForViewer } from '@/lib/service-requests/list-shape'
 import {
   COMPANY_PROJECT_CONTRIBUTION_TYPE,
   LEAD_NGO_INVITE_CONTRIBUTION_TYPE,
@@ -306,6 +307,12 @@ export async function getProjectDetail(ctx: AssignmentsGetContext) {
     responsePayload.project = redactProjectSensitiveFields(enrichedProject)
     responsePayload.company_applications = []
     responsePayload.lead_ngo_invites = []
+    responsePayload.needs = needsList.map((need) => redactNeedForViewer({ ...need } as Record<string, unknown>, null))
+    responsePayload.need_breakdown = {
+      ongoing: (responsePayload.needs as Array<{ status?: unknown }>).filter((item) => !['completed', 'cancelled'].includes(String(item.status || '').toLowerCase())),
+      fulfilled: (responsePayload.needs as Array<{ status?: unknown }>).filter((item) => ['completed'].includes(String(item.status || '').toLowerCase())),
+      removed: (responsePayload.needs as Array<{ status?: unknown }>).filter((item) => ['cancelled'].includes(String(item.status || '').toLowerCase())),
+    }
   } else {
     const ownerNgoId = Number(enrichedProject?.ngo_id || 0)
     const assignedCompanyId = Number(enrichedProject?.assigned_company_user_id || 0)
@@ -326,6 +333,7 @@ export async function getProjectDetail(ctx: AssignmentsGetContext) {
         (app) => Number(app?.company_id) === Number(userId)
       )
       responsePayload.lead_ngo_invites = []
+      responsePayload.needs = needsList.map((need) => redactNeedForViewer({ ...need } as Record<string, unknown>, userId))
     }
   }
 

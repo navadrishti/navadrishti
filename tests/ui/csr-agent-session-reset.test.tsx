@@ -56,6 +56,58 @@ describe('createNewSession', () => {
     expect(freshId).toMatch(UUID_PATTERN)
     expect(options.persistSessions).toHaveBeenCalledWith([expect.objectContaining({ id: freshId })], freshId)
   })
+
+  it('opens the clicked stored session instead of starting a new chat', () => {
+    const { campaign, setters } = campaignState()
+    const stored = {
+      id: 'old-session',
+      title: 'Wells',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-02T00:00:00.000Z',
+      messages: [{ role: 'user' as const, content: 'hello' }, { role: 'assistant' as const, content: 'hi' }],
+      projectData: { campaignName: 'Wells' },
+      milestoneCount: 1,
+      milestoneInputs: [],
+      projectStep: 2,
+      milestoneIndex: 0,
+      milestoneQuestionIndex: 0,
+      conversationStage: 'project' as const,
+      serviceSuggestions: [],
+      projectSuggestions: [],
+      selectedProjectSuggestionId: null,
+      invitedOfferIds: [],
+      ngoDirectory: [],
+      leadNgoInvites: [],
+      draftCampaignId: null,
+      publishedCampaignId: null,
+      generatedCampaigns: [],
+    }
+    const options = {
+      campaign,
+      userId: 5,
+      token: 'tok',
+      canPersist: true,
+      sessions: [stored],
+      setSessions: vi.fn(),
+      activeSessionId: 'new-chat',
+      setActiveSessionId: vi.fn(),
+      persistSessions: vi.fn(),
+      setServiceSuggestions: vi.fn(),
+      setRecommendationError: vi.fn(),
+      setProjectSuggestions: vi.fn(),
+      restoreLeadNgoState: vi.fn(),
+      syncLeadInviteStatuses: vi.fn(async () => null),
+      appendAssistantMessage: vi.fn(),
+    }
+    const { result } = renderHook(() => useSessionActions(options))
+
+    act(() => result.current.applySession(stored))
+
+    expect(options.setActiveSessionId).toHaveBeenCalledWith('old-session')
+    expect(setters.setMessages).toHaveBeenCalledWith(stored.messages)
+    expect(options.persistSessions).toHaveBeenCalledWith([stored], 'old-session')
+    expect(options.setActiveSessionId).not.toHaveBeenCalledWith(expect.stringMatching(UUID_PATTERN))
+  })
 })
 
 describe('useLeadNgoInvites directory spinner', () => {

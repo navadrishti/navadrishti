@@ -1,4 +1,6 @@
 'use client'
+import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -163,7 +165,7 @@ export default function CreateServiceRequestProjectPage() {
 
     setLoading(true)
     try {
-      const token = localStorage.getItem('token')
+      const token = getClientSessionToken()
       const response = await fetch('/api/service-request-projects', {
         method: 'POST',
         headers: {
@@ -189,7 +191,7 @@ export default function CreateServiceRequestProjectPage() {
 
       const data = await response.json().catch(() => null)
       if (!response.ok || !data?.success || !data?.data?.id) {
-        setError(data?.error || 'Failed to create project')
+        setError(readApiError(data, 'Failed to create project'))
         return
       }
 

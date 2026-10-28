@@ -520,8 +520,8 @@ Archive or delete a session. **Query:** `agent=ngo|csr`
 | Method | Path | Used by |
 |--------|------|---------|
 | POST | `/api/service-requests/recommend` | Atlas, manual need create |
-| POST | `/api/csr-agent/get-recommendations` | Catalyst |
-| POST | `/api/ngos/score` | Catalyst lead NGO ranking |
+| POST | `/api/csr-agent/get-recommendations` | Catalyst, manual campaign create |
+| POST | `/api/ngos/score` | Catalyst and manual campaign lead NGO ranking |
 
 **Recommend request (abbreviated):**
 ```json

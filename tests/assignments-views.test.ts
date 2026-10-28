@@ -241,7 +241,8 @@ describe('getNgoLeadInvitations', () => {
 
     const [invites] = fake.find('service_request_contributions')
     expect(eqsOf(invites)).toEqual({ contribution_type: LEAD_NGO_INVITE_CONTRIBUTION_TYPE, contributor_id: NGO })
-    expect(callsOf(fake.find('service_request_projects')[0], 'in')).toEqual([['id', ['p1']]])
+    const projectLookups = fake.find('service_request_projects').filter((query) => callsOf(query, 'in').length > 0)
+    expect(callsOf(projectLookups[0], 'in')).toEqual([['id', ['p1']]])
     expect(fake.find('users')[0].columns).toBe('id, name, email')
     expect(json.data).toEqual([
       {
@@ -255,10 +256,58 @@ describe('getNgoLeadInvitations', () => {
     ])
   })
 
-  it('makes no lookups without invites', async () => {
+  it('includes pending project-meta invites for the NGO', async () => {
+    const invitedAt = '2026-02-01T00:00:00.000Z'
+    useDb((query) => {
+      if (query.table === 'service_request_contributions') return { data: [] }
+      if (query.table === 'service_request_projects') {
+        return {
+          data: [{
+            id: 'p9',
+            title: 'Well',
+            location: 'Nashik',
+            exact_address: null,
+            timeline: '3 months',
+            description: withProjectMeta('Well', {
+              pending_lead_ngo_invites: [{
+                id: `lead-invite:p9:${NGO}:${COMPANY}`,
+                ngo_id: NGO,
+                inviting_company_id: COMPANY,
+                invited_at: invitedAt,
+                status: 'pending',
+                note: 'Lead this',
+              }],
+            }),
+          }],
+        }
+      }
+      if (query.table === 'users') return { data: [{ id: COMPANY, name: 'Acme', email: 'acme@example.org' }] }
+      return undefined
+    })
+
+    const { json } = await read(await getNgoLeadInvitations(ctx(NGO, 'ngo')))
+    expect(json.data).toEqual([
+      {
+        id: `lead-invite:p9:${NGO}:${COMPANY}`,
+        status: 'pending',
+        note: 'Lead this',
+        invited_at: invitedAt,
+        project_id: 'p9',
+        project_title: 'Well',
+        project_location: 'Nashik',
+        project_timeline: '3 months',
+        company_id: COMPANY,
+        company_name: 'Acme',
+        company_email: 'acme@example.org',
+      },
+    ])
+  })
+
+  it('makes no user lookups without invites', async () => {
     useDb(() => ({ data: [] }))
     await getNgoLeadInvitations(ctx(NGO, 'ngo'))
-    expect(fake.queries.map((query) => query.table)).toEqual(['service_request_contributions'])
+    expect(fake.find('users')).toHaveLength(0)
+    expect(fake.find('service_request_contributions')).toHaveLength(1)
   })
 
   it('throws invite query errors', async () => {
@@ -412,7 +461,7 @@ describe('getCsrTracking', () => {
       contributions: [{ id: 'c1', service_request_id: 11, contributor_id: COMPANY, status: 'accepted', meta: { review_note: 'Welcome' } }],
       needs: [{ id: 11, project_id: 'p1', ngo_id: NGO }],
       projects: [unassigned],
-      repaired: { ...unassigned, assigned_company_user_id: COMPANY, assignment_status: 'accepted', lead_ngo_user_id: NGO, status: 'in_progress' },
+      repaired: { ...unassigned, assigned_company_user_id: COMPANY, assignment_status: 'accepted', lead_ngo_user_id: null, status: 'in_progress' },
     })
 
     const { json } = await read(await getCsrTracking(ctx(COMPANY, 'company')))
@@ -421,11 +470,11 @@ describe('getCsrTracking', () => {
     expect(repair.payload).toMatchObject({
       assigned_company_user_id: COMPANY,
       assignment_status: 'accepted',
-      lead_ngo_user_id: NGO,
       status: 'in_progress',
     })
+    expect(repair.payload).not.toHaveProperty('lead_ngo_user_id')
     expect(eqsOf(repair)).toEqual({ id: 'p1' })
     expect(callsOf(repair, 'is')).toEqual([['assigned_company_user_id', null]])
-    expect(json.data[0]).toMatchObject({ assigned_company_id: COMPANY, review_note: 'Welcome', selected_lead_ngo_id: NGO })
+    expect(json.data[0]).toMatchObject({ assigned_company_id: COMPANY, review_note: 'Welcome', selected_lead_ngo_id: null })
   })
 })

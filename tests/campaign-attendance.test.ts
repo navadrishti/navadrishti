@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  attendanceSummaryFromEntries,
   CAMPAIGN_VOLUNTEER_ENGAGEMENT_KIND,
   filterCampaignVolunteerAssignments,
   getElapsedCampaignDays,
@@ -26,6 +27,18 @@ describe('campaign volunteer assignments', () => {
     const rows = [{ target_type: 'campaign', id: 1 }, { target_type: 'service_request', id: 2 }]
     expect(filterCampaignVolunteerAssignments(rows).map((row) => row.id)).toEqual([1])
     expect(filterCampaignVolunteerAssignments(null)).toEqual([])
+  })
+
+  it('summarises live attendance entries for a volunteer', () => {
+    expect(
+      attendanceSummaryFromEntries([
+        { attendance_date: '2026-10-02', attendance_status: 'present' },
+        { attendance_date: '2026-10-02T09:00:00Z', attendance_status: 'present' },
+        { attendance_date: '2026-10-03', attendance_status: 'absent' },
+        { attendance_date: '2026-10-04', attendance_status: 'present' },
+      ])
+    ).toEqual({ days_attended: 2, total_entries: 4, last_attendance_at: '2026-10-04' })
+    expect(attendanceSummaryFromEntries(null)).toEqual({ days_attended: 0, total_entries: 0, last_attendance_at: null })
   })
 
   it('finds a volunteer application by user id', () => {

@@ -14,7 +14,8 @@ import {
   isMerchantRazorpayPayoutActive,
 } from '@/lib/razorpay-route'
 import { buildOfferCapabilityRow, buildOfferRow, coerceOfferBody, toOfferResponse, validateOfferBody } from '@/lib/service-offer-payload'
-import { parseJsonObject } from '@/lib/utils'
+import { toUserFacingError } from '@/lib/user-facing-error'
+import { getErrorMessage, parseJsonObject } from '@/lib/utils'
 
 type OfferUsageCounts = {
   total: number
@@ -55,7 +56,7 @@ export async function GET(request: NextRequest) {
 
     let authenticatedUserId: number | null = null
     if (view === 'my-offers' || view === 'my-responses') {
-      const claims = getTokenClaims(request)
+      const claims = await getTokenClaims(request)
       if (!claims) {
         return NextResponse.json({ error: 'Authentication required for this view' }, { status: 401 })
       }
@@ -284,7 +285,7 @@ export async function GET(request: NextRequest) {
 // POST - Create capability offer
 export async function POST(request: NextRequest) {
   try {
-    const decoded = getTokenClaims(request)
+    const decoded = await getTokenClaims(request)
     if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
@@ -338,7 +339,7 @@ export async function POST(request: NextRequest) {
     const validationError = validateOfferBody(body)
     if (validationError) {
       console.error('Validation error:', validationError)
-      return NextResponse.json({ error: validationError }, { status: 400 })
+      return NextResponse.json({ error: toUserFacingError(validationError) }, { status: 400 })
     }
 
     const offerData = {
@@ -346,6 +347,7 @@ export async function POST(request: NextRequest) {
       creator_id: userId,
       status: 'inactive',
       admin_status: 'pending',
+      is_listed: true,
     }
 
     const { data: offer, error: offerError } = await supabase
@@ -407,8 +409,7 @@ export async function POST(request: NextRequest) {
       data: responseData
     }, { status: 201 })
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error)
     console.error('Service offer create error:', error)
-    return NextResponse.json({ error: `Failed to create service offer: ${errorMessage}` }, { status: 500 })
+    return NextResponse.json({ error: getErrorMessage(error) || 'Could not create this offer. Please try again.' }, { status: 500 })
   }
 }

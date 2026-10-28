@@ -11,12 +11,19 @@ import {
 } from '@/lib/service-offers'
 import { DetailItem } from './detail-item'
 
-export function UsageRecordSection({ usage }: { usage: CapabilityOfferUsageRecord }) {
+export function UsageRecordSection({
+  usage,
+  offerId,
+}: {
+  usage: CapabilityOfferUsageRecord
+  offerId?: number
+}) {
   const needs = dedupeSelectedNeedSummaries(Array.isArray(usage.selected_needs) ? usage.selected_needs : [], 3)
-  const trackHref = usage.assignment_id
-    ? `/service-request-assignments/${usage.assignment_id}`
-    : usage.linked_service_request_id
-      ? `/service-requests/${usage.linked_service_request_id}`
+  const linkedNeedId = Number(usage.linked_service_request_id || needs[0]?.service_request_id || 0)
+  const trackHref = linkedNeedId > 0
+    ? `/service-requests/${linkedNeedId}`
+    : offerId
+      ? `/service-offers/${offerId}`
       : null
 
   return (
@@ -71,16 +78,23 @@ export function UsageRecordSection({ usage }: { usage: CapabilityOfferUsageRecor
         <div className="space-y-2">
           <p className="text-xs text-gray-500">Linked needs</p>
           <div className="flex flex-wrap gap-2">
-            {needs.map((need) => (
-              <Link key={need.id} href={`/service-requests/${need.service_request_id ?? need.id}`}>
+            {needs.map((need) => {
+              const requestId = Number(need.service_request_id)
+              const badge = (
                 <Badge
                   variant="secondary"
                   className="border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
                 >
                   {formatNeedLabel(need)}
                 </Badge>
-              </Link>
-            ))}
+              )
+              if (!(requestId > 0)) return <span key={need.id}>{badge}</span>
+              return (
+                <Link key={need.id} href={`/service-requests/${requestId}`}>
+                  {badge}
+                </Link>
+              )
+            })}
           </div>
         </div>
       ) : usage.linked_service_request_id ? (

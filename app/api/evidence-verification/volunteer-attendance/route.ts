@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authErrorResponse, getCompanyCAFromRequest } from '@/lib/server-auth'
 import { listCompanyCampaignVolunteerAttendance } from '@/lib/db'
+import { getErrorMessage } from '@/lib/utils'
 
 export const runtime = 'nodejs'
 
@@ -44,7 +45,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to load volunteer attendance',
+        error: getErrorMessage(error) || 'Failed to load volunteer attendance',
       },
       { status: 500 }
     )

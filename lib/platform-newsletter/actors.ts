@@ -8,6 +8,8 @@ export type NewsletterKind =
   | 'banned'
   | 'need'
   | 'capability'
+  | 'capability_closed'
+  | 'capability_used'
   | 'campaign'
   | 'campaign_finished'
   | 'need_fulfilled'
