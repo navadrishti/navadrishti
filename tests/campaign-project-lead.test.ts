@@ -365,7 +365,7 @@ describe('apply-project', () => {
   })
 
   it('returns the existing application when the company already applied', async () => {
-    setup(withProjectMeta('', { pending_company_applications: [{ company_id: 10, status: 'pending', company_name: 'Acme' }] }))
+    setup(withProjectMeta('', { pending_company_applications: [{ company_id: 10, status: 'pending', company_name: 'Acme', applied_at: '2026-01-02' }] }))
     const response = await apply()
     expect(response.status).toBe(409)
     expect(await response.json()).toMatchObject({
@@ -376,7 +376,7 @@ describe('apply-project', () => {
   })
 
   it('lets a rejected company apply again', async () => {
-    setup(withProjectMeta('', { pending_company_applications: [{ company_id: 10, status: 'rejected', note: 'First try' }] }))
+    setup(withProjectMeta('', { pending_company_applications: [{ company_id: 10, status: 'rejected', note: 'First try', applied_at: '2026-01-02' }] }))
     const response = await apply()
     expect(response.status).toBe(200)
     const json = await response.json()
