@@ -78,7 +78,10 @@ export default function ImpactProfilePage() {
           isNgo={isNgo}
           payAction={payAction}
           showContactLoginHint={showContactLoginHint}
-          onPay={() => setPayDialogOpen(true)}
+          onPay={() => {
+            if (!payerCaVerified) return
+            setPayDialogOpen(true)
+          }}
         />
 
         <Card>

@@ -5,6 +5,8 @@ import { getClientSessionToken } from '@/lib/client-session';
 import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
+import { CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE, isCaVerifiedAccount } from '@/lib/auth'
+import { VerificationRequiredNotice } from '@/components/verification-required-notice'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -45,6 +47,7 @@ export function NgoPayDialog({
   const { toast: notify } = useToast()
   const [paymentAmount, setPaymentAmount] = useState('')
   const [paying, setPaying] = useState(false)
+  const payerVerified = isCaVerifiedAccount(user?.verification_status)
 
   const close = () => {
     onOpenChange(false)
@@ -59,6 +62,15 @@ export function NgoPayDialog({
       notify({
         title: 'Sign in required',
         description: 'Log in as a company or individual to pay NGOs.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    if (!payerVerified) {
+      notify({
+        title: 'Verification required',
+        description: CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE,
         variant: 'destructive',
       })
       return
@@ -181,6 +193,10 @@ export function NgoPayDialog({
           </DialogDescription>
         </DialogHeader>
 
+        {!payerVerified ? (
+          <VerificationRequiredNotice description={CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE} />
+        ) : null}
+
         <div className="space-y-2 py-2">
           <Label htmlFor="ngo-payment-amount">NGO support amount (INR)</Label>
           <Input
@@ -189,16 +205,16 @@ export function NgoPayDialog({
             placeholder="e.g. 1000"
             value={paymentAmount}
             onChange={(event) => setPaymentAmount(event.target.value)}
-            disabled={paying}
+            disabled={paying || !payerVerified}
           />
-          <PlatformPaymentSummary baseAmountInr={parseNgoPayAmountToInr(paymentAmount)} />
+          {payerVerified ? <PlatformPaymentSummary baseAmountInr={parseNgoPayAmountToInr(paymentAmount)} /> : null}
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
           <Button type="button" variant="outline" onClick={close} disabled={paying}>
             Cancel
           </Button>
-          <Button type="button" onClick={handlePay} disabled={paying || parseNgoPayAmountToInr(paymentAmount) <= 0}>
+          <Button type="button" onClick={handlePay} disabled={!payerVerified || paying || parseNgoPayAmountToInr(paymentAmount) <= 0}>
             {paying ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

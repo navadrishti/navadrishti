@@ -3,6 +3,7 @@
 import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, Suspense } from "react"
 import { useIsClient } from "@/hooks/use-is-client"
 import { useAuth } from "@/lib/auth-context"
+import { isCaVerifiedAccount } from "@/lib/auth"
 import { Loader2 } from "lucide-react"
 import { useSearchParams } from "next/navigation"
 import {
@@ -134,7 +135,7 @@ function CSRAgentPage() {
       projectData,
       milestoneCount,
       milestoneInputs,
-    conversationStage,
+      conversationStage,
       milestoneQuestionIndex,
     generatedCampaignCount: generatedCampaigns.length,
       selectedProjectSuggestionId,
@@ -474,6 +475,7 @@ function CSRAgentPage() {
             rentalCampaignId={String(draftCampaignId || editingCampaignId || '')}
             onPayAndReserve={handlePayAndReserveOffer}
             onRentalUpdated={refreshPaidRental}
+            payerVerified={isCaVerifiedAccount(user?.verification_status)}
           />
 
           {!hasLockedLeadNgo ? (

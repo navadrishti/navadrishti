@@ -1,6 +1,7 @@
 import { readApiError } from '@/lib/user-facing-error'
 import { useEffect, useEffectEvent, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { isCaVerifiedAccount } from '@/lib/auth'
 import { useAuth } from '@/lib/auth-context'
 import { useNow } from '@/hooks/use-now'
 import { useToast } from '@/hooks/use-toast'
@@ -257,6 +258,7 @@ export function useServiceOffer(offerId: string) {
 
   const handlePayForApplication = async () => {
     if (!offer || !user || !token || !userApplication) return
+    if (!isCaVerifiedAccount(user.verification_status)) return
 
     setPaying(true)
     try {

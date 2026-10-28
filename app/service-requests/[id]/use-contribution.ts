@@ -3,6 +3,7 @@
 import { readApiError } from '@/lib/user-facing-error'
 import { useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
+import { isCaVerifiedAccount } from '@/lib/auth'
 import { useToast } from '@/hooks/use-toast'
 import { parseAmountToInr } from '@/lib/utils'
 import { openRazorpayCheckout } from '@/lib/razorpay-checkout'
@@ -22,7 +23,7 @@ export function useContribution({ request, canPayForRequest, fetchRequestDetails
 
   const handleContribute = async () => {
     if (!request || !token) return
-    if (!canPayForRequest) return
+    if (!canPayForRequest || !isCaVerifiedAccount(user?.verification_status)) return
 
     const requestedInr = parseAmountToInr(paymentAmount)
     if (requestedInr <= 0) {

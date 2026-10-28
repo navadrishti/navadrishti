@@ -6,7 +6,10 @@ import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/lib/auth-context';
+import { CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE, isCaVerifiedAccount } from '@/lib/auth';
 import { openRazorpayCheckout } from '@/lib/razorpay-checkout';
+import { VerificationRequiredNotice } from '@/components/verification-required-notice';
 import { formatAttendanceSummary, getSkillServiceDailyRate } from '@/lib/service-request-allocation';
 
 function readNestedId(value: unknown) {
@@ -33,6 +36,8 @@ export function InlineSkillServiceFulfillment({
   onUpdated?: () => void | Promise<void>;
 }) {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const payerVerified = isCaVerifiedAccount(user?.verification_status);
   const [settling, setSettling] = useState(false);
   const meta: Record<string, unknown> = application.response_meta && typeof application.response_meta === 'object'
     ? application.response_meta
@@ -46,6 +51,14 @@ export function InlineSkillServiceFulfillment({
   const outstanding = Math.max(0, summary.totalDue - summary.paidTotal);
 
   const handleSettle = async () => {
+    if (!payerVerified) {
+      toast({
+        title: 'Verification required',
+        description: CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE,
+        variant: 'destructive',
+      });
+      return;
+    }
     if (!assignmentId) {
       toast({
         title: 'Settlement unavailable',
@@ -182,6 +195,8 @@ export function InlineSkillServiceFulfillment({
           {meta.settled_amount != null ? ` · INR ${Number(meta.settled_amount).toLocaleString('en-IN')}` : ''}
           {meta.settlement_mode ? ` (${meta.settlement_mode})` : ''}
         </p>
+      ) : role === 'payer' && !payerVerified ? (
+        <VerificationRequiredNotice description={CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE} />
       ) : role === 'payer' ? (
         <div className="flex flex-wrap gap-2">
           <Button

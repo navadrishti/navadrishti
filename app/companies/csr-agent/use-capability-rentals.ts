@@ -1,5 +1,6 @@
 import { readApiError } from "@/lib/user-facing-error"
 import { useEffect, useEffectEvent, useState } from "react"
+import { CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE, isCaVerifiedAccount } from "@/lib/auth"
 import type { User } from "@/lib/auth-context"
 import { openRazorpayCheckout, type RazorpaySuccessResponse } from "@/lib/razorpay-checkout"
 import { parseCsrCapabilityRentals, type CsrCapabilityRentalRecord } from "@/lib/service-engagement"
@@ -125,6 +126,10 @@ export function useCapabilityRentals({
     }
     if (user.verification_status === 'suspended') {
       appendAssistantMessage('Your company account is suspended due to unpaid CSR capability penalties.')
+      return
+    }
+    if (!isCaVerifiedAccount(user.verification_status)) {
+      appendAssistantMessage(CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE)
       return
     }
 

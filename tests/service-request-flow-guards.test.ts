@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   applyAllocation: vi.fn(),
   releaseAllocation: vi.fn(),
   verification: vi.fn(),
+  getCompanyCA: vi.fn(),
   snapshot: vi.fn(),
   createShipment: vi.fn(),
   upsertWarehouse: vi.fn(),
@@ -52,13 +53,23 @@ vi.mock('@/lib/db', async () => {
     releaseVolunteerAllocation: mocks.releaseAllocation,
   }
 })
-vi.mock('@/lib/server-auth', () => ({
-  resolveEffectiveVerificationStatus: mocks.verification,
-  assertNgoLiveCsr1: vi.fn(async () => ({ ok: true })),
-  CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE: 'csr1 required',
-  ngoUserIsCsrEligible: vi.fn(async () => true),
-  ngoUserIsCsrEligibleForProject: vi.fn(async () => true),
-}))
+vi.mock('@/lib/server-auth', async () => {
+  const { isCaVerifiedAccount, CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE } = await import('@/lib/auth')
+  return {
+    resolveEffectiveVerificationStatus: mocks.verification,
+    requireCaVerifiedPayer: async (userId: number, userType: string) => {
+      const status = await mocks.verification(userId, userType)
+      if (isCaVerifiedAccount(status)) return { ok: true as const }
+      return { ok: false as const, error: CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE }
+    },
+    getCompanyCAFromRequest: mocks.getCompanyCA,
+    hasCompanyCaPermission: () => true,
+    assertNgoLiveCsr1: vi.fn(async () => ({ ok: true })),
+    CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE: 'csr1 required',
+    ngoUserIsCsrEligible: vi.fn(async () => true),
+    ngoUserIsCsrEligibleForProject: vi.fn(async () => true),
+  }
+})
 vi.mock('@/lib/infrastructure-assignment-lock', () => ({
   canIndividualApplyToNeed: vi.fn(async () => ({ allowed: true, reason: null, blockingApplicationId: null })),
 }))
@@ -155,6 +166,7 @@ beforeEach(() => {
   mocks.db.serviceRequestApplications.getByRequestId.mockResolvedValue([])
   mocks.applyAllocation.mockImplementation(async (request: Record<string, unknown>) => ({ ...request, current_quantity: 7, remaining_quantity: 3 }))
   mocks.verification.mockResolvedValue('verified')
+  mocks.getCompanyCA.mockRejectedValue(new Error('Company CA authentication required'))
   supabaseFake.reset()
 })
 
@@ -580,6 +592,14 @@ describe('create-order', () => {
     expect(mocks.razorpay.orders.create).not.toHaveBeenCalled()
   })
 
+  it('refuses unverified payers the same way as NGO network payments', async () => {
+    mocks.verification.mockResolvedValue('unverified')
+    const res = await create()
+    expect(res.status).toBe(403)
+    expect((await res.json()).error).toMatch(/CA-verified/i)
+    expect(mocks.razorpay.orders.create).not.toHaveBeenCalled()
+  })
+
   it('adds the platform fee and GST on top of the contribution', async () => {
     useDb((query) => (query.table === 'users' ? { data: connectedNgo } : undefined))
     const res = await create()
@@ -882,6 +902,57 @@ describe('engagement settlement start', () => {
     const res = await start(NGO)
     expect(res.status).toBe(409)
     expect((await res.json()).error).toContain('has not connected a Razorpay payout account')
+  })
+
+  it('refuses unverified payers the same way as NGO network payments', async () => {
+    mocks.verification.mockResolvedValue('unverified')
+    useDb((query) => (query.table === 'service_engagement_assignments' ? { data: offerRental } : undefined))
+    const res = await start(NGO)
+    expect(res.status).toBe(403)
+    expect((await res.json()).error).toMatch(/CA-verified/i)
+    expect(mocks.razorpay.orders.create).not.toHaveBeenCalled()
+  })
+
+  it('lets a company CA settle for the company without document verification', async () => {
+    mocks.verification.mockResolvedValue('unverified')
+    mocks.getCompanyCA.mockResolvedValue({
+      user: { id: 9, email: 'ca@acme.com', name: 'CA', user_type: 'individual' },
+      identity: {
+        id: 'ca_1',
+        user_id: 9,
+        company_user_id: 40,
+        status: 'active',
+        permissions: { can_confirm_payments: true },
+      },
+    })
+    mocks.razorpay.orders.create.mockResolvedValue({ id: 'order_ca', receipt: 'r', currency: 'INR' })
+    useDb((query) => {
+      if (query.table === 'service_engagement_assignments') {
+        return {
+          data: {
+            ...offerRental,
+            owner_user_id: 40,
+            assignee_user_id: 14,
+            application_table: 'service_request_applications',
+            target_type: 'service_request',
+          },
+        }
+      }
+      if (query.table === 'users') {
+        return { data: { profile_data: { razorpay_linked_account_id: 'acc_14', razorpay_link_status: 'active' } } }
+      }
+      if (query.table === 'service_attendance_entries') {
+        return { data: [{ amount_due: 1000, payment_status: 'pending' }] }
+      }
+      return undefined
+    })
+    const res = await settleAssignment(
+      jsonRequest('http://localhost/api/service-assignments/asg_2/settle', { body: { action: 'start' } }),
+      { params: Promise.resolve({ id: 'asg_2' }) }
+    )
+    expect(res.status).toBe(200)
+    expect(mocks.verification).not.toHaveBeenCalled()
+    expect(mocks.razorpay.orders.create).toHaveBeenCalled()
   })
 
   it('lets the client who hired the capability pay the provider', async () => {

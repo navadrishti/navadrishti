@@ -28,6 +28,7 @@ type SuggestionsSidebarProps = {
   rentalCampaignId: string
   onPayAndReserve: (offerId: number, offerType?: string) => void | Promise<void>
   onRentalUpdated: (offerId: number) => void | Promise<void>
+  payerVerified?: boolean
   ngos: NgoDirectoryItem[]
   loadingNgos: boolean
   invites: LeadNgoInvite[]
@@ -53,6 +54,7 @@ export function SuggestionsSidebar({
   rentalCampaignId,
   onPayAndReserve,
   onRentalUpdated,
+  payerVerified,
   ngos,
   loadingNgos,
   invites,
@@ -81,6 +83,7 @@ export function SuggestionsSidebar({
         rentalCampaignId={rentalCampaignId}
         onPayAndReserve={onPayAndReserve}
         onRentalUpdated={onRentalUpdated}
+        payerVerified={payerVerified}
       />
       {acceptedLead ? (
         <LeadNgoConfirmedSection

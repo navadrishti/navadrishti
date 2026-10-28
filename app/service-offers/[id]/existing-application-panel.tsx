@@ -2,9 +2,11 @@ import { Loader2 } from 'lucide-react'
 import { formatPrice } from '@/lib/utils'
 import { formatStatusLabel } from '@/lib/format-date'
 import { isDailyRentalEngagementMeta } from '@/lib/service-request-allocation'
+import { CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { VerificationRequiredNotice } from '@/components/verification-required-notice'
 import { InlineSkillServiceFulfillment } from '@/components/engagement-fulfillment'
 import { formatDate, getStatusColor } from './helpers'
 import type { ClientApplication } from './types'
@@ -13,11 +15,12 @@ interface ExistingApplicationPanelProps {
   application: ClientApplication
   offerPriceAmount: number
   paying: boolean
+  payerVerified: boolean
   onPay: () => void
   onUpdated: () => void | Promise<void>
 }
 
-export function ExistingApplicationPanel({ application, offerPriceAmount, paying, onPay, onUpdated }: ExistingApplicationPanelProps) {
+export function ExistingApplicationPanel({ application, offerPriceAmount, paying, payerVerified, onPay, onUpdated }: ExistingApplicationPanelProps) {
   const meta = application.response_meta
   const isAccepted = ['accepted', 'active'].includes(application.status)
   const isDailyRental = isDailyRentalEngagementMeta(meta)
@@ -75,16 +78,20 @@ export function ExistingApplicationPanel({ application, offerPriceAmount, paying
             </div>
 
             {meta?.payment_status !== 'paid' && meta?.payment_required !== false && Number(meta?.payment_amount_inr || offerPriceAmount || 0) > 0 ? (
-              <Button onClick={onPay} disabled={paying} className="w-full">
-                {paying ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Starting payment...
-                  </>
-                ) : (
-                  'Pay now'
-                )}
-              </Button>
+              payerVerified ? (
+                <Button onClick={onPay} disabled={paying} className="w-full">
+                  {paying ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Starting payment...
+                    </>
+                  ) : (
+                    'Pay now'
+                  )}
+                </Button>
+              ) : (
+                <VerificationRequiredNotice description={CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE} />
+              )
             ) : null}
           </div>
         ) : null}
