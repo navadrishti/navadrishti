@@ -223,7 +223,7 @@ describe('respondToLeadNgoInvitation', () => {
       if (query.table === 'service_request_contributions') return { data: null }
       if (query.table === 'service_request_projects') {
         if (query.op === 'update') return { data: { id: 'p1' } }
-        return { data: [{ id: 'p1', description, lead_ngo_user_id: null, valid_until: null, timeline: null }] }
+        return { data: { id: 'p1', description, lead_ngo_user_id: null, valid_until: null, timeline: null } }
       }
       return undefined
     })
@@ -238,6 +238,40 @@ describe('respondToLeadNgoInvitation', () => {
     expect(claim.payload).toMatchObject({ lead_ngo_user_id: 5, assignment_status: 'lead_selected' })
     const meta = parseProjectMeta((claim.payload as { description: string }).description)
     expect(meta.pending_lead_ngo_invites?.[0]).toMatchObject({ id: inviteId, status: 'accepted' })
+    expect(eqValue(supabaseFake.find('service_request_projects')[0], 'id')).toBe('p1')
+  })
+
+  it('rejects a project-meta invite without claiming the lead seat', async () => {
+    const inviteId = projectLeadInviteId('p1', 5, 10)
+    const description = withProjectMeta('Library', {
+      pending_lead_ngo_invites: [{
+        id: inviteId,
+        ngo_id: 5,
+        inviting_company_id: 10,
+        invited_at: '2026-01-01T00:00:00.000Z',
+        status: 'pending',
+      }],
+    })
+    supabaseFake.respondWith((query) => {
+      if (query.table === 'service_request_contributions') return { data: null }
+      if (query.table === 'service_request_projects') {
+        if (query.op === 'update') return { data: { id: 'p1' } }
+        return { data: { id: 'p1', description, lead_ngo_user_id: null, valid_until: null, timeline: null } }
+      }
+      return undefined
+    })
+
+    const response = await respondToLeadNgoInvitation({
+      body: { inviteId, decision: 'rejected' },
+      userId: 5,
+      userType: 'ngo',
+    })
+    expect(response.status).toBe(200)
+    const [update] = supabaseFake.find('service_request_projects', 'update')
+    expect(update.payload).not.toHaveProperty('lead_ngo_user_id')
+    expect(parseProjectMeta((update.payload as { description: string }).description).pending_lead_ngo_invites?.[0]).toMatchObject({
+      status: 'rejected',
+    })
   })
 })
 
@@ -283,6 +317,74 @@ describe('invite-lead-ngo without child needs', () => {
         inviting_company_id: 10,
         status: 'pending',
       }),
+    ])
+  })
+})
+
+describe('apply-project', () => {
+  function setup(description = '', extra: Record<string, unknown> = {}) {
+    supabaseFake.respondWith((query) => {
+      if (query.table === 'service_request_projects') {
+        if (query.op === 'update') return { data: { id: 'p1' } }
+        return {
+          data: {
+            id: 'p1',
+            ngo_id: 3,
+            description,
+            assigned_company_user_id: null,
+            assignment_status: 'pending',
+            csr_project_available_for_csr: true,
+            ...extra,
+          },
+        }
+      }
+      if (query.table === 'service_requests') return { data: [] }
+      return undefined
+    })
+  }
+
+  const apply = () =>
+    submitProjectApplication(
+      jsonRequest('http://localhost/api/service-request-assignments', {
+        token: tokenFor(10, 'company'),
+        body: { action: 'apply-project', projectId: 'p1' },
+      })
+    )
+
+  it('stores a pending takeover application and returns it', async () => {
+    setup()
+    const response = await apply()
+    expect(response.status).toBe(200)
+    const json = await response.json()
+    expect(json.data.application).toMatchObject({ company_id: 10, status: 'pending' })
+    const [update] = supabaseFake.find('service_request_projects', 'update')
+    const meta = parseProjectMeta((update.payload as { description: string }).description)
+    expect(meta.pending_company_applications).toEqual([
+      expect.objectContaining({ company_id: 10, status: 'pending', source: 'company_apply' }),
+    ])
+  })
+
+  it('returns the existing application when the company already applied', async () => {
+    setup(withProjectMeta('', { pending_company_applications: [{ company_id: 10, status: 'pending', company_name: 'Acme' }] }))
+    const response = await apply()
+    expect(response.status).toBe(409)
+    expect(await response.json()).toMatchObject({
+      error: 'You have already applied to this project.',
+      data: { application: { company_id: 10, status: 'pending', company_name: 'Acme' } },
+    })
+    expect(supabaseFake.find('service_request_projects', 'update')).toHaveLength(0)
+  })
+
+  it('lets a rejected company apply again', async () => {
+    setup(withProjectMeta('', { pending_company_applications: [{ company_id: 10, status: 'rejected', note: 'First try' }] }))
+    const response = await apply()
+    expect(response.status).toBe(200)
+    const json = await response.json()
+    expect(json.data.application).toMatchObject({ company_id: 10, status: 'pending' })
+    const [update] = supabaseFake.find('service_request_projects', 'update')
+    const meta = parseProjectMeta((update.payload as { description: string }).description)
+    expect(meta.pending_company_applications).toEqual([
+      expect.objectContaining({ company_id: 10, status: 'pending' }),
     ])
   })
 })

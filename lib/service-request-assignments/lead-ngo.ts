@@ -8,6 +8,7 @@ import {
   LEAD_NGO_INVITE_CONTRIBUTION_TYPE,
   PENDING_LEAD_INVITE_STATUSES,
   isFullyVerifiedCompany,
+  parseProjectLeadInviteId,
   type AssignmentsPutContext,
 } from '@/lib/service-request-assignments/shared'
 
@@ -155,20 +156,39 @@ async function respondToMetaLeadInvitation(
   decision: string,
 ) {
   const { userId } = ctx
-  const { data: projects, error: projectsError } = await supabase
-    .from('service_request_projects')
-    .select('id, description, lead_ngo_user_id, valid_until, timeline')
-    .ilike('description', '%pending_lead_ngo_invites%')
-    .limit(200)
+  const parsed = parseProjectLeadInviteId(inviteId)
+  if (parsed && Number(parsed.ngoId) !== Number(userId)) {
+    return NextResponse.json({ error: 'Invitation not found' }, { status: 404 })
+  }
 
-  if (projectsError) throw projectsError
+  const projectSelect = 'id, description, lead_ngo_user_id, valid_until, timeline'
+  const { data: directProject, error: directProjectError } = parsed
+    ? await supabase
+        .from('service_request_projects')
+        .select(projectSelect)
+        .eq('id', parsed.projectId)
+        .maybeSingle()
+    : { data: null, error: null }
 
-  const projectRows = Array.isArray(projects) ? projects : projects ? [projects] : []
-  const match = projectRows.find((project) =>
-    (parseProjectMeta(project.description).pending_lead_ngo_invites || []).some(
-      (invite) => invite.id === inviteId && Number(invite.ngo_id) === Number(userId)
-    )
-  )
+  if (directProjectError) throw directProjectError
+
+  let match = directProject
+  if (!match) {
+    const { data: projects, error: projectsError } = await supabase
+      .from('service_request_projects')
+      .select(projectSelect)
+      .not('assigned_company_user_id', 'is', null)
+      .order('updated_at', { ascending: false })
+      .limit(500)
+
+    if (projectsError) throw projectsError
+    const projectRows = Array.isArray(projects) ? projects : projects ? [projects] : []
+    match = projectRows.find((project) =>
+      (parseProjectMeta(project.description).pending_lead_ngo_invites || []).some(
+        (invite) => invite.id === inviteId && Number(invite.ngo_id) === Number(userId)
+      )
+    ) || null
+  }
   if (!match) {
     return NextResponse.json({ error: 'Invitation not found' }, { status: 404 })
   }
@@ -176,7 +196,7 @@ async function respondToMetaLeadInvitation(
   const meta = parseProjectMeta(match.description)
   const invites = Array.isArray(meta.pending_lead_ngo_invites) ? [...meta.pending_lead_ngo_invites] : []
   const invite = invites.find((item) => item.id === inviteId)
-  if (!invite) {
+  if (!invite || Number(invite.ngo_id) !== Number(userId)) {
     return NextResponse.json({ error: 'Invitation not found' }, { status: 404 })
   }
 

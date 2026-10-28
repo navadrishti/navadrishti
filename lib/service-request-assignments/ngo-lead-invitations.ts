@@ -4,7 +4,7 @@ import { parseJsonObject } from '@/lib/utils'
 import { formatProjectLocation, parseProjectMeta } from '@/lib/service-request-allocation'
 import {
   LEAD_NGO_INVITE_CONTRIBUTION_TYPE,
-  PENDING_LEAD_INVITE_STATUSES,
+  visibleLeadInviteStatuses,
   type AssignmentsGetContext,
 } from '@/lib/service-request-assignments/shared'
 
@@ -27,9 +27,8 @@ export async function getNgoLeadInvitations(ctx: AssignmentsGetContext) {
   const { data: metaProjects, error: metaProjectsError } = await supabase
     .from('service_request_projects')
     .select('id, title, location, exact_address, timeline, description')
-    .ilike('description', '%pending_lead_ngo_invites%')
+    .not('assigned_company_user_id', 'is', null)
     .order('updated_at', { ascending: false })
-    .limit(200)
 
   if (metaProjectsError) throw metaProjectsError
 
@@ -97,7 +96,7 @@ export async function getNgoLeadInvitations(ctx: AssignmentsGetContext) {
   for (const project of metaProjects || []) {
     for (const invite of parseProjectMeta(project.description).pending_lead_ngo_invites || []) {
       if (Number(invite.ngo_id) !== Number(userId)) continue
-      if (!PENDING_LEAD_INVITE_STATUSES.includes(String(invite.status || 'pending').toLowerCase()) && String(invite.status || '').toLowerCase() !== 'accepted') {
+      if (!visibleLeadInviteStatuses.includes(String(invite.status || 'pending').toLowerCase())) {
         continue
       }
       if (seenIds.has(invite.id)) continue
