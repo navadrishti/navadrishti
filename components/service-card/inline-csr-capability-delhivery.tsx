@@ -1,10 +1,20 @@
 'use client'
+import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, Loader2, Truck } from 'lucide-react'
 import { TrackingIdChip } from '@/components/tracking-id-chip'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
+import {
+  DelhiveryPartyFields,
+  emptyDelhiveryPartyForm,
+  partyFormToOverride,
+  partyToForm,
+  type DelhiveryPartyForm,
+} from '@/components/delhivery-party-fields'
+import type { PublicDelhiveryParty } from '@/lib/delhivery-parties'
 import {
   formatDeliveryTrackingStatus,
   getDeliveryTrackingEvents,
@@ -23,15 +33,29 @@ type RentalDeliveryResponse = {
       outbound_delivery?: CsrCapabilityDeliveryLeg | null
       return_delivery?: CsrCapabilityDeliveryLeg | null
     }
+    pickup?: PublicDelhiveryParty
+    consignee?: PublicDelhiveryParty
   }
 }
 
 async function postRentalDeliveryAction(
-  action: 'capability_rental_sync_delivery' | 'capability_rental_retry_booking',
+  action: 'capability_rental_sync_delivery' | 'capability_rental_retry_booking' | 'capability_rental_preview_parties',
   fallbackError: string,
-  { campaignId, offerId, leg }: { campaignId: string; offerId: number; leg: DeliveryLeg }
+  {
+    campaignId,
+    offerId,
+    leg,
+    pickup,
+    consignee,
+  }: {
+    campaignId: string
+    offerId: number
+    leg: DeliveryLeg
+    pickup?: ReturnType<typeof partyFormToOverride>
+    consignee?: ReturnType<typeof partyFormToOverride>
+  }
 ) {
-  const token = localStorage.getItem('token')
+  const token = getClientSessionToken()
   if (!token) throw new Error('Please sign in again')
 
   const response = await fetch('/api/campaigns/lead-assignments', {
@@ -45,16 +69,23 @@ async function postRentalDeliveryAction(
       campaign_id: campaignId,
       offer_id: offerId,
       leg,
+      pickup,
+      consignee,
     }),
   })
   const data: RentalDeliveryResponse | null = await response.json().catch(() => null)
   if (!response.ok || !data?.success) {
-    throw new Error(data?.error || fallbackError)
+    throw new Error(readApiError(data, fallbackError))
   }
 
-  return leg === 'outbound'
-    ? data.data?.rental?.outbound_delivery
-    : data.data?.rental?.return_delivery
+  return data.data
+}
+
+function rentalLegFromPayload(
+  data: RentalDeliveryResponse['data'] | undefined,
+  currentLeg: DeliveryLeg
+) {
+  return currentLeg === 'outbound' ? data?.rental?.outbound_delivery : data?.rental?.return_delivery
 }
 
 type InlineCsrCapabilityDelhiveryProps = {
@@ -63,6 +94,7 @@ type InlineCsrCapabilityDelhiveryProps = {
   leg: DeliveryLeg
   delivery?: CsrCapabilityDeliveryLeg | null
   canRetry?: boolean
+  canSync?: boolean
   onUpdated?: (nextLeg: CsrCapabilityDeliveryLeg | null | undefined) => void | Promise<void>
 }
 
@@ -72,10 +104,14 @@ export function InlineCsrCapabilityDelhivery({
   leg,
   delivery,
   canRetry = false,
+  canSync = true,
   onUpdated,
 }: InlineCsrCapabilityDelhiveryProps) {
   const { toast } = useToast()
   const [busy, setBusy] = useState(false)
+  const [pickup, setPickup] = useState<DelhiveryPartyForm>(() => emptyDelhiveryPartyForm())
+  const [consignee, setConsignee] = useState<DelhiveryPartyForm>(() => emptyDelhiveryPartyForm())
+  const [loadingParties, setLoadingParties] = useState(false)
   const meta = useMemo(() => csrDeliveryLegToTrackingMeta(delivery), [delivery])
   const events = useMemo(() => getDeliveryTrackingEvents(meta), [meta])
   const statusLabel = formatDeliveryTrackingStatus(meta)
@@ -89,10 +125,13 @@ export function InlineCsrCapabilityDelhivery({
     if (!hasAwb) return
     setBusy(true)
     try {
-      const nextLeg = await postRentalDeliveryAction(
-        'capability_rental_sync_delivery',
-        'Could not refresh delivery status',
-        { campaignId, offerId, leg }
+      const nextLeg = rentalLegFromPayload(
+        await postRentalDeliveryAction(
+          'capability_rental_sync_delivery',
+          'Could not refresh delivery status',
+          { campaignId, offerId, leg }
+        ),
+        leg
       )
 
       toast({
@@ -104,7 +143,7 @@ export function InlineCsrCapabilityDelhivery({
     } catch (error) {
       toast({
         title: 'Status refresh failed',
-        description: error instanceof Error ? error.message : 'Could not refresh delivery status',
+        description: readApiError(error, 'Could not refresh delivery status'),
         variant: 'destructive',
       })
     } finally {
@@ -112,13 +151,51 @@ export function InlineCsrCapabilityDelhivery({
     }
   }
 
+  useEffect(() => {
+    if (!canRetry || hasAwb) return
+    let cancelledLoad = false
+    const load = async () => {
+      setLoadingParties(true)
+      try {
+        const data = await postRentalDeliveryAction(
+          'capability_rental_preview_parties',
+          'Could not load delivery addresses',
+          { campaignId, offerId, leg }
+        )
+        if (cancelledLoad) return
+        setPickup(partyToForm(data?.pickup))
+        setConsignee(partyToForm(data?.consignee))
+      } catch {
+        if (!cancelledLoad) {
+          setPickup(emptyDelhiveryPartyForm())
+          setConsignee(emptyDelhiveryPartyForm())
+        }
+      } finally {
+        if (!cancelledLoad) setLoadingParties(false)
+      }
+    }
+    void load()
+    return () => {
+      cancelledLoad = true
+    }
+  }, [canRetry, hasAwb, campaignId, offerId, leg])
+
   const handleRetry = async () => {
     setBusy(true)
     try {
-      const nextLeg = await postRentalDeliveryAction(
-        'capability_rental_retry_booking',
-        'Could not retry delivery booking',
-        { campaignId, offerId, leg }
+      const nextLeg = rentalLegFromPayload(
+        await postRentalDeliveryAction(
+          'capability_rental_retry_booking',
+          'Could not retry delivery booking',
+          {
+            campaignId,
+            offerId,
+            leg,
+            pickup: partyFormToOverride(pickup),
+            consignee: partyFormToOverride(consignee),
+          }
+        ),
+        leg
       )
 
       toast({
@@ -130,7 +207,7 @@ export function InlineCsrCapabilityDelhivery({
     } catch (error) {
       toast({
         title: 'Booking retry failed',
-        description: error instanceof Error ? error.message : 'Could not retry delivery booking',
+        description: readApiError(error, 'Could not retry delivery booking'),
         variant: 'destructive',
       })
     } finally {
@@ -171,7 +248,7 @@ export function InlineCsrCapabilityDelhivery({
             </div>
           ) : null}
         </div>
-        {hasAwb && !delivered ? (
+        {hasAwb && !delivered && canSync ? (
           <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={busy} onClick={() => void handleSync()}>
             Refresh
           </Button>
@@ -179,9 +256,30 @@ export function InlineCsrCapabilityDelhivery({
       </div>
 
       {bookingError && canRetry ? (
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded border border-red-200 bg-red-50/70 px-2 py-2">
+        <div className="space-y-2 rounded border border-red-200 bg-red-50/70 px-2 py-2">
           <p className="text-xs text-red-800">{bookingError}</p>
-          <Button type="button" size="sm" variant="outline" className="h-7" disabled={busy} onClick={() => void handleRetry()}>
+          {loadingParties ? (
+            <p className="flex items-center gap-2 text-xs text-gram-muted">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Loading saved addresses...
+            </p>
+          ) : (
+            <div className="grid gap-2">
+              <DelhiveryPartyFields
+                title="Pickup party"
+                hint="Where this leg is collected from. Edit if the automatic address is wrong."
+                value={pickup}
+                onChange={setPickup}
+              />
+              <DelhiveryPartyFields
+                title="Delivery party"
+                hint="Where this leg is delivered. Edit if the automatic address is wrong."
+                value={consignee}
+                onChange={setConsignee}
+              />
+            </div>
+          )}
+          <Button type="button" size="sm" variant="outline" className="h-7" disabled={busy || loadingParties} onClick={() => void handleRetry()}>
             {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Retry booking'}
           </Button>
         </div>

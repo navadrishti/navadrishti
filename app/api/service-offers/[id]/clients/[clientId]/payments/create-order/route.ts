@@ -15,7 +15,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string; clientId: string }> }
 ) {
   try {
-    const decoded = getTokenClaims(request);
+    const decoded = await getTokenClaims(request);
     if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }

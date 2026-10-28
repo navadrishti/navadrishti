@@ -1,5 +1,6 @@
 'use client'
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -56,13 +57,13 @@ export default function CreateServiceOfferPage() {
 
       const data = await response.json()
 
-      if (response.ok) {
+      if (response.ok && data?.success) {
         toast({ title: 'Capability Offer Created', description: data.data?.message || 'Offer submitted successfully.' })
         router.push('/service-offers?view=my-offers')
         return
       }
 
-      toast({ title: 'Error', description: data.error || 'Failed to create service offer', variant: 'destructive' })
+      toast({ title: 'Error', description: readApiError(data, 'Failed to create service offer'), variant: 'destructive' })
     } catch {
       toast({ title: 'Error', description: 'Unexpected error while creating offer', variant: 'destructive' })
     } finally {

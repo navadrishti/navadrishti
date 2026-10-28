@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { findAuthUser } from '@/lib/server-auth';
 import { hashPassword, comparePassword } from '@/lib/auth';
+import { zodIssuesToUserMessage } from '@/lib/user-facing-error';
 
 // Validation schema
 const changePasswordSchema = z.object({
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
     
     if (!validationResult.success) {
       return NextResponse.json({ 
-        error: validationResult.error.errors[0].message 
+        error: zodIssuesToUserMessage(validationResult.error.issues)
       }, { status: 400 });
     }
     

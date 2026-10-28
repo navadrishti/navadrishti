@@ -7,7 +7,7 @@ const MAX_CAMPAIGNS = 50
 
 export async function GET(request: NextRequest) {
   try {
-    const user = getAuthUserFromRequest(request)
+    const user = await getAuthUserFromRequest(request)
     assertUserType(user, ['company', 'ngo'])
 
     const ownerColumn = user.user_type === 'company' ? 'company_id' : 'lead_ngo_user_id'

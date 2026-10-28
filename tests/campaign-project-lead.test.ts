@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { jsonRequest, tokenFor } from './support/requests'
-import { eqValue, hasCall, supabaseFake, type FakeQuery } from './support/supabase-fake'
+import { businessQueries, eqValue, hasCall, supabaseFake, type FakeQuery } from './support/supabase-fake'
+import { parseProjectMeta, withProjectMeta } from '@/lib/service-request-allocation'
 import { respondToLeadNgoInvitation } from '@/lib/service-request-assignments/lead-ngo'
 import { submitProjectApplication } from '@/lib/service-request-assignments/project-applications'
-import { LEAD_NGO_INVITE_CONTRIBUTION_TYPE } from '@/lib/service-request-assignments/shared'
+import { LEAD_NGO_INVITE_CONTRIBUTION_TYPE, projectLeadInviteId } from '@/lib/service-request-assignments/shared'
 
 vi.mock('@/lib/db', async () => {
   const { supabaseFake: fake } = await import('./support/supabase-fake')
@@ -17,6 +18,11 @@ vi.mock('@/lib/db', async () => {
 vi.mock('@/lib/server-auth', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/server-auth')>()),
   assertNgoCsr1CoversProject: vi.fn(async () => ({ ok: true })),
+}))
+
+vi.mock('@/lib/auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/auth')>()),
+  assertCsr1CoversProject: vi.fn(() => ({ ok: true })),
 }))
 
 vi.mock('@/lib/service-request-assignments/shared', async (importOriginal) => ({
@@ -83,7 +89,7 @@ describe('revoke-lead-ngo', () => {
 
   it('only allows companies', async () => {
     expect((await revoke({ ngoId: 6 }, tokenFor(6, 'ngo'))).status).toBe(403)
-    expect(supabaseFake.queries).toHaveLength(0)
+    expect(businessQueries(supabaseFake.queries)).toHaveLength(0)
   })
 
   it('requires a token', async () => {
@@ -200,5 +206,83 @@ describe('respondToLeadNgoInvitation', () => {
     expect(response.status).toBe(200)
     expect(updates()[0].payload).toMatchObject({ status: 'rejected', meta: { selected_as_lead: false } })
     expect(supabaseFake.find('service_request_projects', 'update')).toHaveLength(0)
+  })
+
+  it('accepts a project-meta invite when there is no contribution row', async () => {
+    const inviteId = projectLeadInviteId('p1', 5, 10)
+    const description = withProjectMeta('Library', {
+      pending_lead_ngo_invites: [{
+        id: inviteId,
+        ngo_id: 5,
+        inviting_company_id: 10,
+        invited_at: '2026-01-01T00:00:00.000Z',
+        status: 'pending',
+      }],
+    })
+    supabaseFake.respondWith((query) => {
+      if (query.table === 'service_request_contributions') return { data: null }
+      if (query.table === 'service_request_projects') {
+        if (query.op === 'update') return { data: { id: 'p1' } }
+        return { data: [{ id: 'p1', description, lead_ngo_user_id: null, valid_until: null, timeline: null }] }
+      }
+      return undefined
+    })
+
+    const response = await respondToLeadNgoInvitation({
+      body: { inviteId, decision: 'accepted' },
+      userId: 5,
+      userType: 'ngo',
+    })
+    expect(response.status).toBe(200)
+    const [claim] = supabaseFake.find('service_request_projects', 'update')
+    expect(claim.payload).toMatchObject({ lead_ngo_user_id: 5, assignment_status: 'lead_selected' })
+    const meta = parseProjectMeta((claim.payload as { description: string }).description)
+    expect(meta.pending_lead_ngo_invites?.[0]).toMatchObject({ id: inviteId, status: 'accepted' })
+  })
+})
+
+describe('invite-lead-ngo without child needs', () => {
+  const invite = (body: Record<string, unknown> = {}) =>
+    submitProjectApplication(
+      jsonRequest('http://localhost/api/service-request-projects/p1', {
+        token: tokenFor(10, 'company'),
+        body: { action: 'invite-lead-ngo', projectId: 'p1', ngoIds: [6], ...body },
+      })
+    )
+
+  it('writes a pending meta invite onto the project', async () => {
+    supabaseFake.respondWith((query) => {
+      if (query.table === 'service_request_projects') {
+        if (query.op === 'update') return { data: { id: 'p1' } }
+        return {
+          data: {
+            id: 'p1',
+            ngo_id: 3,
+            description: 'Library',
+            assigned_company_user_id: 10,
+            assignment_status: 'accepted',
+            lead_ngo_user_id: null,
+          },
+        }
+      }
+      if (query.table === 'service_requests') return { data: [] }
+      if (query.table === 'users') return { data: [{ id: 6, user_type: 'ngo', verification_status: 'verified', name: 'Lead NGO', email: 'lead@example.org' }] }
+      if (query.table === 'service_request_contributions') return { data: null }
+      return undefined
+    })
+
+    const response = await invite()
+    expect(response.status).toBe(200)
+    expect(supabaseFake.find('service_request_contributions', 'insert')).toHaveLength(0)
+    const [update] = supabaseFake.find('service_request_projects', 'update')
+    const meta = parseProjectMeta((update.payload as { description: string }).description)
+    expect(meta.pending_lead_ngo_invites).toEqual([
+      expect.objectContaining({
+        id: projectLeadInviteId('p1', 6, 10),
+        ngo_id: 6,
+        inviting_company_id: 10,
+        status: 'pending',
+      }),
+    ])
   })
 })

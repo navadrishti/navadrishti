@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { supabase } from '@/lib/db';
 import { comparePassword, hashPassword } from '@/lib/auth';
 import { getCompanyCAFromRequest } from '@/lib/server-auth';
+import { zodIssuesToUserMessage } from '@/lib/user-facing-error';
 
 const changePasswordSchema = z.object({
   current_password: z.string().min(1),
@@ -17,7 +18,7 @@ export async function POST(request: NextRequest) {
     const parsed = changePasswordSchema.safeParse(body);
 
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.issues[0]?.message || 'Invalid payload' }, { status: 400 });
+      return NextResponse.json({ error: zodIssuesToUserMessage(parsed.error.issues) || 'Please check your details and try again.' }, { status: 400 });
     }
 
     const { current_password, new_password } = parsed.data;

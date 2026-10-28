@@ -10,6 +10,7 @@ import {
 } from '@/lib/email';
 import { issueOneTimeCode } from '@/lib/one-time-codes';
 import { limitAttempts, rateLimit, rateLimitedResponse } from '@/lib/rate-limit';
+import { zodIssuesToUserMessage } from '@/lib/user-facing-error';
 
 const PASSWORD_RESET_TOKEN_TTL_MS = 15 * 60 * 1000;
 const RESET_OTP_RESEND_LIMIT = { limit: 1, windowMs: 60 * 1000 };
@@ -61,7 +62,7 @@ export async function POST(req: NextRequest) {
 
       if (!validationResult.success) {
         return NextResponse.json(
-          { error: validationResult.error.errors[0].message },
+          { error: zodIssuesToUserMessage(validationResult.error.issues) },
           { status: 400 }
         );
       }
@@ -106,7 +107,7 @@ export async function POST(req: NextRequest) {
 
     if (!validationResult.success) {
       return NextResponse.json(
-        { error: validationResult.error.errors[0].message },
+        { error: zodIssuesToUserMessage(validationResult.error.issues) },
         { status: 400 }
       );
     }

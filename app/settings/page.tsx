@@ -1,5 +1,6 @@
 'use client'
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useState } from 'react'
 import { useIsClient } from '@/hooks/use-is-client'
 import Link from 'next/link'
@@ -207,7 +208,7 @@ export default function SettingsPage() {
         setNewPassword('');
         setConfirmPassword('');
       } else {
-        setPasswordError(data.error || 'Failed to change password');
+        setPasswordError(readApiError(data, 'Failed to change password'));
       }
     } catch {
       setPasswordError('An error occurred while changing password');
@@ -243,7 +244,7 @@ export default function SettingsPage() {
         toast.success('Your account has been deleted.');
         router.push('/');
       } else {
-        setDeleteError(data.error || 'Failed to delete account');
+        setDeleteError(readApiError(data, 'Failed to delete account'));
       }
     } catch {
       setDeleteError('An error occurred while deleting your account');

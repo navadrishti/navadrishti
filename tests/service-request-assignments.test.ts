@@ -193,10 +193,11 @@ describe('reviewProjectApplication', () => {
     const [update] = fake.writes('service_request_projects')
     expect(update.payload).toMatchObject({
       status: 'in_progress',
-      lead_ngo_id: NGO_ID,
       assigned_company_user_id: COMPANY_ID,
       assignment_status: 'accepted',
     })
+    expect(update.payload).not.toHaveProperty('lead_ngo_id')
+    expect(update.payload).not.toHaveProperty('lead_ngo_user_id')
     const apps = parseProjectMeta((update.payload as { description: string }).description).pending_company_applications
     expect(apps?.map((app) => [app.company_id, app.status])).toEqual([[COMPANY_ID, 'accepted'], [9, 'expired']])
   })

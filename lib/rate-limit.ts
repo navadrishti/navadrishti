@@ -53,11 +53,18 @@ export function rateLimitInMemory(key: string, { limit, windowMs }: RateLimitOpt
 }
 
 /**
- * Sliding-window limit shared across instances through Postgres. Database errors never block a
- * request: they fall back to the per-instance limiter so auth stays available.
+ * Sliding-window limit shared across instances through Postgres. Production fails closed when
+ * the store is missing or the RPC errors; development and tests still use the in-memory fallback.
  */
+function denyRateLimit(): RateLimitResult {
+  return { allowed: false, remaining: 0, retryAfterSeconds: 30 };
+}
+
 export async function rateLimit(key: string, options: RateLimitOptions): Promise<RateLimitResult> {
-  if (!authStoreAvailable()) return rateLimitInMemory(key, options);
+  const production = process.env.NODE_ENV === 'production';
+  if (!authStoreAvailable()) {
+    return production ? denyRateLimit() : rateLimitInMemory(key, options);
+  }
 
   try {
     const { data, error } = await supabase.rpc('auth_rate_limit_hit', {
@@ -73,7 +80,9 @@ export async function rateLimit(key: string, options: RateLimitOptions): Promise
       ? { allowed: true, remaining: row.remaining, retryAfterSeconds: 0 }
       : { allowed: false, remaining: 0, retryAfterSeconds: Math.max(1, row.retry_after_seconds) };
   } catch (error) {
-    if (!switchToMemoryIfMissing(error)) console.error('Rate limit store error:', error);
+    const missing = switchToMemoryIfMissing(error);
+    if (!missing) console.error('Rate limit store error:', error);
+    if (production) return denyRateLimit();
     return rateLimitInMemory(key, options);
   }
 }

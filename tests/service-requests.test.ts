@@ -4,6 +4,7 @@ import { listServiceRequests, type ListingParams } from '@/lib/service-requests/
 import {
   isCompanyAssignedNeed,
   isProjectLocked,
+  redactNeedForViewer,
   shapeListingRequest,
   type ListingSource,
 } from '@/lib/service-requests/list-shape'
@@ -162,9 +163,60 @@ describe('shapeListingRequest', () => {
 
   it('summarises the project from the project context', () => {
     const shaped = shapeListingRequest(listingRow({
-      project_context: { project: { id: 'p1', exact_address: 'Pune' }, project_title: 'Library', project_timeline: '6 months' },
+      project_context: { project: { id: 'p1', location: 'Pune' }, project_title: 'Library', project_timeline: '6 months' },
     }))
     expect(shaped.project).toEqual({ id: 'p1', title: 'Library', location: 'Pune', timeline: '6 months', category: '' })
+  })
+
+  it('omits requester contact details and street addresses from public listings', () => {
+    const shaped = shapeListingRequest(listingRow({
+      requester: {
+        id: 2,
+        name: 'Asha',
+        email: 'asha@ngo.org',
+        phone: '99999',
+        user_type: 'ngo',
+        verification_status: 'verified',
+        profile_data: { role: 'company_ca' },
+      },
+      project: { id: 'p1', title: 'Library', location: 'Pune', exact_address: '12 Secret Lane' },
+    }))
+    expect(shaped.requester).toMatchObject({ id: 2, name: 'Asha', user_type: 'ngo', verification_status: 'verified' })
+    expect(shaped.requester).not.toHaveProperty('email')
+    expect(shaped.requester).not.toHaveProperty('phone')
+    expect(shaped.requester).not.toHaveProperty('profile_data')
+    expect(shaped.project).toMatchObject({ location: 'Pune' })
+    expect(JSON.stringify(shaped)).not.toContain('asha@ngo.org')
+    expect(JSON.stringify(shaped)).not.toContain('12 Secret Lane')
+  })
+})
+
+describe('redactNeedForViewer', () => {
+  const need = {
+    id: 5,
+    ngo_id: 12,
+    requester: {
+      id: 12,
+      name: 'Asha',
+      email: 'asha@ngo.org',
+      phone: '99999',
+      user_type: 'ngo',
+      profile_data: { payout_account: 'secret' },
+    },
+    project: { id: 'p1', exact_address: '12 Secret Lane', location: 'Pune' },
+  }
+
+  it('keeps contact details for the owning NGO', () => {
+    expect(redactNeedForViewer(need, 12).requester).toEqual(need.requester)
+    expect(redactNeedForViewer(need, 12).project.exact_address).toBe('12 Secret Lane')
+  })
+
+  it('strips contact details and street address for everyone else', () => {
+    const publicNeed = redactNeedForViewer(need, null)
+    expect(publicNeed.requester).toMatchObject({ id: 12, name: 'Asha', user_type: 'ngo' })
+    expect(publicNeed.requester).not.toHaveProperty('email')
+    expect(publicNeed.project.exact_address).toBeNull()
+    expect(redactNeedForViewer(need, 99).requester).not.toHaveProperty('phone')
   })
 })
 

@@ -1,5 +1,6 @@
 'use client'
 
+import { readApiError } from '@/lib/user-facing-error'
 import { use, useEffect, useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -9,22 +10,13 @@ import { Header } from '@/components/header'
 import ProtectedRoute from '@/components/protected-route'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
-import { toNullablePositiveNumber } from '@/lib/service-offers'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { buildServiceOfferPayload, validateServiceOfferForm } from '@/components/service-offer-form/helpers'
 import { offerToFormData, type ServiceOfferResponse } from '@/components/service-offer-form/offer-to-form-data'
 import { ServiceOfferFormFields } from '@/components/service-offer-form/service-offer-form-fields'
-import type { ServiceOfferFormData } from '@/components/service-offer-form/types'
 import { useServiceOfferForm } from '@/components/service-offer-form/use-service-offer-form'
-
-const validateRentalUnitRate = (formData: ServiceOfferFormData) => {
-  if (formData.transaction_type === 'rent' && toNullablePositiveNumber(formData.unit_rate) === null) {
-    return 'Please enter a valid daily rental rate (INR/day).'
-  }
-  return null
-}
 
 export default function EditServiceOfferPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params)
@@ -47,14 +39,14 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
         })
 
         const data = await response.json()
-        if (!response.ok) throw new Error(data.error || 'Failed to fetch service offer')
+        if (!response.ok) throw new Error(readApiError(data, 'Failed to fetch service offer'))
 
         const offer: ServiceOfferResponse = data?.data ?? data
         setFormData(offerToFormData(offer))
       } catch (error) {
         toast({
           title: 'Error',
-          description: error instanceof Error ? error.message : 'Failed to fetch service offer',
+          description: readApiError(error, 'Failed to fetch service offer'),
           variant: 'destructive'
         })
         router.push('/service-offers')
@@ -74,7 +66,7 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
       return
     }
 
-    const validationError = validateServiceOfferForm(form.formData) ?? validateRentalUnitRate(form.formData)
+    const validationError = validateServiceOfferForm(form.formData)
     if (validationError) {
       toast({ title: 'Validation Error', description: validationError, variant: 'destructive' })
       return
@@ -96,7 +88,7 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
 
       const data = await response.json()
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to update service offer')
+        throw new Error(readApiError(data, 'Failed to update service offer'))
       }
 
       toast({ title: 'Capability Offer Updated', description: data.data?.message || 'Offer updated successfully.' })
@@ -104,7 +96,7 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
     } catch (error) {
       toast({
         title: 'Error',
-        description: error instanceof Error ? error.message : 'Unexpected error while updating offer',
+        description: readApiError(error, 'Unexpected error while updating offer'),
         variant: 'destructive'
       })
     } finally {

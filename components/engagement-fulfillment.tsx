@@ -1,5 +1,7 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -55,7 +57,7 @@ export function InlineSkillServiceFulfillment({
 
     setSettling(true);
     try {
-      const token = localStorage.getItem('token');
+      const token = getClientSessionToken();
       if (!token) throw new Error('Please sign in again');
 
       const response = await fetch(`/api/service-assignments/${assignmentId}/settle`, {
@@ -69,7 +71,7 @@ export function InlineSkillServiceFulfillment({
 
       const data = await response.json();
       if (!response.ok || !data?.success) {
-        throw new Error(data?.error || 'Failed to start settlement');
+        throw new Error(readApiError(data, 'Failed to start settlement'));
       }
 
       const payload = data.data;
@@ -85,6 +87,10 @@ export function InlineSkillServiceFulfillment({
       }
 
       if (!payload?.paymentRequired) {
+        toast({
+          title: 'Service completed',
+          description: 'Service marked complete with no payment due.',
+        });
         await onUpdated?.();
         return;
       }
@@ -113,7 +119,7 @@ export function InlineSkillServiceFulfillment({
 
           const verifyData = await verifyRes.json();
           if (!verifyRes.ok || !verifyData?.success) {
-            throw new Error(verifyData?.error || 'Payment verification failed');
+            throw new Error(readApiError(verifyData, 'Payment verification failed'));
           }
 
           toast({
@@ -133,7 +139,7 @@ export function InlineSkillServiceFulfillment({
     } catch (error) {
       toast({
         title: 'Could not settle',
-        description: error instanceof Error ? error.message : 'Something went wrong',
+        description: readApiError(error, 'Something went wrong'),
         variant: 'destructive',
       });
     } finally {
@@ -228,7 +234,7 @@ export function InlineInfrastructureAssignment({
   const handleMarkComplete = async () => {
     setCompleting(true);
     try {
-      const token = localStorage.getItem('token');
+      const token = getClientSessionToken();
       if (!token) throw new Error('Please sign in again');
 
       const response = await fetch(
@@ -245,7 +251,7 @@ export function InlineInfrastructureAssignment({
 
       const data = await response.json();
       if (!data.success) {
-        throw new Error(data.error || 'Failed to mark complete');
+        throw new Error(readApiError(data, 'Failed to mark complete'));
       }
 
       toast({
@@ -256,7 +262,7 @@ export function InlineInfrastructureAssignment({
     } catch (error) {
       toast({
         title: 'Could not mark complete',
-        description: error instanceof Error ? error.message : 'Something went wrong',
+        description: readApiError(error, 'Something went wrong'),
         variant: 'destructive',
       });
     } finally {

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabase, getProjectLeadNgoId, buildProjectLeadNgoPatch } from '@/lib/db'
 import { parseJsonObject } from '@/lib/utils'
-import { formatProjectLocation } from '@/lib/service-request-allocation'
+import { formatProjectLocation, parseProjectMeta } from '@/lib/service-request-allocation'
 import {
   COMPANY_PROJECT_CONTRIBUTION_TYPE,
   LEAD_NGO_INVITE_CONTRIBUTION_TYPE,
@@ -194,7 +194,7 @@ export async function getCsrTracking(ctx: AssignmentsGetContext) {
       .update({
         assigned_company_user_id: pair.companyId,
         assignment_status: 'accepted',
-        ...buildProjectLeadNgoPatch(getProjectLeadNgoId(project) || project.ngo_id),
+        ...(getProjectLeadNgoId(project) > 0 ? buildProjectLeadNgoPatch(getProjectLeadNgoId(project)) : {}),
         status: project.status === 'active' ? 'in_progress' : project.status,
         updated_at: new Date().toISOString(),
       })
@@ -237,6 +237,11 @@ export async function getCsrTracking(ctx: AssignmentsGetContext) {
   }
   for (const invite of leadInvites || []) {
     userIds.add(Number(invite.contributor_id))
+  }
+  for (const project of projectById.values()) {
+    for (const invite of parseProjectMeta(project.description).pending_lead_ngo_invites || []) {
+      if (invite.ngo_id) userIds.add(Number(invite.ngo_id))
+    }
   }
 
   const { data: users, error: usersError } = userIds.size > 0
@@ -320,7 +325,7 @@ export async function getCsrTracking(ctx: AssignmentsGetContext) {
         return String(meta.project_id || '') === projectId && Number(meta.inviting_company_id || 0) === companyId
       })
 
-      const leadNgoInvites = relevantInvites.map((invite) => {
+      const contributionInvites = relevantInvites.map((invite) => {
         const inviteNgoId = Number(invite.contributor_id)
         const inviteNgo = userById.get(inviteNgoId)
         const meta = parseJsonObject(invite.meta)
@@ -338,6 +343,27 @@ export async function getCsrTracking(ctx: AssignmentsGetContext) {
           updated_at: invite.updated_at,
         }
       })
+      const seenInviteNgos = new Set(contributionInvites.map((invite) => invite.ngo_id))
+      const metaInvites = (parseProjectMeta(project.description).pending_lead_ngo_invites || [])
+        .filter((invite) => Number(invite.inviting_company_id) === companyId && !seenInviteNgos.has(Number(invite.ngo_id)))
+        .map((invite) => {
+          const inviteNgoId = Number(invite.ngo_id)
+          const inviteNgo = userById.get(inviteNgoId)
+          return {
+            id: invite.id,
+            ngo_id: inviteNgoId,
+            ngo_name: inviteNgo?.name || invite.ngo_name || 'NGO',
+            ngo_email: inviteNgo?.email || invite.ngo_email || '',
+            ngo_verification_status: inviteNgo?.verification_status || null,
+            ngo_verified: String(inviteNgo?.verification_status || '').toLowerCase() === 'verified',
+            status: invite.status || 'pending',
+            note: String(invite.note || ''),
+            selected_as_lead: String(invite.status || '').toLowerCase() === 'accepted',
+            created_at: invite.invited_at,
+            updated_at: invite.invited_at,
+          }
+        })
+      const leadNgoInvites = [...contributionInvites, ...metaInvites]
 
       return {
         project_id: projectId,

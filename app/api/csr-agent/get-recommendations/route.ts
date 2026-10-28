@@ -8,6 +8,7 @@ import {
 } from "@/lib/csr-agent/find-service-offers";
 import { buildRequirementDetails } from "@/lib/csr-agent/recommendation-utils";
 import { findAuthUser } from "@/lib/server-auth";
+import { toUserFacingError, zodIssuesToUserMessage } from "@/lib/user-facing-error";
 
 type RecommendationResponse =
   | { success: true; data: CapabilityMatch[] }
@@ -26,11 +27,11 @@ const RequestCoercionSchema = z
     requirementDetails: z.coerce.string().trim().optional().default(""),
   })
   .refine((data) => Number.isFinite(data.budget) && data.budget > 0, {
-    message: "budget must be a positive number",
+    message: "Enter a budget greater than zero.",
     path: ["budget"],
   })
-  .refine((data) => data.start_date < data.end_date, {
-    message: "start_date must be before end_date",
+  .refine((data) => data.end_date.getTime() >= data.start_date.getTime(), {
+    message: "The campaign end date needs to be after the start date.",
     path: ["end_date"],
   });
 
@@ -192,8 +193,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json<RecommendationResponse>(
         {
           success: false,
-          error: "Validation failed",
-          details: coerced.error.flatten().fieldErrors,
+          error: zodIssuesToUserMessage(coerced.error.issues),
         },
         { status: 400 }
       );
@@ -213,8 +213,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json<RecommendationResponse>(
         {
           success: false,
-          error: "Validation failed",
-          details: validation.error.flatten().fieldErrors,
+          error: zodIssuesToUserMessage(validation.error.issues),
         },
         { status: 400 }
       );
@@ -228,7 +227,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json<RecommendationResponse>(
         {
           success: false,
-          error: err instanceof Error ? err.message : "Failed to fetch recommendations",
+          error: toUserFacingError(err instanceof Error ? err.message : "Failed to fetch recommendations"),
         },
         { status: 500 }
       );

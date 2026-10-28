@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
 
     let authenticatedUserId: number | null = null;
     if (view === 'my-requests' || view === 'my-responses') {
-      const claims = getTokenClaims(request);
+      const claims = await getTokenClaims(request);
       if (!claims) {
         return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
       }
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
 // Creates a need (verified NGOs).
 export async function POST(request: NextRequest) {
   try {
-    const decoded = getTokenClaims(request);
+    const decoded = await getTokenClaims(request);
     if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }

@@ -38,7 +38,7 @@ type VerificationStatusResponse = {
 
 export async function GET(request: NextRequest) {
   try {
-    const claims = getTokenClaims(request);
+    const claims = await getTokenClaims(request);
     if (!claims) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }

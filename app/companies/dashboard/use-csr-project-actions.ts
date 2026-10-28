@@ -1,5 +1,7 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import type { CompanyDashboardData } from './use-company-dashboard-data';
@@ -24,7 +26,7 @@ export function useCsrProjectActions(data: CompanyDashboardData, allVerified: bo
       }
 
       setInvitingProjectId(projectId);
-      const token = localStorage.getItem('token');
+      const token = getClientSessionToken();
       if (!token) {
         toast({ title: 'Error', description: 'Please login again', variant: 'destructive' });
         return;
@@ -51,7 +53,7 @@ export function useCsrProjectActions(data: CompanyDashboardData, allVerified: bo
 
       const payload = await response.json();
       if (!response.ok || !payload?.success) {
-        toast({ title: 'Invite failed', description: payload?.error || 'Could not send invitations', variant: 'destructive' });
+        toast({ title: 'Invite failed', description: readApiError(payload, 'Could not send invitations'), variant: 'destructive' });
         return;
       }
 
@@ -65,7 +67,7 @@ export function useCsrProjectActions(data: CompanyDashboardData, allVerified: bo
   };
 
   const revokeLeadNgoInvite = async (projectId: string, ngoId: number) => {
-    const token = localStorage.getItem('token');
+    const token = getClientSessionToken();
     if (!token) {
       toast({ title: 'Error', description: 'Please login again', variant: 'destructive' });
       return;
@@ -84,7 +86,7 @@ export function useCsrProjectActions(data: CompanyDashboardData, allVerified: bo
 
       const payload = await response.json().catch(() => null);
       if (!response.ok || !payload?.success) {
-        toast({ title: 'Could not remove invite', description: payload?.error || 'Please try again.', variant: 'destructive' });
+        toast({ title: 'Could not remove invite', description: readApiError(payload, 'Please try again.'), variant: 'destructive' });
         data.fetchCSRTrackingAssignments();
         return;
       }
@@ -110,7 +112,7 @@ export function useCsrProjectActions(data: CompanyDashboardData, allVerified: bo
 
     try {
       setApplyingProjectId(projectId);
-      const token = localStorage.getItem('token');
+      const token = getClientSessionToken();
       if (!token) {
         toast({ title: 'Error', description: 'Please login again', variant: 'destructive' });
         return;
@@ -131,7 +133,7 @@ export function useCsrProjectActions(data: CompanyDashboardData, allVerified: bo
 
       const payload = await response.json();
       if (!response.ok || !payload?.success) {
-        toast({ title: 'Application failed', description: payload?.error || 'Could not apply for project', variant: 'destructive' });
+        toast({ title: 'Application failed', description: readApiError(payload, 'Could not apply for project'), variant: 'destructive' });
         return;
       }
 

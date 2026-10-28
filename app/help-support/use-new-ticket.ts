@@ -1,5 +1,6 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
@@ -53,7 +54,7 @@ export function useNewTicket(
 
       const payload = await response.json();
       if (!response.ok || !payload?.success) {
-        toast({ title: 'Submission failed', description: payload?.error || 'Could not submit your ticket.', variant: 'destructive' });
+        toast({ title: 'Submission failed', description: readApiError(payload, 'Could not submit your ticket.'), variant: 'destructive' });
         return;
       }
 

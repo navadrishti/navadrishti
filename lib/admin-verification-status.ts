@@ -124,6 +124,7 @@ export function stripSubmittedVerificationDocuments(profileData: unknown, userTy
   const current = parseJsonObject(profileData)
   const actor = actorTypeOf(userType)
   const history = current.ca_review_history
+  const newsletterHistory = current.newsletter_history
   const reviewerIds = current.ca_reviewer_ids
   const moderation = current.admin_moderation
   const verificationDocuments = parseJsonObject(current.verification_documents)
@@ -150,6 +151,7 @@ export function stripSubmittedVerificationDocuments(profileData: unknown, userTy
   next.verification_documents = nextDocuments
 
   if (history) next.ca_review_history = history
+  if (newsletterHistory) next.newsletter_history = newsletterHistory
   if (reviewerIds) next.ca_reviewer_ids = reviewerIds
   if (moderation) next.admin_moderation = moderation
   return next

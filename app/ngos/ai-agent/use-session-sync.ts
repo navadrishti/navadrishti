@@ -1,4 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import {
+  keepActiveAndMeaningfulSessions,
+  openAgentSessionList,
+  resolveHydratedActiveSession,
+} from "@/lib/ai-agent-sessions"
 import type { CloudSaveStatus } from "@/lib/cloud-save-status"
 import {
   type NGOAIAgentSession,
@@ -20,6 +25,12 @@ export function useSessionSync({ mounted, userId, token }: SessionSyncOptions) {
   const [cloudSaveStatus, setCloudSaveStatus] = useState<CloudSaveStatus>('idle')
   const [lastCloudSavedAt, setLastCloudSavedAt] = useState<string | null>(null)
   const isHydratingFromServerRef = useRef(false)
+  const tokenRef = useRef(token)
+  const sessionsRef = useRef(sessions)
+  const activeSessionIdRef = useRef(activeSessionId)
+  tokenRef.current = token
+  sessionsRef.current = sessions
+  activeSessionIdRef.current = activeSessionId
   const serverPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastPersistedServerPayloadRef = useRef('')
   const pendingServerPayloadRef = useRef<string | null>(null)
@@ -78,9 +89,21 @@ export function useSessionSync({ mounted, userId, token }: SessionSyncOptions) {
         const body = await response.json().catch(() => null)
         const latest = normalizeSessionPayload<NGOAIAgentSession>(body?.latest)
         if (latest && latest.sessions.length > 0) {
+          const intendedActiveId =
+            typeof payloadObject?.activeSessionId === "string" ? payloadObject.activeSessionId : activeSessionIdRef.current
+          const resolved = resolveHydratedActiveSession(
+            latest.sessions,
+            sessionsRef.current,
+            intendedActiveId,
+            latest.activeSessionId,
+          )
           const mergedPayload = {
-            sessions: latest.sessions,
-            activeSessionId: latest.activeSessionId || latest.sessions[0].id,
+            sessions: keepActiveAndMeaningfulSessions(
+              resolved.sessions,
+              resolved.activeSessionId,
+              hasMeaningfulNGOSessionContent,
+            ),
+            activeSessionId: resolved.activeSessionId,
             updatedAt: body?.latest?.updatedAt || new Date().toISOString(),
           }
           setSessions(mergedPayload.sessions)
@@ -112,10 +135,12 @@ export function useSessionSync({ mounted, userId, token }: SessionSyncOptions) {
   }, [syncPendingServerProgress])
 
   const persistSessions = (nextSessions: NGOAIAgentSession[], nextActiveId?: string) => {
-    setSessions(nextSessions)
+    const activeCandidate = nextActiveId || activeSessionId
+    const visible = keepActiveAndMeaningfulSessions(nextSessions, activeCandidate, hasMeaningfulNGOSessionContent)
+    setSessions(visible)
     const storageKey = userId ? `nd_ngo_ai_agent_sessions_${userId}` : undefined
     if (!storageKey || !userId) return
-    const meaningful = nextSessions.filter(hasMeaningfulNGOSessionContent)
+    const meaningful = visible.filter(hasMeaningfulNGOSessionContent)
     if (meaningful.length === 0) {
       try {
         localStorage.removeItem(storageKey)
@@ -126,8 +151,10 @@ export function useSessionSync({ mounted, userId, token }: SessionSyncOptions) {
       setCloudSaveStatus('saved')
       return
     }
-    const activeCandidate = nextActiveId || activeSessionId || meaningful[0].id
-    const payload = { sessions: meaningful, activeSessionId: meaningful.some((s) => s.id === activeCandidate) ? activeCandidate : meaningful[0].id }
+    const payload = {
+      sessions: meaningful,
+      activeSessionId: activeCandidate,
+    }
     try {
       localStorage.setItem(storageKey, JSON.stringify(payload))
     } catch {}
@@ -209,10 +236,20 @@ export function useSessionSync({ mounted, userId, token }: SessionSyncOptions) {
         }
       }
       const localPayload = readPayload(localStorage.getItem(storageKey))
+      const authToken = tokenRef.current
+
+      const openFrom = (stored: NGOAIAgentSession[], storedActiveId?: string) =>
+        openAgentSessionList(stored, buildEmptySession(), {
+          startFresh: shouldStartFreshOnReturn || !activeSessionIdRef.current,
+          current: sessionsRef.current,
+          preferredId: activeSessionIdRef.current,
+          storedActiveId,
+          isMeaningful: hasMeaningfulNGOSessionContent,
+        })
 
       try {
         const response = await fetch('/api/ai-agent/progress?agent=ngo', {
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
           credentials: 'include',
         })
         if (!cancelled && response.ok) {
@@ -230,13 +267,7 @@ export function useSessionSync({ mounted, userId, token }: SessionSyncOptions) {
                   activeSessionId: serverPayload.activeSessionId || serverPayload.sessions[0].id,
                 }
 
-            const payload = shouldStartFreshOnReturn
-              ? (() => {
-                  const fresh = buildEmptySession()
-                  return { sessions: [fresh, ...sourcePayload.sessions], activeSessionId: fresh.id }
-                })()
-              : sourcePayload
-
+            const payload = openFrom(sourcePayload.sessions, sourcePayload.activeSessionId)
             setSessions(payload.sessions)
             setActiveSessionId(payload.activeSessionId)
             if (!shouldStartFreshOnReturn) {
@@ -251,20 +282,13 @@ export function useSessionSync({ mounted, userId, token }: SessionSyncOptions) {
       } catch {}
 
       if (localPayload && localPayload.sessions.length > 0) {
-        const sourcePayload = {
-          sessions: localPayload.sessions,
-          activeSessionId: localPayload.activeSessionId || localPayload.sessions[0].id,
-        }
-        const payload = shouldStartFreshOnReturn
-          ? (() => {
-              const fresh = buildEmptySession()
-              return { sessions: [fresh, ...sourcePayload.sessions], activeSessionId: fresh.id }
-            })()
-          : sourcePayload
+        const payload = openFrom(localPayload.sessions, localPayload.activeSessionId || localPayload.sessions[0].id)
         setSessions(payload.sessions)
         setActiveSessionId(payload.activeSessionId)
         return
       }
+
+      if (sessionsRef.current.length > 0) return
 
       const initial = buildEmptySession()
       setSessions([initial])
@@ -273,7 +297,7 @@ export function useSessionSync({ mounted, userId, token }: SessionSyncOptions) {
 
     void hydrate().finally(() => {
       setTimeout(() => {
-        isHydratingFromServerRef.current = false
+        if (!cancelled) isHydratingFromServerRef.current = false
       }, 0)
     })
 
@@ -290,7 +314,7 @@ export function useSessionSync({ mounted, userId, token }: SessionSyncOptions) {
       } catch {}
       cancelled = true
     }
-  }, [mounted, token, userId])
+  }, [mounted, userId])
 
   return {
     sessions,

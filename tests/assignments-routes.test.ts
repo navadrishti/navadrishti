@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GET as listEngagements } from '@/app/api/service-assignments/route'
 import { GET, POST, PUT } from '@/app/api/service-request-assignments/route'
 import { jsonRequest, tokenFor } from './support/requests'
-import { callsOf, createSupabaseFake, eqsOf, unknownColumns, type FakeQuery, type FakeResult } from './support/supabase-fake'
+import { businessQueries, callsOf, createSupabaseFake, eqsOf, unknownColumns, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => {
   const handler = (name: string) => vi.fn(async () => NextResponse.json({ handler: name }))
@@ -105,7 +105,7 @@ describe('GET /api/service-request-assignments', () => {
     useDb(() => ({ data: [{ id: 1 }] }))
     const { json } = await read(await GET(jsonRequest(`${URL_BASE}?view=${view}`, { token: tokenFor(7, 'individual') })))
     expect(json).toEqual({ success: true, data: [{ id: 1 }] })
-    const [query] = fake.queries
+    const [query] = businessQueries(fake.queries)
     expect(query.table).toBe('service_request_applications')
     expect(eqsOf(query)).toEqual({ applicant_user_id: 7 })
     expect(callsOf(query, 'in')).toEqual(statusFilter)
@@ -128,7 +128,7 @@ describe('GET /api/service-request-assignments', () => {
 
     const { json } = await read(await GET(jsonRequest(URL_BASE, { token: tokenFor(1, 'ngo') })))
 
-    const [requests, applications] = fake.queries
+    const [requests, applications] = businessQueries(fake.queries)
     expect(eqsOf(requests)).toEqual({ ngo_id: 1 })
     expect(callsOf(applications, 'in')).toEqual([['service_request_id', [11, 12]]])
     expect(json.data).toHaveLength(1)
@@ -145,7 +145,7 @@ describe('GET /api/service-request-assignments', () => {
   it('skips the application lookup for an NGO without needs', async () => {
     useDb(() => ({ data: [] }))
     await GET(jsonRequest(URL_BASE, { token: tokenFor(1, 'ngo') }))
-    expect(fake.queries.map((query) => query.table)).toEqual(['service_requests'])
+    expect(businessQueries(fake.queries).map((query) => query.table)).toEqual(['service_requests'])
   })
 
   it('refuses the default listing for companies', async () => {
@@ -232,7 +232,7 @@ describe('GET /api/service-assignments', () => {
     useDb(() => ({ data: [{ id: 'a1' }] }))
     const { json } = await read(await listEngagements(jsonRequest(`${ENGAGEMENTS}${query}`, { token: tokenFor(4, 'ngo') })))
     expect(json).toEqual({ success: true, data: [{ id: 'a1' }] })
-    const [select] = fake.queries
+    const [select] = businessQueries(fake.queries)
     expect(select.table).toBe('service_engagement_assignments')
     expect(eqsOf(select)).toEqual(eqs)
     expect(callsOf(select, 'or')).toEqual(or)
@@ -242,7 +242,7 @@ describe('GET /api/service-assignments', () => {
 
   it('filters by target type', async () => {
     await listEngagements(jsonRequest(`${ENGAGEMENTS}?role=owned&targetType=campaign`, { token: tokenFor(4, 'company') }))
-    expect(eqsOf(fake.queries[0])).toEqual({ owner_user_id: 4, target_type: 'campaign' })
+    expect(eqsOf(businessQueries(fake.queries)[0])).toEqual({ owner_user_id: 4, target_type: 'campaign' })
   })
 
   it('returns a generic 500 on query errors and logs the detail', async () => {

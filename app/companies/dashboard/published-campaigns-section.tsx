@@ -11,19 +11,26 @@ import type { PublishedCsrCampaign } from './types';
 
 interface PublishedCampaignsSectionProps {
   campaigns: PublishedCsrCampaign[];
+  drafts?: PublishedCsrCampaign[];
   loading: boolean;
   onRefresh: () => void;
 }
 
-export function PublishedCampaignsSection({ campaigns, loading, onRefresh }: PublishedCampaignsSectionProps) {
+export function PublishedCampaignsSection({ campaigns, drafts = [], loading, onRefresh }: PublishedCampaignsSectionProps) {
   return (
+    <div className="space-y-3">
     <div className="rounded-md border bg-white p-4 space-y-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="font-semibold text-slate-900">Published CSR Campaigns</p>
-          <p className="text-sm text-slate-600">Live progress for campaigns you created in {AGENT_NAMES.catalyst}: timeline, volunteers, milestones, spend and rentals.</p>
+          <p className="text-sm text-slate-600">Live progress for campaigns you created manually or with {AGENT_NAMES.catalyst}: timeline, volunteers, milestones, spend and rentals.</p>
         </div>
-        <Button variant="outline" size="sm" onClick={onRefresh}>Refresh Campaigns</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" asChild>
+            <Link href="/csr-campaigns/create">Create campaign</Link>
+          </Button>
+          <Button variant="outline" size="sm" onClick={onRefresh}>Refresh Campaigns</Button>
+        </div>
       </div>
 
       {loading ? (
@@ -77,6 +84,38 @@ export function PublishedCampaignsSection({ campaigns, loading, onRefresh }: Pub
           })}
         </div>
       )}
+    </div>
+
+      <div className="rounded-md border bg-white p-4 space-y-3">
+        <div>
+          <p className="font-semibold text-slate-900">Draft campaigns</p>
+          <p className="text-sm text-slate-600">Unpublished campaigns stay here until a lead NGO accepts and you publish.</p>
+        </div>
+        {loading ? (
+          <p className="text-sm text-slate-600">Loading drafts...</p>
+        ) : drafts.length === 0 ? (
+          <p className="text-sm text-slate-600">No draft campaigns.</p>
+        ) : (
+          <div className="space-y-3">
+            {drafts.map((campaign) => (
+              <div key={campaign.id} className="rounded-md border bg-slate-50 p-4">
+                <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-900">{campaign.title || campaign.category || 'CSR Campaign'}</p>
+                    <p className="text-sm text-slate-600 break-words">{campaign.description || 'No description provided.'}</p>
+                  </div>
+                  <Badge variant="outline" className="w-fit">{formatStatusLabel(campaign.status || 'draft')}</Badge>
+                </div>
+                <div className="mt-3">
+                  <Button size="sm" asChild>
+                    <Link href={`/csr-campaigns/create?campaign_id=${campaign.id}`}>Resume draft</Link>
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

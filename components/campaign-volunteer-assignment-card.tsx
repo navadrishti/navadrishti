@@ -121,6 +121,18 @@ export function CampaignVolunteerAssignmentCard({
               {formatDisplayDate(assignment.end_date) || 'End TBD'}
             </p>
           </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate-500">Days attended</p>
+            <p className="font-medium text-slate-800">
+              {assignment.attendance_summary?.days_attended ?? assignment.attendance_summary?.total_entries ?? 0}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate-500">Last check-in</p>
+            <p className="font-medium text-slate-800">
+              {formatDisplayDate(assignment.attendance_summary?.last_attendance_at) || 'None yet'}
+            </p>
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2 pt-1">

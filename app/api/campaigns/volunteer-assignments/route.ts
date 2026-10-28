@@ -7,6 +7,7 @@ import { readCampaignCategory, readCampaignLocation } from '@/lib/campaign-schem
 import { parseJsonObject } from '@/lib/utils'
 import type { Tables } from '@/lib/database.types'
 import {
+  attendanceSummaryFromEntries,
   filterCampaignVolunteerAssignments,
   getVolunteerApplicationForUser,
   isCampaignLeadNgo,
@@ -18,7 +19,7 @@ type VolunteerAssignment = Pick<Tables<'service_engagement_assignments'>, 'id' |
 
 export async function GET(request: NextRequest) {
   try {
-    const user = getAuthUserFromRequest(request)
+    const user = await getAuthUserFromRequest(request)
     assertUserType(user, ['ngo', 'individual'])
 
     const { data: campaigns, error } = await supabase
@@ -50,6 +51,24 @@ export async function GET(request: NextRequest) {
       campaignAssignments.map((row) => [String(row.target_id), row])
     )
 
+    const assignmentIds = campaignAssignments.map((row) => String(row.id || '')).filter(Boolean)
+    type AttendanceEntry = { assignment_id: string; attendance_date: string | null; attendance_status: string | null }
+    const { data: attendanceEntries } =
+      assignmentIds.length > 0
+        ? await supabase
+            .from('service_attendance_entries')
+            .select('assignment_id, attendance_date, attendance_status')
+            .in('assignment_id', assignmentIds)
+        : { data: [] as AttendanceEntry[] }
+
+    const entriesByAssignment = new Map<string, AttendanceEntry[]>()
+    for (const entry of attendanceEntries || []) {
+      const key = String(entry.assignment_id)
+      const list = entriesByAssignment.get(key) || []
+      list.push(entry)
+      entriesByAssignment.set(key, list)
+    }
+
     const payload = []
 
     for (const campaign of volunteeredCampaigns) {
@@ -78,6 +97,15 @@ export async function GET(request: NextRequest) {
         campaignStatus: campaign.status,
       })
       const assignmentMeta = parseJsonObject(assignment?.meta)
+      const liveAttendance = assignment?.id
+        ? attendanceSummaryFromEntries(entriesByAssignment.get(String(assignment.id)) || [])
+        : attendanceSummaryFromEntries([])
+      const storedSummary = parseJsonObject(assignmentMeta.attendance_summary)
+      const attendanceSummary = {
+        days_attended: liveAttendance.days_attended || Number(storedSummary.days_attended || storedSummary.total_entries || 0) || 0,
+        total_entries: liveAttendance.total_entries || Number(storedSummary.total_entries || 0) || 0,
+        last_attendance_at: liveAttendance.last_attendance_at || (storedSummary.last_attendance_at ? String(storedSummary.last_attendance_at) : null),
+      }
 
       payload.push({
         id: campaign.id,
@@ -99,7 +127,7 @@ export async function GET(request: NextRequest) {
         company_verification_status: company?.verification_status || null,
         company_verified: String(company?.verification_status || '').toLowerCase() === 'verified',
         assignment_id: assignment?.id || null,
-        attendance_summary: assignmentMeta.attendance_summary || {},
+        attendance_summary: attendanceSummary,
       })
     }
 

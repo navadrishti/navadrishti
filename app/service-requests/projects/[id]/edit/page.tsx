@@ -1,4 +1,6 @@
 "use client"
+import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 
 import { use, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -57,7 +59,7 @@ export default function EditProjectPage({ params }: { params: Promise<{ id: stri
     const load = async () => {
       setLoading(true)
       try {
-        const token = localStorage.getItem('token')
+        const token = getClientSessionToken()
         const resp = await fetch(`/api/service-request-projects?ngoId=${user.id}`, { headers: { Authorization: `Bearer ${token}` } })
         const data = await resp.json()
         if (resp.ok && data.success) {
@@ -99,7 +101,7 @@ export default function EditProjectPage({ params }: { params: Promise<{ id: stri
     }
     setSavingProject(true)
     try {
-      const token = localStorage.getItem('token')
+      const token = getClientSessionToken()
       const resp = await fetch(`/api/service-request-projects/${project.id}`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -122,7 +124,7 @@ export default function EditProjectPage({ params }: { params: Promise<{ id: stri
         setProjectAddress(parseProjectExactAddress(data.data.exact_address || data.data.location))
         toast({ title: 'Saved', description: 'Project updated' })
       } else {
-        toast({ title: 'Error', description: data.error || 'Failed to update project', variant: 'destructive' })
+        toast({ title: 'Error', description: readApiError(data, 'Failed to update project'), variant: 'destructive' })
       }
     } catch {
       toast({ title: 'Error', description: 'Failed to update project', variant: 'destructive' })

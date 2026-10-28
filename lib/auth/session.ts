@@ -202,13 +202,44 @@ export type TokenClaims = {
   verification_status?: string;
 };
 
-/** Claims from the request's Bearer token, or null when it is missing, malformed or expired. */
-export function getTokenClaims(request: NextRequest): TokenClaims | null {
+function readTokenClaims(request: NextRequest): TokenClaims | null {
   const header = request.headers.get('authorization');
-  if (!header?.startsWith('Bearer ')) return null;
-  const decoded = decodeSignedToken(header.slice(7));
+  const bearer = header?.startsWith('Bearer ') ? header.slice(7).trim() : '';
+  const cookie = request.cookies.get('token')?.value?.trim() || '';
+  const token = bearer || cookie;
+  if (!token) return null;
+  const decoded = decodeSignedToken(token);
   if (!decoded || !isUserSessionPayload(decoded)) return null;
   return decoded as TokenClaims;
+}
+
+type LiveUserTypeOverlay = <T extends { id: number; user_type: string }>(claims: T) => Promise<T>
+
+let liveUserTypeOverlay: LiveUserTypeOverlay | null = null
+
+/** Server modules register this so `lib/auth` can stay safe to import from client components. */
+export function setLiveUserTypeOverlay(overlay: LiveUserTypeOverlay) {
+  liveUserTypeOverlay = overlay
+}
+
+async function withLiveUserType<T extends { id: number; user_type: string }>(claims: T): Promise<T> {
+  if (!liveUserTypeOverlay) return claims
+  try {
+    return await liveUserTypeOverlay(claims)
+  } catch {
+    return claims
+  }
+}
+
+/**
+ * Claims from the request Bearer token or the httpOnly session cookie.
+ * `user_type` is overlaid from the users row when that lookup is available so a
+ * role change does not linger for the rest of the JWT lifetime.
+ */
+export async function getTokenClaims(request: NextRequest): Promise<TokenClaims | null> {
+  const claims = readTokenClaims(request);
+  if (!claims) return null;
+  return withLiveUserType(claims);
 }
 
 /** Platform end-user sessions only — never treat console admin JWTs as users. */
@@ -240,10 +271,12 @@ export function withAuth<Args extends unknown[]>(
         token = cookieToken;
       }
 
-      const user = verifyToken(token);
-      if (!isPlatformUserSession(user)) {
+      const verified = verifyToken(token);
+      if (!isPlatformUserSession(verified)) {
         return NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 });
       }
+
+      const user = await withLiveUserType(verified);
 
       const authedRequest = req as AuthenticatedRequest;
       authedRequest.user = user;

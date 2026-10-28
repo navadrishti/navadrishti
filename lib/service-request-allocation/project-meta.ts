@@ -15,6 +15,16 @@ export type ServiceRequestProjectMeta = {
     source?: string
     applicant_user_id?: number
   }>
+  pending_lead_ngo_invites?: Array<{
+    id: string
+    ngo_id: number
+    ngo_name?: string | null
+    ngo_email?: string | null
+    inviting_company_id: number
+    note?: string | null
+    invited_at: string
+    status?: string
+  }>
 }
 
 const PROJECT_META_START = '<!--nd-project-meta:'
@@ -57,12 +67,16 @@ export function withProjectMeta(
   if (Array.isArray(next.pending_company_applications) && next.pending_company_applications.length === 0) {
     delete next.pending_company_applications
   }
+  if (Array.isArray(next.pending_lead_ngo_invites) && next.pending_lead_ngo_invites.length === 0) {
+    delete next.pending_lead_ngo_invites
+  }
   const hasExtras = Boolean(
     next.category ||
     next.budget_inr != null ||
     next.impact_description ||
     next.contact_info ||
-    (next.pending_company_applications && next.pending_company_applications.length > 0)
+    (next.pending_company_applications && next.pending_company_applications.length > 0) ||
+    (next.pending_lead_ngo_invites && next.pending_lead_ngo_invites.length > 0)
   )
   if (!hasExtras) return visible
   return `${visible}\n\n${PROJECT_META_START}${JSON.stringify(next)}${PROJECT_META_END}`.trim()
@@ -87,6 +101,7 @@ export function enrichProjectRecord<T extends EnrichableProject>(project: T | nu
     impact_description: meta.impact_description || project.impact_description || null,
     contact_info: meta.contact_info || project.contact_info || null,
     pending_company_applications: meta.pending_company_applications || [],
+    pending_lead_ngo_invites: meta.pending_lead_ngo_invites || [],
     _raw_description: project.description,
   }
 }
@@ -95,8 +110,10 @@ export function enrichProjectRecord<T extends EnrichableProject>(project: T | nu
 type RedactableProject = {
   contact_info?: unknown
   pending_company_applications?: unknown
+  pending_lead_ngo_invites?: unknown
   _raw_description?: unknown
   ngo?: unknown
+  exact_address?: unknown
 }
 
 // Same profile_data keys app/api/profile/[userId] shows to viewers without private access.
@@ -124,14 +141,18 @@ export function redactProjectSensitiveFields<T extends RedactableProject>(
   const {
     contact_info: _contact,
     pending_company_applications: _apps,
+    pending_lead_ngo_invites: _invites,
     _raw_description: _raw,
+    exact_address: _address,
     ...safe
   } = project
   return {
     ...safe,
     ...('ngo' in project ? { ngo: redactNgo(project.ngo, Boolean(options.keepNgoContact)) } : {}),
     contact_info: null,
+    exact_address: null,
     pending_company_applications: [],
+    pending_lead_ngo_invites: [],
   }
 }
 
@@ -142,7 +163,7 @@ export function redactProjectSensitiveFields<T extends RedactableProject>(
 export function mergeClientProjectDescription(
   existingDescription: string | null | undefined,
   clientDescription: string | null | undefined,
-  overrides: Omit<ServiceRequestProjectMeta, 'pending_company_applications'> = {}
+  overrides: Omit<ServiceRequestProjectMeta, 'pending_company_applications' | 'pending_lead_ngo_invites'> = {}
 ): string {
   const existingMeta = parseProjectMeta(existingDescription)
   const visible = stripProjectMetaFromDescription(clientDescription)
@@ -155,6 +176,7 @@ export function mergeClientProjectDescription(
         : existingMeta.impact_description,
     contact_info: overrides.contact_info !== undefined ? overrides.contact_info : existingMeta.contact_info,
     pending_company_applications: existingMeta.pending_company_applications,
+    pending_lead_ngo_invites: existingMeta.pending_lead_ngo_invites,
   })
 }
 

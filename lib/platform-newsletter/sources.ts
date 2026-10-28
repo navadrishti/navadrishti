@@ -69,6 +69,7 @@ export async function fetchNewsletterSources(sourceFetchLimit: number) {
           state_province,
           coverage_area,
           created_at,
+          offer_details,
           ngo:users!creator_id (${USER_FIELDS})
         `)
         .order('created_at', { ascending: false })

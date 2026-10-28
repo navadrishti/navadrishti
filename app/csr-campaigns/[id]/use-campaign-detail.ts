@@ -1,3 +1,4 @@
+import { readApiError } from '@/lib/user-facing-error'
 import { useEffect, useEffectEvent, useState } from "react"
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/auth-context'
@@ -15,6 +16,7 @@ export function useCampaignDetail(campaignId: string) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [accepting, setAccepting] = useState(false)
+  const [declining, setDeclining] = useState(false)
   const [applying, setApplying] = useState(false)
 
   const currentUserId = Number(user?.id || 0)
@@ -30,7 +32,7 @@ export function useCampaignDetail(campaignId: string) {
       const payload = await response.json().catch(() => null)
       if (!response.ok || !payload?.success || !payload?.data) {
         setCampaign(null)
-        setError(payload?.error || 'Campaign not found')
+        setError(readApiError(payload, 'Campaign not found'))
         return
       }
       setCampaign(payload.data as Campaign)
@@ -105,7 +107,7 @@ export function useCampaignDetail(campaignId: string) {
       })
       const payload = await res.json().catch(() => null)
       if (!res.ok || !payload?.success) {
-        toast.error(payload?.error || 'Failed to volunteer')
+        toast.error(readApiError(payload, 'Failed to volunteer'))
       } else {
         await loadCampaign()
         toast.success('Applied to volunteer')
@@ -120,27 +122,66 @@ export function useCampaignDetail(campaignId: string) {
 
   const acceptLeadRole = async () => {
     if (!campaignId) return
+    if (!token) {
+      toast.error('Please sign in to accept this invite')
+      return
+    }
     try {
       setAccepting(true)
       const res = await fetch('/api/campaigns/accept-lead', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ campaign_id: campaignId })
       })
       const payload = await res.json().catch(() => null)
       if (!res.ok || !payload?.success) {
-        toast.error(payload?.error || 'Failed to accept lead role')
+        toast.error(readApiError(payload, 'Failed to accept lead role'))
       } else {
         setCampaign((prev) => (prev ? { ...prev, ...payload.data } : payload.data))
-        toast.success('Accepted lead role. Volunteer gap calculated and campaign activated.')
+        const nextStatus = String(payload.data?.status || campaign?.status || '')
+        toast.success(
+          nextStatus === 'draft'
+            ? 'Lead role accepted. The company will launch this campaign once the draft is finalised.'
+            : 'Lead role accepted. Volunteer gap calculated and campaign activated.'
+        )
       }
     } catch {
       toast.error('Failed to accept lead role')
     } finally {
       setAccepting(false)
+    }
+  }
+
+  const declineLeadRole = async () => {
+    if (!campaignId) return
+    if (!token) {
+      toast.error('Please sign in to decline this invite')
+      return
+    }
+    try {
+      setDeclining(true)
+      const res = await fetch('/api/campaigns/decline-lead', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ campaign_id: campaignId }),
+      })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok || !payload?.success) {
+        toast.error(readApiError(payload, 'Failed to decline lead role'))
+      } else {
+        await loadCampaign()
+        toast.success('Lead invite declined. The company can invite another NGO.')
+      }
+    } catch {
+      toast.error('Failed to decline lead role')
+    } finally {
+      setDeclining(false)
     }
   }
 
@@ -150,6 +191,7 @@ export function useCampaignDetail(campaignId: string) {
     loading,
     error,
     accepting,
+    declining,
     volunteerState,
     canShowVolunteerAction,
     isDraft,
@@ -157,5 +199,6 @@ export function useCampaignDetail(campaignId: string) {
     acceptedDraftLead,
     volunteer,
     acceptLeadRole,
+    declineLeadRole,
   }
 }

@@ -8,11 +8,11 @@ Only the variables below are read by the code.
 
 | Variable | Used for |
 |----------|----------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Browser-safe Supabase key |
-| `SUPABASE_SECRET_KEY` | Server-side Supabase access (`lib/db.ts`) |
-| `JWT_SECRET` | Signing platform and CA tokens |
-| `ADMIN_USERNAME`, `ADMIN_PASSWORD` | Platform admin console login |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL (production project at go-live) |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Browser-safe anon/publishable key. Must not be the secret key. |
+| `SUPABASE_SECRET_KEY` | Server-only service-role/secret key (`lib/db/client.ts`). Bypasses RLS. |
+| `JWT_SECRET` | Signing platform and CA tokens. At least 32 characters. Independent of the Supabase JWT secret. |
+| `ADMIN_USERNAME`, `ADMIN_PASSWORD` | Platform admin console login. Password at least 12 characters. |
 
 ## Auth and sessions
 

@@ -1,5 +1,6 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import { toast as sonnerToast } from 'sonner';
 import { PencilLine, Trash2 } from 'lucide-react';
@@ -155,7 +156,7 @@ export function useUsersPanelState({ setUsers }: { setUsers: Dispatch<SetStateAc
 
       const data = await response.json();
       if (!response.ok || !data?.success) {
-        throw new Error(data?.error || 'Failed to process reverification');
+        throw new Error(readApiError(data, 'Failed to process reverification'));
       }
 
       sonnerToast.success(data.message || (action === 'approve' ? 'Reverification approved' : 'Reverification rejected'));
@@ -181,7 +182,7 @@ export function useUsersPanelState({ setUsers }: { setUsers: Dispatch<SetStateAc
 
       const data = await response.json();
       if (!response.ok || !data?.success) {
-        throw new Error(data?.error || 'Failed to update user');
+        throw new Error(readApiError(data, 'Failed to update user'));
       }
 
       sonnerToast.success('User updated');
@@ -225,7 +226,7 @@ export function useUsersPanelState({ setUsers }: { setUsers: Dispatch<SetStateAc
         });
         const data = await response.json();
         if (!response.ok || !data?.success) {
-          throw new Error(data?.error || 'Failed to delete user');
+          throw new Error(readApiError(data, 'Failed to delete user'));
         }
         sonnerToast.success(data.message || 'Account deleted');
         setUsers((current) => current.filter((item) => item.id !== selectedUser.id));
@@ -244,7 +245,7 @@ export function useUsersPanelState({ setUsers }: { setUsers: Dispatch<SetStateAc
       });
       const data = await response.json();
       if (!response.ok || !data?.success) {
-        throw new Error(data?.error || 'Failed to update account status');
+        throw new Error(readApiError(data, 'Failed to update account status'));
       }
 
       sonnerToast.success(data.message || 'Account updated');

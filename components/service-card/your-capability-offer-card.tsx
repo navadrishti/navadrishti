@@ -129,7 +129,7 @@ export function YourCapabilityOfferCard({ offer, pastReason }: YourCapabilityOff
       ) : null}
 
       {usageRecords.map((usage) => (
-        <UsageRecordSection key={usage.id} usage={usage} />
+        <UsageRecordSection key={usage.id} usage={usage} offerId={offer.id} />
       ))}
 
       <div className="flex flex-wrap gap-2 pt-1">

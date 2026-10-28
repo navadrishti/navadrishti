@@ -53,8 +53,8 @@ beforeEach(() => {
 })
 
 describe('getAuthUserFromRequest', () => {
-  it('returns the user for a valid bearer token', () => {
-    expect(getAuthUserFromRequest(buildRequest({ header: `Bearer ${userToken}` }))).toEqual({
+  it('returns the user for a valid bearer token', async () => {
+    await expect(getAuthUserFromRequest(buildRequest({ header: `Bearer ${userToken}` }))).resolves.toEqual({
       id: 12,
       email: 'ngo@example.org',
       name: '',
@@ -66,14 +66,15 @@ describe('getAuthUserFromRequest', () => {
     ['no header', undefined],
     ['a non-bearer scheme', `Basic ${userToken}`],
     ['an empty bearer', 'Bearer    '],
-  ])('requires authentication with %s', (_label, header) => {
-    expect(() => getAuthUserFromRequest(buildRequest({ header }))).toThrow('Authentication required')
+  ])('requires authentication with %s', async (_label, header) => {
+    await expect(getAuthUserFromRequest(buildRequest({ header }))).rejects.toThrow('Authentication required')
   })
 
-  it('ignores the session cookie', () => {
-    expect(() => getAuthUserFromRequest(buildRequest({ cookies: { token: userToken } }))).toThrow(
-      'Authentication required'
-    )
+  it('accepts the httpOnly session cookie', async () => {
+    await expect(getAuthUserFromRequest(buildRequest({ cookies: { token: userToken } }))).resolves.toMatchObject({
+      id: 12,
+      user_type: 'ngo',
+    })
   })
 
   it.each([
@@ -82,27 +83,31 @@ describe('getAuthUserFromRequest', () => {
     ['malformed', 'not-a-jwt'],
     ['missing email', jwt.sign({ id: 12, user_type: 'ngo' }, secret)],
     ['missing id', jwt.sign({ email: 'ngo@example.org', user_type: 'ngo' }, secret)],
-  ])('rejects a %s token', (_label, token) => {
-    expect(() => getAuthUserFromRequest(buildRequest({ header: `Bearer ${token}` }))).toThrow(
+  ])('rejects a %s token', async (_label, token) => {
+    await expect(getAuthUserFromRequest(buildRequest({ header: `Bearer ${token}` }))).rejects.toThrow(
       'Invalid authentication token'
     )
   })
 
-  it('defaults a missing user_type to individual', () => {
+  it('defaults a missing user_type to individual', async () => {
     const token = jwt.sign({ id: 5, email: 'a@b.co' }, secret)
-    expect(getAuthUserFromRequest(buildRequest({ header: `Bearer ${token}` })).user_type).toBe('individual')
+    await expect(getAuthUserFromRequest(buildRequest({ header: `Bearer ${token}` }))).resolves.toMatchObject({
+      user_type: 'individual',
+    })
   })
 
-  it('rejects platform-admin tokens', () => {
-    expect(() => getAuthUserFromRequest(buildRequest({ header: `Bearer ${adminToken}` }))).toThrow()
+  it('rejects platform-admin tokens', async () => {
+    await expect(getAuthUserFromRequest(buildRequest({ header: `Bearer ${adminToken}` }))).rejects.toThrow()
   })
 
   it.each([
     ['platform CA', { id: 3, email: 'ca@x.io', kind: 'platform_ca' }],
     ['unknown user_type', { id: 5, email: 'a@b.co', user_type: 'superuser' }],
-  ])('rejects a %s token that carries an email', (_label, payload) => {
+  ])('rejects a %s token that carries an email', async (_label, payload) => {
     const token = jwt.sign(payload, secret)
-    expect(() => getAuthUserFromRequest(buildRequest({ header: `Bearer ${token}` }))).toThrow('Invalid authentication token')
+    await expect(getAuthUserFromRequest(buildRequest({ header: `Bearer ${token}` }))).rejects.toThrow(
+      'Invalid authentication token'
+    )
   })
 })
 
@@ -217,7 +222,7 @@ describe('getCompanyCAFromRequest', () => {
       name: 'Company CA',
       user_type: 'company',
     })
-    expect(() => getAuthUserFromRequest(buildRequest({ header: `Bearer ${scoped}` }))).toThrow(
+    await expect(getAuthUserFromRequest(buildRequest({ header: `Bearer ${scoped}` }))).rejects.toThrow(
       'Invalid authentication token'
     )
     supabaseFake.queue('company_ca_identities', { data: identity })

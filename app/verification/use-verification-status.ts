@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { clientAuthHeaders } from '@/lib/client-session';
 import type { AuthSnapshot } from './types';
 
 export function useVerificationStatus(enabled: boolean, emailOtpVerified: boolean, userType?: string) {
@@ -8,13 +9,9 @@ export function useVerificationStatus(enabled: boolean, emailOtpVerified: boolea
   useEffect(() => {
     const fetchAuthSnapshot = async () => {
       try {
-        const token = localStorage.getItem('token');
-        if (!token) return;
-
         const response = await fetch('/api/auth/me', {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
+          credentials: 'include',
+          headers: clientAuthHeaders(),
         });
 
         if (!response.ok) return;
@@ -31,11 +28,11 @@ export function useVerificationStatus(enabled: boolean, emailOtpVerified: boolea
 
     const fetchVerificationStatus = async () => {
       try {
-        const token = localStorage.getItem('token');
-        if (!token || !userType) return;
+        if (!userType) return;
 
         const response = await fetch(`/api/verification/${userType}`, {
-          headers: { Authorization: `Bearer ${token}` }
+          credentials: 'include',
+          headers: clientAuthHeaders(),
         });
         if (!response.ok) return;
 

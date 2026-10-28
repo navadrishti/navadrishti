@@ -7,6 +7,7 @@ import {
 } from "@/lib/csr-agent/llm";
 import type { CapabilityMatch } from "@/lib/csr-agent/find-service-offers";
 import { findAuthUser } from "@/lib/server-auth";
+import { zodIssuesToUserMessage } from "@/lib/user-facing-error";
 
 /* ───────────────── TYPES ───────────────── */
 
@@ -44,8 +45,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json<CampaignResponse>(
         {
           success: false,
-          error:   "Validation failed",
-          details: validation.error.flatten().fieldErrors,
+          error: zodIssuesToUserMessage(validation.error.issues),
         },
         { status: 400 }
       );

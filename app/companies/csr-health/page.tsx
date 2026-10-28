@@ -1,4 +1,6 @@
 "use client"
+import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 
 import { useEffect, useMemo, useState } from "react"
 import { useIsClient } from "@/hooks/use-is-client"
@@ -38,7 +40,7 @@ export default function CompanyCSRHealthPage() {
       try {
         setLoading(true)
         setLoadError('')
-        const token = localStorage.getItem("token")
+        const token = getClientSessionToken()
 
         if (!token) {
           setProjects([])
@@ -55,7 +57,7 @@ export default function CompanyCSRHealthPage() {
         if (response.ok && payload?.success) {
           setProjects(Array.isArray(payload.data) ? payload.data : [])
         } else {
-          setLoadError(payload?.error || 'Could not load your CSR projects.')
+          setLoadError(readApiError(payload, 'Could not load your CSR projects.'))
         }
       } catch {
         setLoadError('Could not load your CSR projects. Check your connection and try again.')

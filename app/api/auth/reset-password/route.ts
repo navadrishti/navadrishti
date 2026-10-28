@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { hashPassword } from '@/lib/auth';
 import { consumeOneTimeCode, findOneTimeCode } from '@/lib/one-time-codes';
 import { limitAttempts } from '@/lib/rate-limit';
+import { zodIssuesToUserMessage } from '@/lib/user-facing-error';
 
 const resetPasswordSchema = z.object({
   email: z.string().trim().toLowerCase().email('Invalid email address'),
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
 
     if (!validationResult.success) {
       return NextResponse.json(
-        { error: validationResult.error.errors[0].message },
+        { error: zodIssuesToUserMessage(validationResult.error.issues) },
         { status: 400 }
       );
     }

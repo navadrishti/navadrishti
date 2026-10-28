@@ -1,5 +1,6 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast as sonnerToast } from 'sonner';
@@ -102,7 +103,7 @@ export function useRequestsPanelState({
 
       const data = await response.json();
       if (!response.ok || !data?.success) {
-        throw new Error(data?.error || 'Failed to update request');
+        throw new Error(readApiError(data, 'Failed to update request'));
       }
 
       sonnerToast.success('Service request updated');
@@ -134,7 +135,7 @@ export function useRequestsPanelState({
 
       const data = await response.json();
       if (!response.ok || !data?.success) {
-        throw new Error(data?.error || 'Failed to delete request');
+        throw new Error(readApiError(data, 'Failed to delete request'));
       }
 
       sonnerToast.success('Service request deleted');

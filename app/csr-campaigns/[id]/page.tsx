@@ -22,6 +22,7 @@ export default function CSRCampaignDetailPage() {
     loading,
     error,
     accepting,
+    declining,
     volunteerState,
     canShowVolunteerAction,
     isDraft,
@@ -29,6 +30,7 @@ export default function CSRCampaignDetailPage() {
     acceptedDraftLead,
     volunteer,
     acceptLeadRole,
+    declineLeadRole,
   } = useCampaignDetail(campaignId)
 
   return (
@@ -91,9 +93,18 @@ export default function CSRCampaignDetailPage() {
                           <p className="text-sm text-muted-foreground mb-3">
                             You have been invited as the lead NGO for this campaign.
                           </p>
-                          <Button onClick={acceptLeadRole} disabled={accepting}>
-                            {accepting ? 'Accepting…' : 'Accept Lead Role'}
-                          </Button>
+                          <div className="flex flex-col gap-2 sm:flex-row">
+                            <Button onClick={acceptLeadRole} disabled={accepting || declining}>
+                              {accepting ? 'Accepting…' : 'Accept Lead Role'}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              onClick={declineLeadRole}
+                              disabled={accepting || declining}
+                            >
+                              {declining ? 'Declining…' : 'Decline'}
+                            </Button>
+                          </div>
                         </div>
                       ) : acceptedDraftLead ? (
                         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">

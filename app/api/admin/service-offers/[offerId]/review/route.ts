@@ -3,6 +3,9 @@ import { supabase } from '@/lib/db';
 import { getAdminUser } from '@/lib/server-auth';
 import { emailService } from '@/lib/email';
 import { getClientIp } from '@/lib/rate-limit';
+import { parseJsonObject } from '@/lib/utils';
+import { newsletterEventId, withNewsletterHistory } from '@/lib/platform-newsletter/history';
+import type { NewsletterKind } from '@/lib/platform-newsletter/actors';
 
 export async function POST(
   request: NextRequest,
@@ -45,12 +48,21 @@ export async function POST(
       return NextResponse.json({ error: 'Service offer not found' }, { status: 404 });
     }
 
+    const reviewedAt = new Date().toISOString();
+    const kind: NewsletterKind = action === 'approve' ? 'capability' : 'capability_closed';
     const updateData = {
       admin_status: action === 'approve' ? 'approved' : 'rejected',
-      admin_reviewed_at: new Date().toISOString(),
+      admin_reviewed_at: reviewedAt,
       admin_reviewed_by: null,
       admin_comments: comments.trim(),
-      ...(action === 'approve' ? { status: 'active' } : {})
+      offer_details: withNewsletterHistory(parseJsonObject(serviceOffer.offer_details), {
+        id: newsletterEventId(kind, serviceOfferId, reviewedAt),
+        kind,
+        at: reviewedAt,
+        source: 'admin',
+        href: `/service-offers/${serviceOfferId}`,
+      }),
+      ...(action === 'approve' ? { status: 'active', is_listed: true } : { is_listed: false })
     };
 
     const { error: updateError } = await supabase

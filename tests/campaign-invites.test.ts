@@ -97,7 +97,7 @@ describe('POST /api/csr-agent/lead-ngo-invites', () => {
   })
 
   it.each([
-    [{ sessionId: '' }, 'sessionId is required'],
+    [{ sessionId: '' }, 'sessionId or draftCampaignId is required'],
     [{ action: 'accept' }, 'Unsupported action'],
     [{ action: 'invite' }, 'Valid ngoId is required'],
     [{ action: 'revoke', ngoId: -1 }, 'Valid ngoId is required'],
@@ -124,6 +124,27 @@ describe('POST /api/csr-agent/lead-ngo-invites', () => {
     const response = await post({ action: 'invite', ngoId: 5 })
     expect(response.status).toBe(400)
     expect(await response.json()).toEqual({ error: 'CSR-1 expired' })
+  })
+
+  it('invites against an existing draft without a session id', async () => {
+    drafts = [draft({ impact_metrics: { lead_ngo_invites: [] } })]
+    const response = await POST(
+      jsonRequest(INVITES_URL, {
+        token: company,
+        body: {
+          draftCampaignId: 'c1',
+          action: 'invite',
+          ngoId: 5,
+          ngoName: 'Seva',
+          ngoEmail: 'seva@example.org',
+          projectData: { endDate: '2026-12-31' },
+        },
+      })
+    )
+    expect(response.status).toBe(200)
+    const [update] = supabaseFake.find('campaigns', 'update')
+    expect(invitesOf(update.payload)).toEqual([[5, 'invited']])
+    expect((update.payload as { impact_metrics: Record<string, unknown> }).impact_metrics.csr_agent_session_id).toBeUndefined()
   })
 
   it('creates a draft campaign on first invite', async () => {

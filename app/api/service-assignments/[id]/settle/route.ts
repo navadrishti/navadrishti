@@ -11,13 +11,14 @@ import {
   verifyRazorpaySignature,
 } from '@/lib/engagement-settlement'
 import { PayeeNotConnectedError } from '@/lib/razorpay-route'
+import { getErrorMessage } from '@/lib/utils'
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const decoded = getTokenClaims(request)
+    const decoded = await getTokenClaims(request)
     if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
@@ -151,7 +152,7 @@ export async function POST(
     }
     console.error('Engagement settlement error:', error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to settle engagement' },
+      { error: getErrorMessage(error) || 'Failed to settle engagement' },
       { status: 500 }
     )
   }

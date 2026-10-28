@@ -147,6 +147,7 @@ export default function NGOAIAgentPage() {
                 isTyping={isTyping}
                 containerRef={messagesContainerRef}
                 needCount={needCount}
+                needsData={needsData}
                 userName={user?.name}
                 userAvatar={userAvatar}
                 userInitials={userInitials}

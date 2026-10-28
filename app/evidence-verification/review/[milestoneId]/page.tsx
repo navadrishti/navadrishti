@@ -1,5 +1,6 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useEffect, useEffectEvent, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -109,7 +110,7 @@ export default function ReviewDetailPage() {
 
       const payload = await response.json();
       if (!response.ok || !payload?.success) {
-        setPanelMessage(payload?.error || `Failed to ${decision} evidence.`);
+        setPanelMessage(readApiError(payload, `Failed to ${decision} evidence.`));
         return;
       }
 

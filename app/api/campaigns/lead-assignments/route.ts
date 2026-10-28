@@ -8,6 +8,7 @@ import {
   linkCsrCapabilityRentalTracking,
   listCsrCapabilityRentalsForUser,
   loadCampaignRentalByOffer,
+  previewCsrCapabilityDelhiveryParties,
   retryCsrCapabilityDelhiveryBooking,
   syncCsrCapabilityRentalDelhivery,
 } from '@/lib/csr-agent/campaign'
@@ -18,7 +19,7 @@ type CompanySummary = Pick<Tables<'users'>, 'id' | 'name' | 'email' | 'verificat
 
 export async function GET(request: NextRequest) {
   try {
-    const user = getAuthUserFromRequest(request)
+    const user = await getAuthUserFromRequest(request)
     assertUserType(user, ['ngo', 'company'])
 
     const rentalsOnly = request.nextUrl.searchParams.get('rentals') === '1'
@@ -89,7 +90,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const user = getAuthUserFromRequest(request)
+    const user = await getAuthUserFromRequest(request)
     assertUserType(user, ['ngo', 'company'])
 
     const body = await request.json().catch(() => ({}))
@@ -130,6 +131,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, data: { rental: updated } })
     }
 
+    if (action === 'capability_rental_preview_parties') {
+      const parties = await previewCsrCapabilityDelhiveryParties({ campaignId, offerId, leg })
+      return NextResponse.json({ success: true, data: parties })
+    }
+
     if (action === 'capability_rental_retry_booking') {
       const updated = await retryCsrCapabilityDelhiveryBooking({
         campaignId,
@@ -137,6 +143,8 @@ export async function POST(request: NextRequest) {
         leg,
         bookedByUserId: Number(user.id),
         companyId: Number(rental.company_user_id || 0) || undefined,
+        pickup: body?.pickup,
+        consignee: body?.consignee,
       })
       return NextResponse.json({ success: true, data: { rental: updated } })
     }
@@ -147,7 +155,14 @@ export async function POST(request: NextRequest) {
     if (authResponse) return authResponse
     console.error('CSR capability rental delivery error:', error)
     const message = getErrorMessage(error) || 'Failed to update CSR capability delivery'
-    const status = message.toLowerCase().includes('permission') ? 403 : 500
+    const text = message.toLowerCase()
+    const status = text.includes('not found')
+      ? 404
+      : (text.includes('permission') || text.includes('only the') || text.includes('insufficient'))
+        ? 403
+        : (text.includes('required') || text.includes('must ') || text.includes('applies to') || text.includes('unsupported'))
+          ? 400
+          : 500
     return NextResponse.json({ error: message }, { status })
   }
 }

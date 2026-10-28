@@ -1,3 +1,4 @@
+import { readApiError } from '@/lib/user-facing-error'
 import type React from "react"
 import { useEffect, useEffectEvent, useRef } from "react"
 import {
@@ -5,6 +6,7 @@ import {
   INITIAL_ASSISTANT_MESSAGE,
   buildEmptySession,
   deriveSessionTitle,
+  hasMeaningfulNGOSessionContent,
 } from "./intake"
 import type { IntakeState } from "./use-intake-state"
 import type { OfferSelection } from "./use-offer-selection"
@@ -75,8 +77,11 @@ export function useSessionPersistence({ intake, offers, sync, mounted, userId, t
   }
 
   const applyActiveSession = useEffectEvent(() => {
-    const active = activeSessionId ? sessions.find((s) => s.id === activeSessionId) : undefined
+    const active = activeSessionId
+      ? sessions.find((s) => s.id === activeSessionId || s.legacyId === activeSessionId)
+      : undefined
     if (!active) return false
+    if (active.id !== activeSessionId) setActiveSessionId(active.id)
 
     isApplyingSessionRef.current = true
     setMessages(active.messages || [{ role: 'assistant', content: INITIAL_ASSISTANT_MESSAGE }])
@@ -130,7 +135,7 @@ export function useSessionPersistence({ intake, offers, sync, mounted, userId, t
 
   const createNewSession = () => {
     const next = buildEmptySession()
-    const nextSessions = [next, ...sessions]
+    const nextSessions = [next, ...sessions.filter(hasMeaningfulNGOSessionContent)]
     setSessions(nextSessions)
     setActiveSessionId(next.id)
     if (mounted && userId) persistSessions(nextSessions, next.id)
@@ -151,7 +156,7 @@ export function useSessionPersistence({ intake, offers, sync, mounted, userId, t
         })
         const body = await response.json().catch(() => ({}))
         if (!response.ok && response.status !== 404) {
-          throw new Error(body?.error || 'Failed to delete conversation')
+          throw new Error(readApiError(body, 'Failed to delete conversation'))
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to delete conversation'

@@ -5,12 +5,14 @@ import {
   getAdminModeration,
   type AdminModerationState,
 } from '@/lib/auth';
-import { parseJsonObject, getErrorMessage } from '@/lib/utils';
+import { parseJsonObject, getErrorMessage, type JsonRecord } from '@/lib/utils';
 import type { Json, TablesUpdate } from '@/lib/database.types';
 import {
   applyAdminVerificationToProfile,
   syncAdminVerificationArtifacts,
 } from '@/lib/admin-verification-status';
+import { newsletterEventId, withNewsletterHistory } from '@/lib/platform-newsletter/history';
+import type { NewsletterKind } from '@/lib/platform-newsletter/actors';
 
 const allowedUserTypes = new Set(['individual', 'ngo', 'company']);
 const allowedVerificationStatuses = new Set(['unverified', 'pending', 'verified', 'suspended']);
@@ -27,6 +29,20 @@ async function updateUser(userId: number, updatePayload: TablesUpdate<'users'>) 
   if (error) throw error;
   forgetSessionBlockReason(userId);
   return data;
+}
+
+function appendAdminNewsletterEvent(
+  profileData: unknown,
+  userId: number,
+  kind: NewsletterKind,
+  at: string
+): Json {
+  return withNewsletterHistory(profileData, {
+    id: newsletterEventId(kind, userId, at),
+    kind,
+    at,
+    source: 'admin',
+  }) as Json
 }
 
 function withModeration(
@@ -77,17 +93,23 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       const until = new Date();
       until.setUTCDate(until.getUTCDate() + days);
       const reason = String(body?.reason || '').trim() || null;
+      const at = new Date().toISOString();
       const updatePayload: TablesUpdate<'users'> = {
         locked_until: until.toISOString(),
         account_status: 'suspended',
-        profile_data: withModeration(existingUser.profile_data, {
-          permanently_banned: false,
-          suspended_at: new Date().toISOString(),
-          suspended_until: until.toISOString(),
-          suspend_days: days,
-          reason,
-        }),
-        updated_at: new Date().toISOString(),
+        profile_data: appendAdminNewsletterEvent(
+          withModeration(existingUser.profile_data, {
+            permanently_banned: false,
+            suspended_at: at,
+            suspended_until: until.toISOString(),
+            suspend_days: days,
+            reason,
+          }),
+          userId,
+          'suspended',
+          at
+        ),
+        updated_at: at,
       };
 
       const data = await updateUser(userId, updatePayload);
@@ -124,20 +146,26 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     if (action === 'ban') {
       const reason = String(body?.reason || '').trim() || null;
+      const at = new Date().toISOString();
       const updatePayload: TablesUpdate<'users'> = {
         account_status: 'banned',
         locked_until: null,
-        profile_data: withModeration(existingUser.profile_data, {
-          permanently_banned: true,
-          banned_at: new Date().toISOString(),
-          banned_email: existingUser.email,
-          banned_phone: existingUser.phone || null,
-          suspended_at: null,
-          suspended_until: null,
-          suspend_days: null,
-          reason,
-        }),
-        updated_at: new Date().toISOString(),
+        profile_data: appendAdminNewsletterEvent(
+          withModeration(existingUser.profile_data, {
+            permanently_banned: true,
+            banned_at: at,
+            banned_email: existingUser.email,
+            banned_phone: existingUser.phone || null,
+            suspended_at: null,
+            suspended_until: null,
+            suspend_days: null,
+            reason,
+          }),
+          userId,
+          'banned',
+          at
+        ),
+        updated_at: at,
       };
 
       const data = await updateUser(userId, updatePayload);
@@ -182,11 +210,20 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       }
       updatePayload.verification_status = nextVerification;
       const userType = String((updatePayload.user_type || existingUser.user_type) || '').toLowerCase();
-      updatePayload.profile_data = applyAdminVerificationToProfile(
+      let nextProfile = applyAdminVerificationToProfile(
         existingUser.profile_data,
         userType,
         nextVerification
-      ) as Json;
+      );
+      const previousStatus = String(existingUser.verification_status || '').toLowerCase();
+      if (
+        (nextVerification === 'verified' || nextVerification === 'unverified') &&
+        previousStatus !== nextVerification
+      ) {
+        const at = String(updatePayload.updated_at);
+        nextProfile = appendAdminNewsletterEvent(nextProfile, userId, nextVerification, at) as JsonRecord;
+      }
+      updatePayload.profile_data = nextProfile;
     }
 
     if (Object.keys(updatePayload).length === 1) {

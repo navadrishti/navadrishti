@@ -1,5 +1,6 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -82,7 +83,7 @@ export function AdminRefundsPanel() {
       if (query.trim()) params.set('q', query.trim());
       const response = await fetch(`/api/admin/payments?${params.toString()}`, { credentials: 'include' });
       const data = await response.json();
-      if (!response.ok || !data?.success) throw new Error(data?.error || 'Failed to load payments');
+      if (!response.ok || !data?.success) throw new Error(readApiError(data, 'Failed to load payments'));
       setPayments(Array.isArray(data.payments) ? data.payments : []);
     } catch (error) {
       sonnerToast.error(getErrorMessage(error) || 'Failed to load payments');
@@ -139,7 +140,7 @@ export function AdminRefundsPanel() {
         }),
       });
       const data = await response.json();
-      if (!response.ok || !data?.success) throw new Error(data?.error || 'Failed to initiate refund');
+      if (!response.ok || !data?.success) throw new Error(readApiError(data, 'Failed to initiate refund'));
       sonnerToast.success(data?.data?.message || 'Refund initiated');
       for (const action of data?.data?.actions || []) sonnerToast.info(action);
       for (const warning of data?.data?.warnings || []) sonnerToast.warning(warning);

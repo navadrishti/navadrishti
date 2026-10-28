@@ -6,6 +6,7 @@ import { CampaignVolunteerAssignmentCard } from '@/components/campaign-volunteer
 import { CampaignAssignmentDetails } from './campaign-assignment-details';
 import { CsrProjectCard } from './csr-project-card';
 import { LeadInvitationsPanel } from './lead-invitations-panel';
+import { ProjectLeadInvitationsPanel } from './project-lead-invitations-panel';
 import type { CampaignLeadAssignment, CampaignVolunteerAssignment, CsrProjectsTab, NgoCsrProject } from './types';
 import type { NgoDashboardData } from './use-ngo-dashboard-data';
 import type { NgoDashboardActions } from './use-ngo-dashboard-actions';
@@ -44,7 +45,9 @@ export function CsrAssignmentsPanel({ data, actions, groups, tab, onTabChange }:
       variant={variant}
       evidence={data.projectEvidenceById[project.id]}
       loadingEvidence={data.loadingEvidenceProjectId === project.id}
+      submittingEvidence={data.submittingEvidenceProjectId === project.id}
       onViewEvidence={data.fetchProjectEvidenceTimeline}
+      onSubmitEvidence={variant === 'ongoing' ? data.submitProjectEvidence : undefined}
     />
   );
 
@@ -61,6 +64,8 @@ export function CsrAssignmentsPanel({ data, actions, groups, tab, onTabChange }:
           onClick={() => {
             void data.fetchCSRProjects();
             void data.fetchCampaignLeadInvitations();
+            void data.fetchProjectLeadInvitations();
+            void data.fetchCampaignVolunteerAssignments();
             void data.fetchCampaignLeadAssignments();
             void data.fetchCsrCapabilityRentals();
           }}
@@ -74,7 +79,7 @@ export function CsrAssignmentsPanel({ data, actions, groups, tab, onTabChange }:
       ) : (
         <Tabs value={tab} onValueChange={(value) => onTabChange(value as CsrProjectsTab)} className="w-full">
           <TabsList className="grid w-full grid-cols-3 h-auto">
-            <TabsTrigger value="invitations">Invitations ({data.campaignLeadInvitations.length})</TabsTrigger>
+            <TabsTrigger value="invitations">Invitations ({data.campaignLeadInvitations.length + data.projectLeadInvitations.length})</TabsTrigger>
             <TabsTrigger value="ongoing">Ongoing CSR ({ongoingLeadAssignments.length + ongoingVolunteerAssignments.length + ongoingProjects.length})</TabsTrigger>
             <TabsTrigger value="completed">Completed CSR ({completedLeadAssignments.length + completedVolunteerAssignments.length + completedProjects.length})</TabsTrigger>
           </TabsList>
@@ -85,7 +90,14 @@ export function CsrAssignmentsPanel({ data, actions, groups, tab, onTabChange }:
               loading={data.loadingCampaignLeadInvitations}
               respondingCampaignId={actions.respondingCampaignLeadInviteId}
               onRefresh={data.fetchCampaignLeadInvitations}
-              onAccept={(campaignId) => actions.respondCampaignLeadInvitation(campaignId, 'accepted')}
+              onRespond={actions.respondCampaignLeadInvitation}
+            />
+            <ProjectLeadInvitationsPanel
+              invitations={data.projectLeadInvitations}
+              loading={data.loadingProjectLeadInvitations}
+              respondingInviteId={actions.respondingProjectLeadInviteId}
+              onRefresh={data.fetchProjectLeadInvitations}
+              onRespond={actions.respondProjectLeadInvitation}
             />
           </TabsContent>
 

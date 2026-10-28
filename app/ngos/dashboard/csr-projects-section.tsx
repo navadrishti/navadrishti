@@ -38,6 +38,7 @@ export function CsrProjectsSection({
   };
   const otherCsrCount =
     data.campaignLeadInvitations.length +
+    data.projectLeadInvitations.length +
     groups.ongoingLeadAssignments.length +
     groups.completedLeadAssignments.length +
     groups.ongoingProjects.length +

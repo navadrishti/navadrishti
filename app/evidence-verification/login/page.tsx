@@ -1,5 +1,6 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -74,7 +75,7 @@ export default function EvidenceVerificationLoginPage() {
 
       const payload = await response.json();
       if (!response.ok || !payload?.success) {
-        setError(payload?.error || 'Login failed');
+        setError(readApiError(payload, 'Login failed'));
         return;
       }
 

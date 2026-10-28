@@ -5,13 +5,15 @@ import { isCapabilityRentalTransaction, resolveCapabilityRentalRate } from '@/li
 import { loadAssignmentOutstanding } from '@/lib/engagement-settlement';
 import { parseJsonObject } from '@/lib/utils';
 import type { TablesUpdate } from '@/lib/database.types';
+import { newsletterEventId, withNewsletterHistory } from '@/lib/platform-newsletter/history';
+import type { NewsletterKind } from '@/lib/platform-newsletter/actors';
 
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ requestId: string }> }
 ) {
   try {
-    const claims = getTokenClaims(request);
+    const claims = await getTokenClaims(request);
     if (!claims) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
@@ -174,6 +176,23 @@ export async function PUT(
     }
     if (!claimedRequest) {
       return NextResponse.json({ error: 'This request was changed by someone else. Refresh and try again.' }, { status: 409 });
+    }
+
+    if (status === 'accepted' || status === 'completed') {
+      const kind: NewsletterKind = status === 'accepted' ? 'capability_used' : 'capability_closed';
+      await supabase
+        .from('service_offers')
+        .update({
+          offer_details: withNewsletterHistory(parseJsonObject(offer.offer_details), {
+            id: newsletterEventId(kind, offer.id, nowIso),
+            kind,
+            at: nowIso,
+            source: 'user',
+            href: `/service-offers/${offer.id}`,
+          }),
+          updated_at: nowIso,
+        })
+        .eq('id', offer.id);
     }
 
     if (status === 'completed' && liveAssignment) {

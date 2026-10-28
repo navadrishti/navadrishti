@@ -1,5 +1,6 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { getErrorMessage } from '@/lib/utils';
@@ -36,7 +37,7 @@ export function useSupportTickets(token: string | null | undefined, inboxActive:
       });
       const payload = await response.json();
       if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error || 'Failed to load tickets');
+        throw new Error(readApiError(payload, 'Failed to load tickets'));
       }
       setTickets(Array.isArray(payload.tickets) ? payload.tickets : []);
     } catch (error) {
@@ -56,7 +57,7 @@ export function useSupportTickets(token: string | null | undefined, inboxActive:
       });
       const payload = await response.json();
       if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error || 'Failed to load ticket');
+        throw new Error(readApiError(payload, 'Failed to load ticket'));
       }
       setSelectedTicket(payload.ticket || null);
       setMessages(Array.isArray(payload.messages) ? payload.messages : []);
@@ -106,7 +107,7 @@ export function useSupportTickets(token: string | null | undefined, inboxActive:
       });
       const payload = await response.json();
       if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error || 'Failed to send message');
+        throw new Error(readApiError(payload, 'Failed to send message'));
       }
       setSelectedTicket(payload.ticket || null);
       setMessages(Array.isArray(payload.messages) ? payload.messages : []);

@@ -22,7 +22,7 @@ export async function GET(
 ) {
   try {
     const caMode = await hasActiveCASession(request);
-    const user = caMode ? null : getAuthUserFromRequest(request);
+    const user = caMode ? null : await getAuthUserFromRequest(request);
 
     if (user) {
       assertUserType(user, ['company', 'ngo']);
@@ -80,7 +80,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const user = getAuthUserFromRequest(request);
+    const user = await getAuthUserFromRequest(request);
     assertUserType(user, ['company']);
 
     const { id: projectId } = await params;

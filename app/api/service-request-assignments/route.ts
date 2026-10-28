@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     const mode = searchParams.get('mode') || ''
 
     // Project detail stays publicly readable; every other mode needs a session.
-    const claims = getTokenClaims(request)
+    const claims = await getTokenClaims(request)
     if (!claims && mode !== 'project-detail') {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
@@ -148,7 +148,7 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const decoded = getTokenClaims(request)
+    const decoded = await getTokenClaims(request)
     if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }

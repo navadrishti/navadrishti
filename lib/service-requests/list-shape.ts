@@ -4,8 +4,18 @@ import { formatProjectLocation } from '@/lib/service-request-allocation';
 import type { Tables } from '@/lib/database.types';
 import { parseImageArray } from './parsing';
 
-type ListingRequester = Pick<Tables<'users'>, 'id' | 'name' | 'email' | 'user_type'> & {
+type ListingRequester = Pick<Tables<'users'>, 'id' | 'name' | 'user_type'> & {
+  email?: Tables<'users'>['email'] | null;
+  phone?: Tables<'users'>['phone'] | null;
+  profile_image?: Tables<'users'>['profile_image'] | null;
+  profile_data?: Tables<'users'>['profile_data'] | null;
   verification_status?: Tables<'users'>['verification_status'];
+};
+
+/** Marketplace-safe NGO identity. Email, phone and profile_data stay off public listings. */
+export type PublicRequester = Pick<ListingRequester, 'id' | 'name' | 'user_type'> & {
+  verification_status?: ListingRequester['verification_status'];
+  profile_image?: ListingRequester['profile_image'];
 };
 
 export type ListingSource = Tables<'service_requests'> & {
@@ -24,7 +34,8 @@ type ListingProject = {
 };
 
 /** A listing row enriched with parsed requirements, a flattened project summary and derived scores. */
-export type ListingRequest = Omit<ListingSource, 'project' | 'estimated_budget'> & {
+export type ListingRequest = Omit<ListingSource, 'project' | 'estimated_budget' | 'requester'> & {
+  requester?: PublicRequester;
   project: ListingProject | null | undefined;
   estimated_budget: string;
   ngo_name?: string;
@@ -63,6 +74,58 @@ export function isCompanyAssignedNeed(request: { project_context?: unknown; requ
   );
 
   return (Number.isFinite(assignedCompanyId) && assignedCompanyId > 0) || handoffFlag || assignmentMode === 'company_project_handoff';
+}
+
+export function toPublicRequester(
+  requester: ListingRequester | Record<string, unknown> | null | undefined
+): PublicRequester | undefined {
+  if (!requester || typeof requester !== 'object') return undefined;
+  const row = requester as Record<string, unknown>;
+  const id = Number(row.id);
+  if (!Number.isFinite(id) || id <= 0) return undefined;
+  return {
+    id,
+    name: row.name == null ? '' : String(row.name),
+    user_type: (row.user_type as PublicRequester['user_type']) ?? 'individual',
+    verification_status: (row.verification_status as PublicRequester['verification_status']) ?? null,
+    profile_image: row.profile_image == null ? null : String(row.profile_image),
+  };
+}
+
+export function canViewNeedPrivateFields(
+  viewerId: number | null | undefined,
+  need: { ngo_id?: number | null; requester?: { id?: number | null } | null }
+): boolean {
+  const id = Number(viewerId || 0);
+  if (!Number.isFinite(id) || id <= 0) return false;
+  return Number(need.ngo_id || 0) === id || Number(need.requester?.id || 0) === id;
+}
+
+export function redactNeedForViewer<T extends Record<string, unknown>>(
+  need: T,
+  viewerId: number | null | undefined
+): T {
+  if (canViewNeedPrivateFields(viewerId, need as { ngo_id?: number | null; requester?: { id?: number | null } | null })) {
+    return need;
+  }
+
+  const next: Record<string, unknown> = { ...need };
+  if (need.requester) next.requester = toPublicRequester(need.requester as ListingRequester);
+
+  const project = need.project;
+  if (project && typeof project === 'object' && !Array.isArray(project)) {
+    next.project = { ...(project as Record<string, unknown>), exact_address: null };
+  }
+
+  const context = parseJsonObject(need.project_context);
+  if (context.project && typeof context.project === 'object') {
+    next.project_context = {
+      ...context,
+      project: { ...parseJsonObject(context.project), exact_address: null },
+    };
+  }
+
+  return next as T;
 }
 
 export function isProjectLocked(item: { project_context?: unknown }): boolean {
@@ -136,7 +199,7 @@ function summarizeProject(
     return {
       id: String(request.project.id || ''),
       title: String(request.project.title || projectContextObj?.project_title || 'Project'),
-      location: formatProjectLocation(request.project.location, request.project.exact_address, projectContextObj?.project_location),
+      location: formatProjectLocation(request.project.location, projectContextObj?.project_location),
       timeline: String(request.project.timeline || projectContextObj?.project_timeline || ''),
       category: String(projectContextObj?.project_category || category || '')
     };
@@ -146,7 +209,7 @@ function summarizeProject(
     return {
       id: String(projectContextObj.project.id || ''),
       title: String(projectContextObj.project_title || projectContextObj.project.title || ''),
-      location: formatProjectLocation(projectContextObj.project_location, projectContextObj.project.exact_address),
+      location: formatProjectLocation(projectContextObj.project_location, projectContextObj.project.location),
       timeline: String(projectContextObj.project_timeline || projectContextObj.project.timeline || ''),
       category: String(projectContextObj.project_category || projectContextObj.project.category || '')
     };
@@ -214,6 +277,7 @@ export function shapeListingRequest(request: ListingSource): ListingRequest {
 
   return {
     ...request,
+    requester: toPublicRequester(request.requester),
     ...(request.requester ? { ngo_name: request.requester.name } : {}),
     images,
     request_type: request.request_type || requirementsObj.request_type || (SERVICE_REQUEST_TYPES.includes(request.category) ? request.category : 'Skill / Service Need'),

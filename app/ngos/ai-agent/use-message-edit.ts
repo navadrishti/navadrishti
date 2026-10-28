@@ -1,5 +1,5 @@
-import { type NGOAIAgentSession, type ProjectIntakeData, createEmptyNeed, getNeedQuestions, projectQuestions } from "./intake"
-import { getEditedAnswerPrompt } from "./conversation"
+import { type NGOAIAgentSession } from "./intake"
+import { applyEditedNgoUserAnswer } from "./conversation"
 import type { IntakeState } from "./use-intake-state"
 
 type MessageEditOptions = {
@@ -10,9 +10,15 @@ type MessageEditOptions = {
   canPersist: boolean
 }
 
+function upsertSession(sessions: NGOAIAgentSession[], session: NGOAIAgentSession) {
+  return sessions.some((item) => item.id === session.id)
+    ? sessions.map((item) => (item.id === session.id ? session : item))
+    : [session, ...sessions]
+}
+
 /**
  * Editing an earlier answer truncates the chat after it, re-asks the next question
- * and clears any later answers that depended on it.
+ * with the updated value, and clears later answers that depended on it.
  */
 export function useMessageEdit({ intake, normalizeSessionFromState, sessions, persistSessions, canPersist }: MessageEditOptions) {
   const {
@@ -20,9 +26,12 @@ export function useMessageEdit({ intake, normalizeSessionFromState, sessions, pe
     setMessages,
     needsData,
     setNeedsData,
+    needCount,
     setNeedCount,
+    projectData,
     setProjectData,
     setProjectStep,
+    setActiveNeedIndex,
     setActiveNeedQuestionIndex,
     setConversationStage,
     intakePath,
@@ -30,64 +39,47 @@ export function useMessageEdit({ intake, normalizeSessionFromState, sessions, pe
     setGeneratedDraft,
   } = intake
 
+  const persistEditedSession = (overrides: Partial<NGOAIAgentSession>) => {
+    const current = normalizeSessionFromState()
+    if (!current || !canPersist) return
+    const nextSession = { ...current, ...overrides, updatedAt: new Date().toISOString() }
+    persistSessions(upsertSession(sessions, nextSession), nextSession.id)
+  }
+
   const saveEditedMessage = (idx: number, newContent: string) => {
-    const userMsgIndices = messages.map((m, i) => ({ m, i })).filter((x) => x.m.role === 'user').map((x) => x.i)
-    const pos = userMsgIndices.indexOf(idx)
-    // The first user message is the Need/Project choice; question answers start at position 1.
-    const answerPos = Math.max(0, pos - 1)
-    const assistantPrompt = getEditedAnswerPrompt(pos, intakePath, needsData[0]?.requestType)
-
-    setMessages((cur) => {
-      const next = cur.slice(0, idx + 1).map((m, i) => (i === idx ? { ...m, content: `${newContent} (edited)` } : m))
-      next.push({ role: 'assistant', content: assistantPrompt })
-      return next
+    const applied = applyEditedNgoUserAnswer({
+      messages,
+      projectData,
+      needsData,
+      needCount,
+      intakePath,
+      index: idx,
+      text: newContent,
     })
+    if (!applied) return
 
-    if (pos === 0) {
-      const normalized = newContent.toLowerCase()
-      if (normalized.includes('need') && !normalized.includes('project')) {
-        setIntakePath('need')
-        setConversationStage('need')
-        setNeedCount(1)
-        setNeedsData([createEmptyNeed()])
-        setActiveNeedQuestionIndex(0)
-      } else if (normalized.includes('project')) {
-        setIntakePath('project')
-        setConversationStage('project')
-        setProjectStep(0)
-      } else {
-        setConversationStage('entry')
-        setIntakePath(null)
-      }
-    } else if (intakePath === 'project' && answerPos < projectQuestions.length) {
-      const key = projectQuestions[answerPos].key as keyof ProjectIntakeData
-      setProjectData((prev) => {
-        const next = { ...prev, [key]: newContent }
-        for (let k = answerPos + 1; k < projectQuestions.length; k++) {
-          ;(next as Record<string, unknown>)[projectQuestions[k].key] = ''
-        }
-        return next
-      })
-      if (answerPos + 1 < projectQuestions.length) {
-        setConversationStage('project')
-        setProjectStep(answerPos + 1)
-        setGeneratedDraft(null)
-      } else {
-        setConversationStage('complete')
-      }
-    } else if (intakePath === 'need') {
-      setGeneratedDraft(null)
-      setConversationStage('need')
-      setActiveNeedQuestionIndex(Math.min(answerPos + 1, getNeedQuestions(needsData[0]?.requestType).length - 1))
-    }
-
-    setTimeout(() => {
-      const updatedSession = normalizeSessionFromState()
-      if (updatedSession && canPersist) {
-        const nextSessions = sessions.map((s) => (s.id === updatedSession.id ? updatedSession : s))
-        persistSessions(nextSessions, updatedSession.id)
-      }
-    }, 0)
+    setMessages(applied.messages)
+    setProjectData(applied.projectData)
+    setNeedsData(applied.needsData)
+    setNeedCount(applied.needCount)
+    setIntakePath(applied.intakePath)
+    setConversationStage(applied.conversationStage)
+    setProjectStep(applied.projectStep)
+    setActiveNeedIndex(applied.activeNeedIndex)
+    setActiveNeedQuestionIndex(applied.activeNeedQuestionIndex)
+    setGeneratedDraft(null)
+    persistEditedSession({
+      messages: applied.messages,
+      projectData: applied.projectData,
+      needsData: applied.needsData,
+      needCount: applied.needCount,
+      intakePath: applied.intakePath,
+      conversationStage: applied.conversationStage,
+      projectStep: applied.projectStep,
+      activeNeedIndex: applied.activeNeedIndex,
+      activeNeedQuestionIndex: applied.activeNeedQuestionIndex,
+      generatedDraft: null,
+    })
   }
 
   return { saveEditedMessage }

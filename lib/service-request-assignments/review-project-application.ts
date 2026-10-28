@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { supabase, buildProjectLeadNgoPatch } from '@/lib/db'
+import { supabase } from '@/lib/db'
 import { assertNgoCsr1CoversProject } from '@/lib/server-auth'
 import { parseJsonObject } from '@/lib/utils'
 import {
@@ -228,7 +228,6 @@ export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
 
     if (decision === 'accepted') {
       projectUpdate.status = 'in_progress'
-      Object.assign(projectUpdate, buildProjectLeadNgoPatch(userId))
       projectUpdate.assigned_company_user_id = companyId
       projectUpdate.assignment_status = 'accepted'
     } else if (decision === 'rejected' && !projectAcceptedCompanyId) {
@@ -318,7 +317,6 @@ export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
           .from('service_request_projects')
           .update({
             status: 'in_progress',
-            ...buildProjectLeadNgoPatch(userId),
             assigned_company_user_id: companyId,
             assignment_status: 'accepted',
             updated_at: new Date().toISOString()
@@ -347,7 +345,6 @@ export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
             .from('service_request_projects')
             .update({
               status: 'in_progress',
-              ...buildProjectLeadNgoPatch(userId),
               assignment_status: 'accepted',
               updated_at: new Date().toISOString()
             })

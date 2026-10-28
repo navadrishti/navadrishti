@@ -21,6 +21,11 @@ export const reviewQueueProjectApplicationStatuses = ['pending', 'pledged', 'inv
 export const COMPANY_PROJECT_CONTRIBUTION_TYPE = 'company_project_csr'
 export const LEAD_NGO_INVITE_CONTRIBUTION_TYPE = 'project_lead_ngo_invite'
 export const EXPIRED_STATUS = 'expired'
+export const PENDING_LEAD_INVITE_STATUSES = ['pending', 'invited', 'pending_acceptance', 'awaiting_acceptance', 'offered']
+
+export function projectLeadInviteId(projectId: string, ngoId: number, companyId: number) {
+  return `lead-invite:${projectId}:${ngoId}:${companyId}`
+}
 
 type AssignmentMeta = { project_id?: unknown; note?: unknown }
 

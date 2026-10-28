@@ -1,5 +1,6 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useEffect, useEffectEvent, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -142,7 +143,7 @@ export default function CADashboardClient() {
         const response = await fetch('/api/ca/history', { credentials: 'include' });
         const payload = await response.json();
         if (!response.ok) {
-          throw new Error(payload.error || 'Failed to load review history');
+          throw new Error(readApiError(payload, 'Failed to load review history'));
         }
         setHistory(Array.isArray(payload.data) ? payload.data : []);
         return;
@@ -152,7 +153,7 @@ export default function CADashboardClient() {
       const payload = await response.json();
 
       if (!response.ok) {
-        throw new Error(payload.error || 'Failed to load verification queue');
+        throw new Error(readApiError(payload, 'Failed to load verification queue'));
       }
 
       setIndividuals((payload.individuals || []).map(sanitizeCaReviewItem));
@@ -218,7 +219,7 @@ export default function CADashboardClient() {
     try {
       const response = await fetch(`/api/ca/review?type=${type}&id=${item.id}`, { credentials: 'include' });
       const data = await response.json();
-      if (response.ok && data.data) {
+      if (response.ok && data?.success !== false && data.data) {
         const review = sanitizeCaReviewItem(data.data as CAReviewItem);
         setSelectedItem(review);
         setComplianceTags(
@@ -259,7 +260,7 @@ export default function CADashboardClient() {
       });
 
       const data = await response.json().catch(() => ({}));
-      if (response.ok) {
+      if (response.ok && data?.success !== false) {
         toast.success(data.message || `${selectedItem.name || selectedItem.company_name || selectedItem.ngo_name} ${action === 'approve' ? 'approved' : 'rejected'}`);
         if (selectedType === 'individuals') {
           setIndividuals(individuals.filter(ind => ind.id !== selectedItem.id));
@@ -273,7 +274,7 @@ export default function CADashboardClient() {
         setRejectionReason('');
         setComplianceTags([]);
       } else {
-        toast.error(data.error || 'Failed to process action');
+        toast.error(readApiError(data, 'Failed to process action'));
       }
     } catch (error) {
       console.error('Action failed:', error);

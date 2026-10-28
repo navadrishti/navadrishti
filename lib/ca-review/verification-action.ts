@@ -15,6 +15,7 @@ import {
   resolveHistoryKind,
   withCaReviewHistory,
 } from './history'
+import { newsletterEventId, withNewsletterHistory } from '@/lib/platform-newsletter/history'
 import { notifyUser } from './notifications'
 import { TYPE_CONFIG } from './queue-config'
 
@@ -302,6 +303,15 @@ export async function applyCAVerificationAction(options: {
       next_status: userStatus,
     })
   )
+
+  if (action === 'approve' && userStatus === 'verified' && currentUserStatus !== 'verified') {
+    nextProfileData = withNewsletterHistory(nextProfileData, {
+      id: newsletterEventId('verified', row.user_id, reviewedAt),
+      kind: 'verified',
+      at: reviewedAt,
+      source: 'ca',
+    })
+  }
 
   const userUpdate: TablesUpdate<'users'> = {
     verification_status: userStatus,

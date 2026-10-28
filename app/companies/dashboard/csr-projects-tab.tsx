@@ -50,6 +50,7 @@ export function CsrProjectsTab({
 
       <PublishedCampaignsSection
         campaigns={data.publishedCsrCampaigns}
+        drafts={data.draftCsrCampaigns}
         loading={data.loadingPublishedCsrCampaigns}
         onRefresh={data.fetchPublishedCsrCampaigns}
       />

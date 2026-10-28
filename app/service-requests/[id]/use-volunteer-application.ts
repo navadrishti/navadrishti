@@ -1,5 +1,6 @@
 'use client'
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
@@ -123,21 +124,23 @@ export function useVolunteerApplication({
           })
 
           setTimeout(() => {
-            router.push('/service-requests?tab=volunteering')
+            router.push(user.user_type === 'ngo' ? '/ngos/dashboard' : '/individuals/dashboard')
           }, 2000)
         } else {
           toast({
             title: 'Application Failed',
-            description: result.error || 'Failed to submit application',
+            description: readApiError(result, 'Failed to submit application'),
             variant: 'destructive'
           })
         }
       } else {
         const error = await response.json()
-        const errorMsg = error.error || 'Failed to submit application'
+        const errorMsg = readApiError(error, 'Failed to submit application')
 
         if (error.requiresVerification) {
-          const verificationMessage = error.message || 'Please complete account verification before applying for volunteer opportunities.'
+          const verificationMessage = typeof error.message === 'string' && error.message.trim()
+            ? error.message
+            : 'Please complete account verification before applying for volunteer opportunities.'
           toast({
             title: 'Verification Required',
             description: verificationMessage,
@@ -190,7 +193,7 @@ export function useVolunteerApplication({
 
       const data = await response.json()
       if (!response.ok || !data.success) {
-        toast({ title: 'Update failed', description: data.error || 'Could not mark completion', variant: 'destructive' })
+        toast({ title: 'Update failed', description: readApiError(data, 'Could not mark completion'), variant: 'destructive' })
         return
       }
 

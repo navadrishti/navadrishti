@@ -1,11 +1,17 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { getRuntimeServiceFlags, requiredServicesReady } from '@/lib/runtime-services';
+import {
+  getRuntimeServiceFlags,
+  isProductionRuntime,
+  productionConfigIssues,
+  requiredServicesReady,
+} from '@/lib/runtime-services';
 import { getErrorMessage } from '@/lib/utils';
 
 export async function GET() {
   try {
     const services = getRuntimeServiceFlags();
+    const configIssues = isProductionRuntime() ? productionConfigIssues() : [];
     const checks = {
       status: 'healthy',
       timestamp: new Date().toISOString(),
@@ -13,7 +19,7 @@ export async function GET() {
       version: process.env.npm_package_version || '1.0.0',
       checks: {
         database: 'unknown',
-        core_config: requiredServicesReady(services) ? 'healthy' : 'unhealthy',
+        core_config: requiredServicesReady(services) && configIssues.length === 0 ? 'healthy' : 'unhealthy',
       },
       services,
     };
@@ -43,7 +49,10 @@ export async function GET() {
     const isHealthy = checks.checks.database === 'healthy' && checks.checks.core_config === 'healthy';
     checks.status = isHealthy ? 'healthy' : 'unhealthy';
 
-    return NextResponse.json(checks, {
+    return NextResponse.json({
+      ...checks,
+      ...(configIssues.length > 0 ? { config_issues: configIssues } : {}),
+    }, {
       status: isHealthy ? 200 : 503,
       headers: {
         'Cache-Control': 'no-cache, no-store, must-revalidate',

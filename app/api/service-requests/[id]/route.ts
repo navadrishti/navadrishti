@@ -6,7 +6,8 @@ import {
   resolveFundingTargetInr,
 } from '@/lib/service-request-allocation';
 import { getTokenClaims, CSR_ELIGIBILITY_REQUIRED_MESSAGE, CSR_OWN_PROJECT_TIMELINE_MESSAGE } from '@/lib/auth';
-import { ngoUserIsCsrEligible, ngoUserIsCsrEligibleForProject } from '@/lib/server-auth';
+import { findAuthUser, ngoUserIsCsrEligible, ngoUserIsCsrEligibleForProject } from '@/lib/server-auth';
+import { redactNeedForViewer } from '@/lib/service-requests/list-shape';
 import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_TYPES } from '@/lib/categories';
 import { isHiddenNgoNetworkPaymentChannel } from '@/lib/razorpay-route';
 import { ServiceRequestDeleteBlockedError } from '@/lib/service-requests/errors';
@@ -108,7 +109,7 @@ function isLockedCsrProject(request: { project_context?: unknown }): boolean {
 
 // GET - Fetch single service request
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -158,9 +159,10 @@ export async function GET(
       serviceRequest.funding_progress = funding.progress;
     }
 
+    const viewer = findAuthUser(request, { allowCookie: true });
     return NextResponse.json({
       success: true,
-      data: serviceRequest
+      data: redactNeedForViewer(serviceRequest, viewer?.id)
     });
 
   } catch (error) {
@@ -183,7 +185,7 @@ export async function PUT(
   try {
     const { id } = await params;
     
-    const decoded = getTokenClaims(request);
+    const decoded = await getTokenClaims(request);
     if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
@@ -219,9 +221,28 @@ export async function PUT(
       details
     } = body;
 
-    const missingRequiredFields = [title, description, location, timeline, impact_description].some((value) => !String(value ?? '').trim());
+    const existingRequest = await db.serviceRequests.getById(requestId);
+
+    if (!existingRequest) {
+      return NextResponse.json({ error: 'Service request not found' }, { status: 404 });
+    }
+
+    if (Number(existingRequest.ngo_id) !== userId) {
+      return NextResponse.json({ error: 'You can only update your own requests' }, { status: 403 });
+    }
+
+    const existingRequirements = parseJsonObject(existingRequest.requirements);
+    const locationValue = String(location ?? '').trim() || String(existingRequest.location || '').trim();
+    const timelineValue = String(timeline ?? '').trim()
+      || String(existingRequirements.timeline || '').trim();
+
+    const missingRequiredFields = [title, description, locationValue, timelineValue, impact_description].some((value) => !String(value ?? '').trim());
     if (missingRequiredFields || !request_type || !(project_category || category)) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    if (timelineValue.toLowerCase() === 'anytime') {
+      return NextResponse.json({ error: 'Timeline cannot be "Anytime"; provide an actual duration or a date.' }, { status: 400 });
     }
 
     if (!beneficiary_count || Number(beneficiary_count) <= 0) {
@@ -269,20 +290,8 @@ export async function PUT(
       return NextResponse.json({ error: 'Invalid project_category. Select a valid Schedule VII category.' }, { status: 400 });
     }
 
-    const trimmedTimeline = typeof timeline === 'string' ? timeline.trim() : '';
-    const isAnytimeTimeline = trimmedTimeline.toLowerCase() === 'anytime';
-    const storedTimeline = trimmedTimeline && !isAnytimeTimeline ? trimmedTimeline : null;
-    const timelineLabel = isAnytimeTimeline ? 'Anytime' : (trimmedTimeline || 'Not specified');
-
-    const existingRequest = await db.serviceRequests.getById(requestId);
-
-    if (!existingRequest) {
-      return NextResponse.json({ error: 'Service request not found' }, { status: 404 });
-    }
-
-    if (Number(existingRequest.ngo_id) !== userId) {
-      return NextResponse.json({ error: 'You can only update your own requests' }, { status: 403 });
-    }
+    const storedTimeline = timelineValue;
+    const timelineLabel = timelineValue;
 
     if (isLockedCsrProject(existingRequest)) {
       return NextResponse.json({ error: 'This need is locked because the parent project is already assigned to a company.' }, { status: 409 });
@@ -377,9 +386,9 @@ export async function PUT(
         await db.requestProjects.update(String(resolvedProjectId), {
           title: String(projectPayload.title || '').trim() || undefined,
           description: String(projectPayload.description || '').trim() || null,
-          location: String(projectPayload.exact_address || projectPayload.location || location || '').trim() || undefined,
-          exact_address: String(projectPayload.exact_address || projectPayload.location || location || '').trim() || undefined,
-          timeline: String(projectPayload.timeline || timeline || '').trim() || null,
+          location: String(projectPayload.exact_address || projectPayload.location || locationValue || '').trim() || undefined,
+          exact_address: String(projectPayload.exact_address || projectPayload.location || locationValue || '').trim() || undefined,
+          timeline: String(projectPayload.timeline || timelineValue || '').trim() || null,
           updated_at: new Date().toISOString()
         });
       }
@@ -398,7 +407,7 @@ export async function PUT(
 
     const createdAtMs = Number(new Date(existingRequest.created_at || Date.now()));
     const safeCreatedAtMs = Number.isFinite(createdAtMs) ? createdAtMs : Date.now();
-    const mappedUrgency = deriveAutoUrgency(timeline, safeCreatedAtMs);
+    const mappedUrgency = deriveAutoUrgency(timelineValue, safeCreatedAtMs);
 
     const parsedImages = parseImageArray(images);
 
@@ -419,7 +428,7 @@ export async function PUT(
       title,
       description,
       category: normalizedProjectCategory,
-      location: resolvedProjectLocation || location,
+      location: resolvedProjectLocation || locationValue,
       urgency_level: mappedUrgency,
       requirements: JSON.stringify(requirementsData),
       image_url: parsedImages[0] || null,
@@ -461,7 +470,7 @@ export async function DELETE(
     // Await params to get the id
     const { id } = await params;
     
-    const decoded = getTokenClaims(request);
+    const decoded = await getTokenClaims(request);
     if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }

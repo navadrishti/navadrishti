@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createClient as createSupabaseClient } from '@/lib/supabase';
+import { clientAuthHeaders } from '@/lib/client-session';
 import type { CampaignVolunteerAssignmentItem } from '@/components/campaign-volunteer-assignment-card';
 import { getOfferRequestBucket, type OfferRequestItem } from '@/lib/offer-requests';
 import type { CapabilityOfferSummary } from '@/lib/service-offers';
@@ -21,16 +21,8 @@ export function useIndividualDashboardData(userId: number | undefined) {
   const fetchServiceOffers = async () => {
     try {
       setLoadingServiceOffers(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setServiceOffers([]);
-        return;
-      }
-
       const response = await fetch('/api/service-offers?view=my-offers&include_expired=true&limit=50', {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+        headers: clientAuthHeaders()
       });
 
       const data = await response.json();
@@ -45,16 +37,8 @@ export function useIndividualDashboardData(userId: number | undefined) {
   const fetchOfferRequests = async () => {
     try {
       setLoadingOfferRequests(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setOfferRequests([]);
-        return;
-      }
-
-      const response = await fetch('/api/service-offers/requests', {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+const response = await fetch('/api/service-offers/requests', {
+        headers: clientAuthHeaders()
       });
 
       const data = await response.json();
@@ -67,16 +51,9 @@ export function useIndividualDashboardData(userId: number | undefined) {
   };
 
   const fetchMyApplications = async () => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      setOngoingApplications([]);
-      setHistoryApplications([]);
-      return;
-    }
-
-    const [ongoingRes, historyRes] = await Promise.all([
-      fetch('/api/service-request-assignments?view=ongoing', { headers: { Authorization: `Bearer ${token}` } }),
-      fetch('/api/service-request-assignments?view=history', { headers: { Authorization: `Bearer ${token}` } })
+const [ongoingRes, historyRes] = await Promise.all([
+      fetch('/api/service-request-assignments?view=ongoing', { headers: clientAuthHeaders() }),
+      fetch('/api/service-request-assignments?view=history', { headers: clientAuthHeaders() })
     ]);
 
     const ongoingData = await ongoingRes.json();
@@ -89,14 +66,8 @@ export function useIndividualDashboardData(userId: number | undefined) {
   const fetchCampaignVolunteerAssignments = async () => {
     try {
       setLoadingCampaignVolunteerAssignments(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setCampaignVolunteerAssignments([]);
-        return;
-      }
-
-      const response = await fetch('/api/campaigns/volunteer-assignments', {
-        headers: { Authorization: `Bearer ${token}` }
+const response = await fetch('/api/campaigns/volunteer-assignments', {
+        headers: clientAuthHeaders()
       });
       const data = await response.json();
       setCampaignVolunteerAssignments(response.ok && data?.success && Array.isArray(data.data) ? data.data : []);
@@ -131,55 +102,14 @@ export function useIndividualDashboardData(userId: number | undefined) {
     fetchOfferRequests();
     fetchCampaignVolunteerAssignments();
 
-    const realtime = createSupabaseClient();
-    const channel = realtime.channel('realtime-individual-dashboard');
-    const refresh = (table: string) => {
-      if (table === 'service_offers') {
-        void fetchServiceOffers();
-        void fetchOfferRequests();
-        return;
-      }
-      if (
-        [
-          'service_request_applications',
-          'service_engagement_assignments',
-          'service_clients',
-          'service_attendance_entries',
-          'campaigns',
-          'csr_project_milestones',
-          'csr_payment_confirmations',
-          'service_request_shipments',
-          'shipment_tracking_events',
-        ].includes(table)
-      ) {
-        void fetchMyApplications();
-        void fetchCampaignVolunteerAssignments();
-      }
-    };
+    const poll = window.setInterval(() => {
+      void fetchServiceOffers();
+      void fetchOfferRequests();
+      void fetchMyApplications();
+      void fetchCampaignVolunteerAssignments();
+    }, 30_000);
 
-    [
-      'service_offers',
-      'service_request_applications',
-      'service_engagement_assignments',
-      'service_clients',
-      'service_attendance_entries',
-      'campaigns',
-      'csr_project_milestones',
-      'csr_payment_confirmations',
-      'service_request_shipments',
-      'shipment_tracking_events',
-    ].forEach((table) => {
-      channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => refresh(table));
-    });
-    void channel.subscribe();
-
-    return () => {
-      try {
-        realtime.removeChannel(channel);
-      } catch {
-        // The channel may already be closed during page navigation.
-      }
-    };
+    return () => window.clearInterval(poll);
   }, [userId]);
 
   return {

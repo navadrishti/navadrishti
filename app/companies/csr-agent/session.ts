@@ -127,6 +127,7 @@ export interface GeneratedCampaign {
 
 export interface CSRAgentSession {
   id: string
+  legacyId?: string | null
   title: string
   createdAt: string
   updatedAt: string

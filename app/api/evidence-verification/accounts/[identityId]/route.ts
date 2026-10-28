@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { supabase } from '@/lib/db';
 import { getAuthUserFromRequest, assertUserType, authErrorResponse } from '@/lib/server-auth';
 import { resetCompanyCaPassword } from '@/lib/company-ca';
+import { zodIssuesToUserMessage } from '@/lib/user-facing-error';
 
 const statusUpdateSchema = z.object({
   status: z.enum(['active', 'inactive']),
@@ -18,7 +19,7 @@ export async function PATCH(
   { params }: { params: { identityId: string } | Promise<{ identityId: string }> }
 ) {
   try {
-    const user = getAuthUserFromRequest(request);
+    const user = await getAuthUserFromRequest(request);
     assertUserType(user, ['company']);
 
     const body = await request.json();
@@ -60,7 +61,7 @@ export async function PATCH(
     const parsed = statusUpdateSchema.safeParse(body);
 
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.issues[0]?.message || 'Invalid payload' }, { status: 400 });
+      return NextResponse.json({ error: zodIssuesToUserMessage(parsed.error.issues) || 'Please check your details and try again.' }, { status: 400 });
     }
 
     const { status } = parsed.data;
@@ -107,7 +108,7 @@ export async function DELETE(
   { params }: { params: { identityId: string } | Promise<{ identityId: string }> }
 ) {
   try {
-    const user = getAuthUserFromRequest(request);
+    const user = await getAuthUserFromRequest(request);
     assertUserType(user, ['company']);
 
     const resolvedParams = await Promise.resolve(params);

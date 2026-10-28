@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
+import { looksTechnicalError, toUserFacingError } from '@/lib/user-facing-error';
 import { findAuthUser, hasActiveCASession, getCompanyCAFromRequest } from '@/lib/server-auth';
 import type { UserData } from '@/lib/auth';
 import type { Tables } from '@/lib/database.types';
@@ -345,6 +346,15 @@ export async function POST(
     return NextResponse.json({ success: true, data: { rental } });
   } catch (error) {
     console.error('CSR project capability dispatch error:', error);
-    return NextResponse.json({ error: 'Failed to update capability delivery' }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Failed to update capability delivery';
+    const text = message.toLowerCase();
+    const status = text.includes('not found')
+      ? 404
+      : (text.includes('permission') || text.includes('only the') || text.includes('insufficient'))
+        ? 403
+        : (text.includes('required') || text.includes('must ') || text.includes('applies to') || text.includes('invalid'))
+          ? 400
+          : 500;
+    return NextResponse.json({ error: looksTechnicalError(message) ? toUserFacingError(message) : message }, { status });
   }
 }

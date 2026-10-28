@@ -3,7 +3,7 @@ import { supabase } from '@/lib/db';
 import { authErrorResponse, getAuthUserFromRequest } from '@/lib/server-auth';
 export async function GET(request: NextRequest) {
   try {
-    const user = getAuthUserFromRequest(request);
+    const user = await getAuthUserFromRequest(request);
     const { searchParams } = new URL(request.url);
     const role = String(searchParams.get('role') || 'assigned');
     const targetType = searchParams.get('targetType');

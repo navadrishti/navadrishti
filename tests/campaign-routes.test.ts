@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { jsonRequest, tokenFor } from './support/requests'
 import { eqValue, hasCall, supabaseFake, type FakeQuery } from './support/supabase-fake'
 import { POST as acceptLead } from '@/app/api/campaigns/accept-lead/route'
+import { POST as declineLead } from '@/app/api/campaigns/decline-lead/route'
 import { DELETE as deleteCampaign, GET as getCampaign } from '@/app/api/campaigns/[id]/route'
 import { POST as volunteer } from '@/app/api/campaigns/[id]/volunteer/route'
 import { ngoUserIsCsrEligible } from '@/lib/server-auth'
@@ -170,6 +171,45 @@ describe('POST /api/campaigns/accept-lead', () => {
       status: 'active',
       impact_metrics: { volunteer_gap: 6, volunteer_capacity: 4, lead_ngo_accepted: true },
     })
+  })
+})
+
+describe('POST /api/campaigns/decline-lead', () => {
+  const decline = (token?: string, body: unknown = { campaign_id: 'c1' }) =>
+    declineLead(jsonRequest('http://localhost/api/campaigns/decline-lead', { token, body }))
+
+  it('returns 401 without a token', async () => {
+    expect((await declineLead(new NextRequest('http://localhost/api/campaigns/decline-lead', { method: 'POST', body: '{}' }))).status).toBe(401)
+  })
+
+  it('rejects companies with 403', async () => {
+    campaign = draftCampaign()
+    expect((await decline(tokenFor(10, 'company'))).status).toBe(403)
+    expect(supabaseFake.find('campaigns', 'update')).toHaveLength(0)
+  })
+
+  it('requires campaign_id', async () => {
+    expect((await decline(tokenFor(5, 'ngo'), {})).status).toBe(400)
+  })
+
+  it('refuses an NGO without a pending invite', async () => {
+    campaign = draftCampaign()
+    expect((await decline(tokenFor(9, 'ngo'))).status).toBe(403)
+  })
+
+  it('marks the invite rejected without claiming the lead', async () => {
+    campaign = draftCampaign()
+    const response = await decline(tokenFor(5, 'ngo'))
+    expect(response.status).toBe(200)
+    const [update] = supabaseFake.find('campaigns', 'update')
+    expect(update.payload).not.toHaveProperty('lead_ngo_user_id')
+    const nextInvites = (update.payload as { impact_metrics: { lead_ngo_invites: Array<{ ngo_id: number; status: string }> } })
+      .impact_metrics.lead_ngo_invites
+    expect(nextInvites.map((row) => [row.ngo_id, row.status])).toEqual([
+      [5, 'rejected'],
+      [6, 'invited'],
+      [7, 'rejected'],
+    ])
   })
 })
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { applyCAVerificationAction, caErrorResponse, requireCA } from '@/lib/ca-review';
 import { parseCAQueueType } from '@/lib/ca-review-types';
+import { getErrorMessage } from '@/lib/utils';
 
 export async function POST(request: NextRequest) {
   try {
@@ -49,7 +50,7 @@ export async function POST(request: NextRequest) {
     if (handled) return handled;
     console.error('Verification action error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to process verification' },
+      { error: getErrorMessage(error) || 'Failed to process verification' },
       { status: 500 }
     );
   }

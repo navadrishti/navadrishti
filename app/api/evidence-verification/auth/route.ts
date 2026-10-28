@@ -5,6 +5,7 @@ import { comparePassword, generateCompanyCAToken, type UserData } from '@/lib/au
 import { ensureCompanyCaIdAssigned } from '@/lib/company-ca';
 import { setEvidenceVerificationTokenCookie } from '@/lib/server-auth';
 import { limitAttempts } from '@/lib/rate-limit';
+import { zodIssuesToUserMessage } from '@/lib/user-facing-error';
 
 const loginSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
@@ -17,7 +18,7 @@ export async function POST(request: NextRequest) {
     const parsed = loginSchema.safeParse(body);
 
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.issues[0]?.message || 'Invalid credentials' }, { status: 400 });
+      return NextResponse.json({ error: zodIssuesToUserMessage(parsed.error.issues) || 'Invalid email or password' }, { status: 400 });
     }
 
     const { email, password } = parsed.data;

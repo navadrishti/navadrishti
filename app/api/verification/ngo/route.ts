@@ -12,7 +12,7 @@ import { untrustedDocumentResponse } from '@/lib/ca-review/document-urls';
 
 export async function POST(req: NextRequest) {
   try {
-    const claims = getTokenClaims(req);
+    const claims = await getTokenClaims(req);
     if (!claims) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
-    const claims = getTokenClaims(req);
+    const claims = await getTokenClaims(req);
     if (!claims) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

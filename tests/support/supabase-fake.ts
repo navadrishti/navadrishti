@@ -247,3 +247,11 @@ export function unknownColumns(queries: FakeQuery[]) {
   }
   return problems
 }
+
+export function isSessionOverlayQuery(query: FakeQuery) {
+  return query.table === 'users' || query.table === 'company_ca_identities'
+}
+
+export function businessQueries(queries: FakeQuery[]) {
+  return queries.filter((query) => !isSessionOverlayQuery(query))
+}

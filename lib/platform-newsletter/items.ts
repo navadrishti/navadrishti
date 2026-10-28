@@ -10,10 +10,47 @@ import {
   trimText,
   type ActorSource,
   type NewsletterItem,
+  type NewsletterKind,
 } from './actors'
+import { readNewsletterHistory, type NewsletterHistoryEntry } from './history'
+import { sortNewsletterItems } from './merge'
 import type { NewsletterLookups, NewsletterSources } from './sources'
 
 type PushItem = (item: NewsletterItem) => void
+
+function verificationTitle(actorName: string, entry: NewsletterHistoryEntry) {
+  if (entry.kind === 'unverified') {
+    return entry.source === 'admin'
+      ? `${actorName} was unverified by admin on GRAM`
+      : `${actorName} was unverified on GRAM`
+  }
+  return entry.source === 'admin'
+    ? `${actorName} was verified by admin on GRAM`
+    : `${actorName} was verified on GRAM`
+}
+
+function pushHistoryItems(
+  actor: ReturnType<typeof actorFromUser>,
+  history: NewsletterHistoryEntry[],
+  kinds: NewsletterKind[],
+  titleFor: (entry: NewsletterHistoryEntry) => string,
+  pushItem: PushItem
+) {
+  for (const entry of history) {
+    if (!kinds.includes(entry.kind) || !entry.at) continue
+    pushItem({
+      id: entry.id,
+      kind: entry.kind,
+      ...actor,
+      actorVerificationStatus: entry.kind === 'verified' ? 'verified' : entry.kind === 'unverified' ? 'unverified' : actor.actorVerificationStatus,
+      actorBadgeNumber: entry.kind === 'verified' ? actor.actorBadgeNumber : entry.kind === 'unverified' ? null : actor.actorBadgeNumber,
+      title: titleFor(entry),
+      summary: trimText(entry.summary || ''),
+      href: entry.href ?? null,
+      createdAt: entry.at,
+    })
+  }
+}
 
 function pushAccountItems(sources: NewsletterSources, lookups: NewsletterLookups, pushItem: PushItem) {
   for (const user of sources.users) {
@@ -29,10 +66,31 @@ function pushAccountItems(sources: NewsletterSources, lookups: NewsletterLookups
     })
   }
 
+  const seenVerificationUsers = new Set<number>()
+  for (const user of [...sources.verifiedUsers, ...sources.unverifiedUsers]) {
+    const userId = Number(user.id || 0)
+    if (userId > 0 && seenVerificationUsers.has(userId)) continue
+    if (userId > 0) seenVerificationUsers.add(userId)
+    const history = readNewsletterHistory(user.profile_data).filter(
+      (entry) => entry.kind === 'verified' || entry.kind === 'unverified'
+    )
+    if (history.length === 0) continue
+    const actor = actorFromUser(user)
+    pushHistoryItems(
+      actor,
+      history,
+      ['verified', 'unverified'],
+      (entry) => verificationTitle(actor.actorName, entry),
+      pushItem
+    )
+  }
+
   for (const user of sources.verifiedUsers) {
+    if (readNewsletterHistory(user.profile_data).some((entry) => entry.kind === 'verified' || entry.kind === 'unverified')) {
+      continue
+    }
     const createdAt =
-      isoOrNull(user.verified_at) ||
-      lookups.verificationDateByUserId[Number(user.id || 0)]
+      isoOrNull(user.verified_at) || lookups.verificationDateByUserId[Number(user.id || 0)]
     if (!createdAt) continue
     const actor = actorFromUser(user)
     pushItem({
@@ -47,6 +105,9 @@ function pushAccountItems(sources: NewsletterSources, lookups: NewsletterLookups
   }
 
   for (const user of sources.unverifiedUsers) {
+    if (readNewsletterHistory(user.profile_data).some((entry) => entry.kind === 'verified' || entry.kind === 'unverified')) {
+      continue
+    }
     const createdAt = isoOrNull(user.updated_at) || isoOrNull(user.verified_at)
     if (!createdAt) continue
     const actor = actorFromUser(user)
@@ -62,9 +123,26 @@ function pushAccountItems(sources: NewsletterSources, lookups: NewsletterLookups
   }
 
   for (const user of sources.statusUsers) {
+    const actor = actorFromUser(user)
+    const statusHistory = readNewsletterHistory(user.profile_data).filter(
+      (entry) => entry.kind === 'banned' || entry.kind === 'suspended'
+    )
+    if (statusHistory.length > 0) {
+      pushHistoryItems(
+        actor,
+        statusHistory,
+        ['banned', 'suspended'],
+        (entry) =>
+          entry.kind === 'banned'
+            ? `${actor.actorName} was banned from GRAM`
+            : `${actor.actorName} was suspended on GRAM`,
+        pushItem
+      )
+      continue
+    }
+
     const createdAt = isoOrNull(user.updated_at)
     if (!createdAt) continue
-    const actor = actorFromUser(user)
     const accountStatus = String(user.account_status || '').toLowerCase()
     const moderation = getAdminModeration(user.profile_data)
     const banned = accountStatus === 'banned' || moderation.permanently_banned === true
@@ -124,23 +202,74 @@ function pushListingItems(sources: NewsletterSources, lookups: NewsletterLookups
   for (const offer of sources.offers) {
     const ngo = firstRecord(offer.ngo) as ActorSource | null
     const actor = actorFromUser(ngo)
+    const summary = trimText(
+      offer.title ||
+        [offer.city, offer.state_province, offer.coverage_area].filter(Boolean).join(', ') ||
+        offer.description ||
+        'A new capability offer is now live on the platform.'
+    )
+    const href = `/service-offers/${offer.id}`
+    const history = readNewsletterHistory(offer.offer_details).filter(
+      (entry) =>
+        entry.kind === 'capability' || entry.kind === 'capability_closed' || entry.kind === 'capability_used'
+    )
+    if (history.length > 0) {
+      pushHistoryItems(
+        actor,
+        history.map((entry) => ({ ...entry, summary: entry.summary || summary, href: entry.href ?? href })),
+        ['capability', 'capability_closed', 'capability_used'],
+        (entry) =>
+          entry.kind === 'capability_closed'
+            ? `${actor.actorName} closed a capability offer`
+            : entry.kind === 'capability_used'
+              ? `${actor.actorName}'s capability offer was used`
+              : `${actor.actorName} posted a new capability offer`,
+        pushItem
+      )
+      continue
+    }
     pushItem({
       id: `capability-${offer.id}`,
       kind: 'capability',
       ...actor,
       title: `${actor.actorName} posted a new capability offer`,
-      summary: trimText(
-        offer.title ||
-          [offer.city, offer.state_province, offer.coverage_area].filter(Boolean).join(', ') ||
-          offer.description ||
-          'A new capability offer is now live on the platform.'
-      ),
-      href: `/service-offers/${offer.id}`,
+      summary,
+      href,
       createdAt: String(offer.created_at),
     })
   }
 
+  const campaignRows = new Map<string, (typeof sources.campaigns)[number]>()
+  for (const campaign of [...sources.campaigns, ...sources.finishedCampaigns]) {
+    const id = String(campaign.id || '')
+    if (id && !campaignRows.has(id)) campaignRows.set(id, campaign)
+  }
+
+  const campaignsWithHistory = new Set<string>()
+  for (const campaign of campaignRows.values()) {
+    const history = readNewsletterHistory(campaign.impact_metrics).filter(
+      (entry) => entry.kind === 'campaign' || entry.kind === 'campaign_finished'
+    )
+    if (history.length === 0) continue
+    campaignsWithHistory.add(String(campaign.id))
+    const company = usersById[Number(campaign.company_id || 0)]
+    const actor = actorFromUser(company || { name: 'A company', user_type: 'company', id: campaign.company_id })
+    const summary = trimText(campaign.title || campaign.location || campaign.description || 'A CSR campaign on GRAM.')
+    const href = `/csr-campaigns/${campaign.id}`
+    pushHistoryItems(
+      actor,
+      history.map((entry) => ({ ...entry, summary: entry.summary || summary, href: entry.href ?? href })),
+      ['campaign', 'campaign_finished'],
+      (entry) =>
+        entry.kind === 'campaign_finished'
+          ? `${actor.actorName} finished a CSR campaign`
+          : `${actor.actorName} launched a CSR campaign`,
+      pushItem
+    )
+  }
+
   for (const campaign of sources.campaigns) {
+    if (campaignsWithHistory.has(String(campaign.id))) continue
     const company = usersById[Number(campaign.company_id || 0)]
     const actor = actorFromUser(company || { name: 'A company', user_type: 'company', id: campaign.company_id })
     pushItem({
@@ -159,6 +288,9 @@ function pushOutcomeItems(sources: NewsletterSources, lookups: NewsletterLookups
   const { usersById, fulfillersByNeedId } = lookups
 
   for (const campaign of sources.finishedCampaigns) {
+    if (readNewsletterHistory(campaign.impact_metrics).some((entry) => entry.kind === 'campaign' || entry.kind === 'campaign_finished')) {
+      continue
+    }
     const company = usersById[Number(campaign.company_id || 0)]
     const actor = actorFromUser(company || { name: 'A company', user_type: 'company', id: campaign.company_id })
     pushItem({
@@ -248,9 +380,11 @@ function pushOutcomeItems(sources: NewsletterSources, lookups: NewsletterLookups
 
 export function buildNewsletterItems(sources: NewsletterSources, lookups: NewsletterLookups) {
   const items: NewsletterItem[] = []
+  const seenIds = new Set<string>()
 
   const pushItem = (item: NewsletterItem) => {
-    if (!item.createdAt) return
+    if (!item.createdAt || seenIds.has(item.id)) return
+    seenIds.add(item.id)
     items.push(item)
   }
 
@@ -258,7 +392,5 @@ export function buildNewsletterItems(sources: NewsletterSources, lookups: Newsle
   pushListingItems(sources, lookups, pushItem)
   pushOutcomeItems(sources, lookups, pushItem)
 
-  return items
-    .filter((item) => Boolean(item.createdAt))
-    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+  return sortNewsletterItems(items.filter((item) => Boolean(item.createdAt)))
 }

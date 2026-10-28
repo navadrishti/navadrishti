@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     const companyCAContext = (!caMode && hasCompanyCAToken)
       ? await getCompanyCAFromRequest(request)
       : null;
-    const user = (!caMode && !companyCAContext) ? getAuthUserFromRequest(request) : null;
+    const user = (!caMode && !companyCAContext) ? await getAuthUserFromRequest(request) : null;
     if (user) {
       assertUserType(user, ['company', 'ngo']);
     }

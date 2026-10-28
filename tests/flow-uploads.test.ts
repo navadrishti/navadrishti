@@ -150,11 +150,14 @@ describe('help & support ticket', () => {
 
   it.each([
     ['no token', {}],
-    ['cookie-only session', { cookie: `token=${generateToken(user)}` }],
     ['admin token', { authorization: `Bearer ${generateAdminToken()}` }],
-  ])('requires a user bearer token (%s)', async (_label, headers) => {
+  ])('requires a user session (%s)', async (_label, headers) => {
     expect((await submit(validFields(), headers)).status).toBe(401)
     expect(mocks.uploadStream).not.toHaveBeenCalled()
+  })
+
+  it('accepts a cookie-only session', async () => {
+    expect((await submit(validFields(), { cookie: `token=${generateToken(user)}` })).status).toBe(200)
   })
 
   it('returns 404 for a deleted account', async () => {
@@ -233,11 +236,14 @@ describe('verification document upload', () => {
 
   it.each([
     ['no token', {}],
-    ['cookie-only session', { cookie: `token=${generateToken(user)}` }],
     ['admin token', { authorization: `Bearer ${generateAdminToken()}` }],
-  ])('requires a user bearer token (%s)', async (_label, headers) => {
+  ])('requires a user session (%s)', async (_label, headers) => {
     expect((await upload({ file: file('application/pdf') }, headers)).status).toBe(401)
     expect(mocks.uploadStream).not.toHaveBeenCalled()
+  })
+
+  it('accepts a cookie-only session', async () => {
+    expect((await upload({ file: file('application/pdf') }, { cookie: `token=${generateToken(user)}` })).status).toBe(200)
   })
 
   it('returns 503 when cloudinary is not configured', async () => {

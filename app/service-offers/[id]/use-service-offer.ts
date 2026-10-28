@@ -1,3 +1,4 @@
+import { readApiError } from '@/lib/user-facing-error'
 import { useEffect, useEffectEvent, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
@@ -220,10 +221,12 @@ export function useServiceOffer(offerId: string) {
         })
       } else {
         const error = await response.json()
-        const errorMsg = error.error || 'Failed to submit application'
+        const errorMsg = readApiError(error, 'Failed to submit application')
 
         if (error.requiresVerification || response.status === 403) {
-          const verificationMessage = error.message || 'Please complete account verification before hiring services.'
+          const verificationMessage = typeof error.message === 'string' && error.message.trim()
+            ? error.message
+            : 'Please complete account verification before hiring services.'
           toast({
             title: "Verification Required",
             description: verificationMessage,
@@ -266,12 +269,22 @@ export function useServiceOffer(offerId: string) {
       })
 
       const orderPayload = await orderResponse.json()
-      if (!orderResponse.ok || !orderPayload?.success || !orderPayload?.data?.paymentRequired) {
+      if (!orderResponse.ok || !orderPayload?.success) {
         toast({
           title: 'Unable to start payment',
-          description: orderPayload?.error || 'This application does not require payment.',
+          description: readApiError(orderPayload, 'This application does not require payment.'),
           variant: 'destructive'
         })
+        return
+      }
+
+      if (!orderPayload?.data?.paymentRequired) {
+        toast({
+          title: 'No payment due',
+          description: orderPayload?.data?.message || 'This application does not require payment.',
+        })
+        checkExistingApplication()
+        fetchOfferDetails()
         return
       }
 
@@ -301,7 +314,7 @@ export function useServiceOffer(offerId: string) {
           if (!verifyResponse.ok || !verifyPayload?.success) {
             toast({
               title: 'Payment verification failed',
-              description: verifyPayload?.error || 'Please contact support with the payment reference.',
+              description: readApiError(verifyPayload, 'Please contact support with the payment reference.'),
               variant: 'destructive'
             })
             return
@@ -327,7 +340,7 @@ export function useServiceOffer(offerId: string) {
       console.error('Error starting offer payment:', error)
       toast({
         title: 'Payment failed',
-        description: error instanceof Error ? error.message : 'Could not open online payment.',
+        description: readApiError(error, 'Could not open online payment.'),
         variant: 'destructive'
       })
     } finally {

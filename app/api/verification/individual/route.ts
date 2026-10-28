@@ -9,7 +9,7 @@ import { initiateBlockedByStatus } from '@/lib/ca-review/submission-guards';
 
 export async function POST(req: NextRequest) {
   try {
-    const claims = getTokenClaims(req);
+    const claims = await getTokenClaims(req);
     if (!claims) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -209,7 +209,7 @@ async function reverifyVerification(
 
 export async function GET(req: NextRequest) {
   try {
-    const claims = getTokenClaims(req);
+    const claims = await getTokenClaims(req);
     if (!claims) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -274,7 +274,7 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     console.error('Get verification status error:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch verification status', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to fetch verification status' },
       { status: 500 }
     );
   }

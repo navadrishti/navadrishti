@@ -1,4 +1,6 @@
 "use client"
+import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 
 import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
@@ -52,7 +54,7 @@ export function NgoPayDialog({
   const handlePay = async () => {
     if (!ngo || !user) return
 
-    const token = localStorage.getItem('token')
+    const token = getClientSessionToken()
     if (!token) {
       notify({
         title: 'Sign in required',
@@ -87,7 +89,7 @@ export function NgoPayDialog({
       if (!orderRes.ok || !orderPayload?.success) {
         notify({
           title: 'Unable to start payment',
-          description: orderPayload?.error || 'Failed to create payment order',
+          description: readApiError(orderPayload, 'Failed to create payment order'),
           variant: 'destructive',
         })
         return
@@ -130,7 +132,7 @@ export function NgoPayDialog({
           if (!verifyRes.ok || !verifyPayload?.success) {
             notify({
               title: 'Payment verification failed',
-              description: verifyPayload?.error || 'Please contact support with your payment reference.',
+              description: readApiError(verifyPayload, 'Please contact support with your payment reference.'),
               variant: 'destructive',
             })
             return
@@ -153,7 +155,7 @@ export function NgoPayDialog({
     } catch (error) {
       notify({
         title: 'Payment failed',
-        description: error instanceof Error ? error.message : 'Could not open checkout.',
+        description: readApiError(error, 'Could not open checkout.'),
         variant: 'destructive',
       })
     } finally {

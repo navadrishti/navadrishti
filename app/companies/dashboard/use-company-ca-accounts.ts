@@ -1,5 +1,7 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
+import { clientAuthHeaders, getClientSessionToken } from '@/lib/client-session';
 import { useEffect, useState, type FormEvent } from 'react';
 import type {
   CompanyCaAccount,
@@ -25,11 +27,9 @@ export function useCompanyCaAccounts(userId: number | undefined, isTabActive: bo
 
   const fetchAvailableCompanyCaIds = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
       const response = await fetch('/api/evidence-verification/accounts?query=available-ca-ids', {
-        headers: { Authorization: `Bearer ${token}` }
+        credentials: 'include',
+        headers: clientAuthHeaders(),
       });
       const data = await response.json();
       if (data.success) {
@@ -50,17 +50,9 @@ export function useCompanyCaAccounts(userId: number | undefined, isTabActive: bo
   const fetchCompanyCAAccounts = async () => {
     try {
       setLoadingCompanyCAAccounts(true);
-      const token = localStorage.getItem('token');
-
-      if (!token) {
-        setCompanyCAAccounts([]);
-        return;
-      }
-
       const response = await fetch('/api/evidence-verification/accounts', {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+        credentials: 'include',
+        headers: clientAuthHeaders(),
       });
 
       const payload = await response.json();
@@ -105,7 +97,7 @@ export function useCompanyCaAccounts(userId: number | undefined, isTabActive: bo
 
     try {
       setCreatingCompanyCA(true);
-      const token = localStorage.getItem('token');
+      const token = getClientSessionToken();
 
       if (!token) {
         setCompanyCAFeedback({ type: 'error', message: 'Please login again to continue.' });
@@ -130,7 +122,7 @@ export function useCompanyCaAccounts(userId: number | undefined, isTabActive: bo
       const payload = await response.json();
 
       if (!response.ok || !payload?.success) {
-        setCompanyCAFeedback({ type: 'error', message: payload?.error || 'Failed to create CA account.' });
+        setCompanyCAFeedback({ type: 'error', message: readApiError(payload, 'Failed to create CA account.') });
         return;
       }
 
@@ -175,7 +167,7 @@ export function useCompanyCaAccounts(userId: number | undefined, isTabActive: bo
     try {
       setResettingCaPassword(true);
       setCompanyCAFeedback(null);
-      const token = localStorage.getItem('token');
+      const token = getClientSessionToken();
       if (!token) {
         setCompanyCAFeedback({ type: 'error', message: 'Please login again to continue.' });
         return;
@@ -195,7 +187,7 @@ export function useCompanyCaAccounts(userId: number | undefined, isTabActive: bo
 
       const payload = await response.json();
       if (!response.ok || !payload?.success) {
-        setCompanyCAFeedback({ type: 'error', message: payload?.error || 'Failed to reset CA password.' });
+        setCompanyCAFeedback({ type: 'error', message: readApiError(payload, 'Failed to reset CA password.') });
         return;
       }
 
@@ -221,7 +213,7 @@ export function useCompanyCaAccounts(userId: number | undefined, isTabActive: bo
     }
 
     try {
-      const token = localStorage.getItem('token');
+      const token = getClientSessionToken();
       if (!token) {
         setCompanyCAFeedback({ type: 'error', message: 'Please login again to continue.' });
         return;
@@ -238,7 +230,7 @@ export function useCompanyCaAccounts(userId: number | undefined, isTabActive: bo
 
       const payload = await response.json();
       if (!response.ok || !payload?.success) {
-        setCompanyCAFeedback({ type: 'error', message: payload?.error || 'Failed to update CA account status.' });
+        setCompanyCAFeedback({ type: 'error', message: readApiError(payload, 'Failed to update CA account status.') });
         return;
       }
 
@@ -263,7 +255,7 @@ export function useCompanyCaAccounts(userId: number | undefined, isTabActive: bo
     }
 
     try {
-      const token = localStorage.getItem('token');
+      const token = getClientSessionToken();
       if (!token) {
         setCompanyCAFeedback({ type: 'error', message: 'Please login again to continue.' });
         return;
@@ -279,7 +271,7 @@ export function useCompanyCaAccounts(userId: number | undefined, isTabActive: bo
 
       const payload = await response.json();
       if (!response.ok || !payload?.success) {
-        setCompanyCAFeedback({ type: 'error', message: payload?.error || 'Failed to delete CA account.' });
+        setCompanyCAFeedback({ type: 'error', message: readApiError(payload, 'Failed to delete CA account.') });
         return;
       }
 

@@ -17,7 +17,7 @@ const escapeHtml = (value: string) =>
     .replace(/'/g, '&#39;');
 
 const getAuthenticatedUser = async (request: NextRequest) => {
-  const claims = getTokenClaims(request);
+  const claims = await getTokenClaims(request);
   if (!claims) return null;
   const user = await db.users.findById(claims.id);
   if (!user) return null;

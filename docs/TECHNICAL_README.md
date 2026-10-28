@@ -92,7 +92,7 @@ Full-stack social-impact platform connecting NGOs, individuals, and companies fo
 | NGO Management & Network | `/ngo-network`, `/api/ngos/*` | Implemented |
 | Service Request Projects & Needs | `/service-requests/*`, `/api/service-request-*` | Implemented |
 | Capability Offers | `/service-offers/*`, `/api/service-offers/*` | Implemented |
-| CSR Campaigns | `/csr-campaigns/*`, `/api/campaigns/*` | Implemented |
+| CSR Campaigns | `/csr-campaigns/*`, `/csr-campaigns/create`, `/api/campaigns/*` | Implemented |
 | CSR Agent (AI) — **Catalyst** | `/companies/csr-agent`, `/api/csr-agent/*`, `/api/ai-agent/*` (agent=csr) | Implemented |
 | NGO AI Agent — **Atlas** | `/ngos/ai-agent`, `/api/ai-agent/*` (agent=ngo) | Implemented |
 | Matching — **Pulse** (embedded) | `/api/service-requests/recommend`, `/api/csr-agent/get-recommendations`, `/api/ngos/score` | Implemented |
@@ -191,9 +191,9 @@ Full-stack social-impact platform connecting NGOs, individuals, and companies fo
 | canCreateServiceOffers | true (if verified) |
 | canApplyToServiceOffers | true (if verified) |
 
-**Accessible Pages:** `/companies/register`, `/companies/dashboard`, `/companies/csr-agent`, `/companies/csr-budget`, `/companies/csr-health`, `/companies/impact-reports`, evidence reviewer management, public marketplace pages
+**Accessible Pages:** `/companies/register`, `/companies/dashboard`, `/companies/csr-agent`, `/csr-campaigns/create`, `/companies/csr-budget`, `/companies/csr-health`, `/companies/impact-reports`, evidence reviewer management, public marketplace pages
 
-**Actions Allowed:** **Catalyst** (CSR campaign AI); campaign CRUD; Lead NGO invites; capability offers; Company CA account management; CSR evidence viewing
+**Actions Allowed:** Manual CSR campaign create; **Catalyst** (CSR campaign AI); campaign CRUD; Lead NGO invites; capability offers; Company CA account management; CSR evidence viewing
 
 **Actions Restricted:** Volunteer for service requests; apply to CSR campaigns as volunteer; CA consoles
 
@@ -326,8 +326,8 @@ Start → Email OTP → Phone OTP (MSG91; currently disabled)
 ## CSR Flow (End-to-End)
 
 ```
-Start → /companies/csr-agent wizard
-  ↓ POST /api/csr-agent/generate-campaigns (Gemini)
+Start → /csr-campaigns/create (manual) or /companies/csr-agent wizard
+  ↓ POST /api/campaigns (manual draft) or POST /api/csr-agent/generate-campaigns (Gemini)
   ↓ POST get-recommendations (capability offers), /api/ngos/score (lead NGOs)
   ↓ POST ai-agent/progress + update-campaign → lead-ngo-invites
   ↓ NGO POST /api/campaigns/accept-lead
@@ -928,6 +928,7 @@ Health: GET /api/health
 | Route | Roles |
 |-------|-------|
 | `/csr-campaigns` | Guest |
+| `/csr-campaigns/create` | Company |
 | `/csr-campaigns/[id]` | Guest; NGO/Individual volunteer; Company owner |
 
 ## Company CSR Tools (4)

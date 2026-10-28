@@ -255,8 +255,10 @@ async function buildLatestPayloadFromTables(userId: number, agent: AgentKind) {
     const projectContext =
       r.project_context && typeof r.project_context === "object" ? r.project_context : {}
     const published = readPublishedEntity(projectContext)
+    const legacyId = typeof uiState.legacyId === "string" && uiState.legacyId.trim() ? uiState.legacyId : undefined
     const base = {
       id: r.id,
+      legacyId,
       title: r.title,
       status: r.status,
       project_context: r.project_context,
@@ -314,10 +316,17 @@ async function buildLatestPayloadFromTables(userId: number, agent: AgentKind) {
   const profileData = await readProfileData(userId)
   const key = keyByAgent[agent]
   const legacy = profileData[key] as PersistedPayload | undefined
+  const requestedActiveId = typeof legacy?.activeSessionId === "string" ? legacy.activeSessionId : null
+  const resolvedActiveId = requestedActiveId
+    ? sessions.find((session) => session.id === requestedActiveId || session.legacyId === requestedActiveId)?.id
+      ?? sessions.find((session) => session.id === resolveSessionRowId(agent, userId, requestedActiveId))?.id
+      ?? sessions[0]?.id
+      ?? null
+    : sessions[0]?.id ?? null
 
   return {
     sessions,
-    activeSessionId: legacy?.activeSessionId ?? null,
+    activeSessionId: resolvedActiveId,
     updatedAt: updatedAt || new Date().toISOString(),
   }
 }
@@ -409,6 +418,13 @@ export async function POST(request: NextRequest) {
 
     if (serverUpdatedAt && Date.parse(incomingUpdatedAt) < Date.parse(serverUpdatedAt)) {
       const latestPayload = await buildLatestPayloadFromTables(userId, agent)
+      const intendedActiveId = normalizedPayload.activeSessionId
+      if (intendedActiveId && Array.isArray(latestPayload.sessions)) {
+        const matched =
+          latestPayload.sessions.find((session) => session.id === intendedActiveId || session.legacyId === intendedActiveId)
+          || latestPayload.sessions.find((session) => session.id === resolveSessionRowId(agent, userId, intendedActiveId))
+        if (matched) latestPayload.activeSessionId = matched.id
+      }
       return NextResponse.json({ error: "Stale progress payload", latest: latestPayload }, { status: 409 })
     }
 

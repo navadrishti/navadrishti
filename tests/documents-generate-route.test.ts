@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { POST } from '@/app/api/documents/generate/route'
 import { jsonRequest, tokenFor } from './support/requests'
-import { supabaseFake } from './support/supabase-fake'
+import { businessQueries, supabaseFake } from './support/supabase-fake'
 import { resetDb, respond } from './support/documents-fixtures'
 
 vi.mock('server-only', () => ({}))
@@ -44,7 +44,7 @@ describe('POST /api/documents/generate', () => {
     const { status, body } = await send(payload, company)
     expect(status).toBe(400)
     expect(typeof body.error).toBe('string')
-    expect(supabaseFake.queries).toHaveLength(0)
+    expect(businessQueries(supabaseFake.queries)).toHaveLength(0)
   })
 
   it.each([

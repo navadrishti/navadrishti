@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { clientAuthHeaders } from '@/lib/client-session'
 
 type PayoutConnectionState = {
   loading: boolean
@@ -22,28 +23,28 @@ export function usePayoutConnection(enabled = true): PayoutConnectionState {
       return
     }
 
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
-    if (!token) {
-      setLoading(false)
-      setConnected(false)
-      setHasPayoutDetails(false)
-      return
-    }
-
     setLoading(true)
     try {
       const response = await fetch('/api/profile/update?scope=payout', {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
+        headers: clientAuthHeaders(),
       })
       const data = await response.json()
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to load payout status')
+        if (response.status === 401) {
+          setConnected(false)
+          setHasPayoutDetails(false)
+          return
+        }
+        setConnected(null)
+        setHasPayoutDetails(null)
+        return
       }
       setConnected(Boolean(data.acceptsPayments ?? data.routeReady))
       setHasPayoutDetails(Boolean(data.hasPayoutDetails))
     } catch {
-      setConnected(false)
-      setHasPayoutDetails(false)
+      setConnected(null)
+      setHasPayoutDetails(null)
     } finally {
       setLoading(false)
     }

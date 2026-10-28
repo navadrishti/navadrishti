@@ -60,10 +60,18 @@ function useCampaignDb(initial: Row, offerOverrides: Row = { id: 7, creator_id: 
     }
     if (query.table === 'service_offers') return { data: offer }
     if (query.table === 'service_clients') {
-      const isAvailabilityCheck = eqValue(query, 'status') === 'accepted' && !hasCall(query, 'insert') && !hasCall(query, 'upsert')
-      return isAvailabilityCheck ? { data: acceptedClients } : { data: { id: 81 } }
+      if (hasCall(query, 'insert') || query.op === 'insert' || hasCall(query, 'update') || query.op === 'update') {
+        return { data: { id: 81 } }
+      }
+      const isAvailabilityCheck = eqValue(query, 'status') === 'accepted'
+      if (isAvailabilityCheck) return { data: acceptedClients }
+      if (eqValue(query, 'client_id')) return { data: null }
+      return { data: { id: 81 } }
     }
-    if (query.table === 'service_engagement_assignments') return { data: { id: 'asg_1' } }
+    if (query.table === 'service_engagement_assignments') {
+      if (hasCall(query, 'insert') || query.op === 'insert') return { data: { id: 'asg_1' } }
+      return { data: null }
+    }
     if (query.table === 'users') return { data: { profile_data: { razorpay_linked_account_id: 'acc_provider', razorpay_link_status: 'active' } } }
     return undefined
   })

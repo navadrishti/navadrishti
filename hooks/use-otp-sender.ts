@@ -1,5 +1,6 @@
 "use client"
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useState, Dispatch, SetStateAction, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase';
@@ -99,7 +100,7 @@ export function useOtpSender(setFormErrors: Dispatch<SetStateAction<FormErrors>>
 
       const prepareData = await prepareResponse.json();
       if (!prepareResponse.ok) {
-        toast.error(prepareData.error || 'Failed to prepare email OTP');
+        toast.error(readApiError(prepareData, 'Failed to prepare email OTP'));
         return;
       }
 
@@ -112,7 +113,7 @@ export function useOtpSender(setFormErrors: Dispatch<SetStateAction<FormErrors>>
       });
 
       if (error) {
-        toast.error(error.message || 'Failed to send email OTP');
+        toast.error(readApiError(error, 'Failed to send email OTP'));
         return;
       }
 
@@ -158,7 +159,7 @@ export function useOtpSender(setFormErrors: Dispatch<SetStateAction<FormErrors>>
 
       const forgotData = await forgotResponse.json();
       if (!forgotResponse.ok) {
-        toast.error(forgotData.error || 'Failed to send email OTP');
+        toast.error(readApiError(forgotData, 'Failed to send email OTP'));
         return false;
       }
 
@@ -183,7 +184,7 @@ export function useOtpSender(setFormErrors: Dispatch<SetStateAction<FormErrors>>
     });
     if (response.ok) return null;
     const data = await response.json().catch(() => null);
-    return new Error(data?.error || 'Invalid email OTP');
+    return new Error(readApiError(data, 'Invalid email OTP'));
   };
 
   const verifyEmailOtpInBrowser = async (email: string, otp: string): Promise<Error | null> => {
@@ -300,7 +301,7 @@ export function useOtpSender(setFormErrors: Dispatch<SetStateAction<FormErrors>>
       const data = await response.json();
 
       if (!response.ok) {
-        toast.error(data.error || 'Failed to send phone OTP');
+        toast.error(readApiError(data, 'Failed to send phone OTP'));
         return;
       }
 
@@ -348,7 +349,7 @@ export function useOtpSender(setFormErrors: Dispatch<SetStateAction<FormErrors>>
       const data = await response.json();
 
       if (!response.ok) {
-        const message = data.error || 'Invalid phone OTP';
+        const message = readApiError(data, 'Invalid phone OTP');
         setOtpVerified(prev => ({ ...prev, phone: false }));
         setFormErrors(prev => ({ ...prev, phoneOtp: message }));
         toast.error(message);

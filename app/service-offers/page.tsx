@@ -1,4 +1,6 @@
 'use client'
+import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 
 import { useState, useCallback, useEffect, useMemo, Suspense } from 'react'
 import { useIsClient } from '@/hooks/use-is-client'
@@ -137,13 +139,6 @@ function ServiceOffersPageContent() {
     return () => clearTimeout(timer);
   }, [searchTerm, locationFilter]);
 
-  useEffect(() => {
-    const rawView = searchParams.get('view') || searchParams.get('tab');
-    if (!rawView) return;
-    if (rawView !== 'all') {
-      return;
-    }
-  }, [searchParams]);
 
   const handleDeleteOffer = async (offerId: number) => {
     if (!user) return;
@@ -154,7 +149,7 @@ function ServiceOffersPageContent() {
 
     try {
       setDeleting(offerId);
-      const token = localStorage.getItem('token');
+      const token = getClientSessionToken();
 
       const response = await fetch(`/api/service-offers/${offerId}`, {
         method: 'DELETE',
@@ -175,7 +170,7 @@ function ServiceOffersPageContent() {
       } else {
         toast({
           title: 'Error',
-          description: data.error || 'Failed to delete service offer',
+          description: readApiError(data, 'Failed to delete service offer'),
           variant: 'destructive',
         });
       }
@@ -191,6 +186,8 @@ function ServiceOffersPageContent() {
   };
 
   const userId = user?.id;
+  const listingView = String(searchParams.get('view') || searchParams.get('tab') || 'all').toLowerCase();
+  const offerView = listingView === 'my-offers' ? 'my-offers' : 'all';
 
   const fetchServiceOffers = useCallback(async () => {
     try {
@@ -216,22 +213,25 @@ function ServiceOffersPageContent() {
       if (userId) {
         params.append('userId', userId.toString());
       }
-      params.append('view', 'all');
+      params.append('view', offerView);
 
-      const response = await fetch(`/api/service-offers?${params.toString()}`);
+      const token = getClientSessionToken();
+      const response = await fetch(`/api/service-offers?${params.toString()}`, {
+        headers: offerView === 'my-offers' && token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
       const data = await response.json();
 
       if (data.success) {
         setServiceOffers(data.data);
       } else {
-        setError(data.error || 'Failed to fetch service offers');
+        setError(readApiError(data, 'Failed to fetch service offers'));
       }
     } catch {
       setError('Error fetching service offers');
     } finally {
       setLoading(false);
     }
-  }, [selectedType, selectedImpact, selectedTransaction, debouncedSearch, debouncedLocation, userId]);
+  }, [selectedType, selectedImpact, selectedTransaction, debouncedSearch, debouncedLocation, userId, offerView]);
 
   useEffect(() => {
     fetchServiceOffers();

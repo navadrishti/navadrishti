@@ -1,8 +1,14 @@
 import { useMemo } from "react"
 import { CSR_SCHEDULE_VII_CATEGORIES } from "@/lib/categories"
-import { isQuestionnaireCompleteFor } from "./helpers"
+import {
+  CSR_MILESTONE_COUNT_LABEL,
+  firstUnfilledProjectIndex,
+  isQuestionnaireCompleteFor,
+  resolveCsrPromptBefore,
+} from "./helpers"
 import {
   type ConversationStage,
+  type Message,
   type MilestoneInput,
   type ProjectIntakeData,
   fixedBudgetOptions,
@@ -12,34 +18,26 @@ import {
 } from "./session"
 
 type QuestionnaireProgressOptions = {
+  messages: Message[]
   projectData: ProjectIntakeData
   milestoneCount: number | null
   milestoneInputs: MilestoneInput[]
   conversationStage: ConversationStage
-  projectStep: number
   milestoneQuestionIndex: number
   generatedCampaignCount: number
   selectedProjectSuggestionId: string | null
 }
 
 export function useQuestionnaireProgress({
+  messages,
   projectData,
   milestoneCount,
   milestoneInputs,
   conversationStage,
-  projectStep,
   milestoneQuestionIndex,
   generatedCampaignCount,
   selectedProjectSuggestionId,
 }: QuestionnaireProgressOptions) {
-  const fixedChoiceOptions = useMemo(() => {
-    if (conversationStage === "project") {
-      if (projectStep === 1) return CSR_SCHEDULE_VII_CATEGORIES
-      if (projectStep === 4) return fixedBudgetOptions
-    }
-    if (conversationStage === "milestone-count") return fixedMilestoneCountOptions
-    return [] as string[]
-  }, [conversationStage, projectStep])
 
   const totalQuestions = useMemo(() => {
     const milestoneQuestionsCount = milestoneCount ? milestoneCount * milestoneQuestions.length : 0
@@ -74,11 +72,31 @@ export function useQuestionnaireProgress({
 
   const activeQuestion = useMemo(() => {
     if (generatedCampaignCount > 0 || isQuestionnaireComplete) return null
-    if (conversationStage === "project") return projectQuestions[Math.min(projectStep, projectQuestions.length - 1)]
-    if (conversationStage === "milestone-count") return { key: "milestoneCount", question: "How many milestones should I plan?" }
+
+    const promptTarget = resolveCsrPromptBefore(messages, messages.length)
+    if (promptTarget?.type === "project") return projectQuestions[promptTarget.index]
+    if (promptTarget?.type === "milestone-count") return { key: "milestoneCount", question: CSR_MILESTONE_COUNT_LABEL }
+    if (promptTarget?.type === "milestone") {
+      return milestoneQuestions[Math.min(promptTarget.questionIndex, milestoneQuestions.length - 1)]
+    }
+
+    if (conversationStage === "project") {
+      const idx = firstUnfilledProjectIndex(projectData)
+      if (idx >= projectQuestions.length) return { key: "milestoneCount", question: CSR_MILESTONE_COUNT_LABEL }
+      return projectQuestions[idx]
+    }
+    if (conversationStage === "milestone-count") return { key: "milestoneCount", question: CSR_MILESTONE_COUNT_LABEL }
     if (conversationStage === "milestones") return milestoneQuestions[Math.min(milestoneQuestionIndex, milestoneQuestions.length - 1)]
     return null
-  }, [conversationStage, projectStep, milestoneQuestionIndex, generatedCampaignCount, isQuestionnaireComplete])
+  }, [messages, conversationStage, projectData, milestoneQuestionIndex, generatedCampaignCount, isQuestionnaireComplete])
+
+  const fixedChoiceOptions = useMemo(() => {
+    const key = activeQuestion?.key
+    if (key === "category") return CSR_SCHEDULE_VII_CATEGORIES
+    if (key === "budget" || key === "budgetTarget") return fixedBudgetOptions
+    if (key === "milestoneCount" || conversationStage === "milestone-count") return fixedMilestoneCountOptions
+    return [] as string[]
+  }, [activeQuestion?.key, conversationStage])
 
   return {
     fixedChoiceOptions,

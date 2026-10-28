@@ -14,8 +14,8 @@ export const InputSchema = z.object({
     end_date: z.coerce.date(),
     requirementDetails: z.string(),
 }).refine(
-    (data) => data.start_date < data.end_date,
-    {message: "start_date must be before end_date" , path: ["end_date"]},
+    (data) => data.end_date.getTime() >= data.start_date.getTime(),
+    {message: "The campaign end date needs to be after the start date.", path: ["end_date"]},
 )
 
 export type InputSchemaType = z.infer<typeof InputSchema>;
