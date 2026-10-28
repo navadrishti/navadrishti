@@ -144,10 +144,11 @@ describe('productionConfigIssues', () => {
     expect(issues.some((issue) => issue.includes('NEXT_PUBLIC_APP_URL'))).toBe(true)
   })
 
-  it('rejects Razorpay test keys on Vercel production', () => {
+  it('allows Razorpay test keys so a Vercel deploy can keep using the sandbox', () => {
     stubProductionEnv({ NEXT_PUBLIC_RAZORPAY_KEY_ID: 'rzp_test_abc' })
     vi.stubEnv('VERCEL_ENV', 'production')
-    expect(productionConfigIssues().join('\n')).toMatch(/test key/)
+    expect(productionConfigIssues().join('\n')).not.toMatch(/test key/)
+    expect(() => assertProductionConfig()).not.toThrow()
   })
 
   it('does not throw under vitest even with empty env', () => {
