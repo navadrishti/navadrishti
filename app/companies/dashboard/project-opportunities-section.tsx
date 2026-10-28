@@ -118,6 +118,8 @@ export function ProjectOpportunitiesSection({
                     'Accepted by NGO'
                   ) : opportunity.company_application_status === 'pending' ? (
                     'Pending NGO Review'
+                  ) : opportunity.company_application_status === 'rejected' ? (
+                    'Apply again'
                   ) : !allVerified || opportunity.company_application_eligible === false ? (
                     !allVerified ? 'Verify to Apply' : 'Not Eligible'
                   ) : (

@@ -1,7 +1,7 @@
 'use client';
 
 import { readApiError } from '@/lib/user-facing-error'
-import { getClientSessionToken } from '@/lib/client-session';
+import { clientAuthFetchInit, getClientSessionToken } from '@/lib/client-session';
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import type { NgoDashboardData } from './use-ngo-dashboard-data';
@@ -68,24 +68,15 @@ export function useNgoDashboardActions(data: NgoDashboardData, onLeadRoleAccepte
   const respondProjectLeadInvitation = async (inviteId: string, decision: 'accepted' | 'rejected') => {
     try {
       setRespondingProjectLeadInviteId(inviteId);
-      const token = getClientSessionToken();
-      if (!token) {
-        toast({ title: 'Error', description: 'Please login again', variant: 'destructive' });
-        return;
-      }
-
-      const response = await fetch('/api/service-request-assignments', {
+      const response = await fetch('/api/service-request-assignments', clientAuthFetchInit({
         method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'respond-lead-ngo-invitation',
           inviteId,
           decision,
         }),
-      });
+      }));
 
       const payload = await response.json();
       if (!response.ok || !payload?.success) {
@@ -120,25 +111,16 @@ export function useNgoDashboardActions(data: NgoDashboardData, onLeadRoleAccepte
     const key = `${projectId}:${companyId}`;
     try {
       setReviewingCompanyApplicationKey(key);
-      const token = getClientSessionToken();
-      if (!token) {
-        toast({ title: 'Error', description: 'Please login again', variant: 'destructive' });
-        return;
-      }
-
-      const response = await fetch('/api/service-request-assignments', {
+      const response = await fetch('/api/service-request-assignments', clientAuthFetchInit({
         method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'review-project-application',
           projectId,
           companyId,
           decision
         })
-      });
+      }));
 
       const payload = await response.json();
       if (!response.ok || !payload?.success) {

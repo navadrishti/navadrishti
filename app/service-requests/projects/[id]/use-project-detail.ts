@@ -1,9 +1,33 @@
 import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 import { useEffect, useEffectEvent, useMemo, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { isFullyVerifiedAccount } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
-import type { ProjectDetailPayload } from './types';
+import type { CompanyApplication, ProjectDetailPayload } from './types';
+
+function sessionToken(authToken: string | null) {
+  return getClientSessionToken() || authToken;
+}
+
+function mergeOwnApplication(payload: ProjectDetailPayload, application: CompanyApplication): ProjectDetailPayload {
+  const others = (payload.company_applications || []).filter(
+    (item) => Number(item.company_id) !== Number(application.company_id)
+  )
+  return { ...payload, company_applications: [...others, application] }
+}
+
+function readReturnedApplication(payload: unknown, companyId: number | undefined): CompanyApplication | null {
+  if (!payload || typeof payload !== 'object' || !companyId) return null
+  const raw = (payload as { application?: unknown }).application
+  if (!raw || typeof raw !== 'object') return null
+  const row = raw as { company_id?: unknown; status?: unknown; needs?: unknown }
+  return {
+    company_id: Number(row.company_id || companyId),
+    status: String(row.status || 'pending'),
+    needs: Array.isArray(row.needs) ? (row.needs as CompanyApplication['needs']) : [],
+  }
+}
 
 export function useProjectDetail(projectId: string) {
   const { user, token } = useAuth();
@@ -17,16 +41,18 @@ export function useProjectDetail(projectId: string) {
   const fetchProjectDetail = async (options?: { silent?: boolean }) => {
     if (!projectId) return;
     const silent = Boolean(options?.silent);
+    const authToken = sessionToken(token);
 
     try {
       if (!silent) {
         setLoading(true);
       }
       const headers: HeadersInit = {};
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
+      if (authToken) {
+        headers.Authorization = `Bearer ${authToken}`;
       }
       const response = await fetch(`/api/service-request-assignments?mode=project-detail&projectId=${encodeURIComponent(projectId)}`, {
+        credentials: 'include',
         headers
       });
 
@@ -56,7 +82,7 @@ export function useProjectDetail(projectId: string) {
   }, [user?.id, token, projectId]);
 
   useEffect(() => {
-    if (!token || !projectId) return;
+    if (!sessionToken(token) || !projectId) return;
 
     const interval = window.setInterval(() => {
       void loadProjectDetail({ silent: true });
@@ -73,20 +99,23 @@ export function useProjectDetail(projectId: string) {
   }, [payload, userId, userType]);
 
   const applyForFullProject = async () => {
-    if (!token || !payload) return;
+    if (!payload) return;
     if (!allVerified) {
       toast({ title: 'Verification required', description: 'Company must be fully verified before CSR application.', variant: 'destructive' });
       return;
     }
+    const authToken = sessionToken(token);
     setApplyLoading(true);
 
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (authToken) {
+        headers.Authorization = `Bearer ${authToken}`
+      }
       const response = await fetch('/api/service-request-assignments', {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        credentials: 'include',
+        headers,
         body: JSON.stringify({
           action: 'apply-project',
           projectId,
@@ -94,13 +123,27 @@ export function useProjectDetail(projectId: string) {
       });
 
       const data = await response.json();
+      const returned = readReturnedApplication(data?.data || data, userId)
+      if (returned) {
+        setPayload((current) => (current ? mergeOwnApplication(current, returned) : current))
+      }
+
+      if (response.status === 409 && /already applied/i.test(String(data?.error || ''))) {
+        toast({
+          title: 'Already applied',
+          description: readApiError(data, 'Your existing takeover application is shown below.'),
+        });
+        await fetchProjectDetail({ silent: true });
+        return;
+      }
+
       if (!response.ok || !data?.success) {
         toast({ title: 'Application failed', description: readApiError(data, 'Could not apply'), variant: 'destructive' });
         return;
       }
 
       toast({ title: 'Application submitted', description: data?.data?.message || 'Sent to NGO for review.' });
-      fetchProjectDetail();
+      await fetchProjectDetail({ silent: true });
     } catch {
       toast({ title: 'Application failed', description: 'Could not apply', variant: 'destructive' });
     } finally {

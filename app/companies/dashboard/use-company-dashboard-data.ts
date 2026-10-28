@@ -49,6 +49,7 @@ export function useCompanyDashboardData({
         : '?mode=company-projects';
 
       const response = await fetch(`/api/service-request-assignments${query}`, {
+        credentials: 'include',
         headers: clientAuthHeaders()
       });
 
@@ -69,6 +70,7 @@ export function useCompanyDashboardData({
     try {
       setLoadingCSRTrackingAssignments(true);
 const response = await fetch('/api/service-request-assignments?mode=csr-tracking', {
+        credentials: 'include',
         headers: clientAuthHeaders()
       });
 

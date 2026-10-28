@@ -96,6 +96,16 @@ export function CompanyApplicationsCard({ applications, loading, reviewingKey, o
                   </div>
                 </div>
 
+                {application.status === 'accepted' ? (
+                  <p className="text-sm text-slate-600">Accepted. This project is locked to the company and appears under Taken-in tracking.</p>
+                ) : application.status === 'rejected' ? (
+                  <p className="text-sm text-slate-600">Rejected. The company can apply again if the project is still open.</p>
+                ) : application.status === 'expired' ? (
+                  <p className="text-sm text-slate-600">This application expired after another company was accepted.</p>
+                ) : application.note ? (
+                  <p className="text-sm text-slate-600">{application.note}</p>
+                ) : null}
+
                 <div className="flex flex-wrap gap-2">
                   <Button
                     size="sm"

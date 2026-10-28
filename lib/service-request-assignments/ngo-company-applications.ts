@@ -8,7 +8,7 @@ import {
 } from '@/lib/service-request-allocation'
 import {
   COMPANY_PROJECT_CONTRIBUTION_TYPE,
-  reviewQueueProjectApplicationStatuses,
+  visibleProjectApplicationStatuses,
   safeNoteFromMeta,
   type AssignmentsGetContext,
 } from '@/lib/service-request-assignments/shared'
@@ -100,7 +100,7 @@ export async function getNgoCompanyApplications(ctx: AssignmentsGetContext) {
       const companyId = Number(app.company_id)
       if (!Number.isFinite(companyId) || companyId <= 0) continue
       const status = String(app.status || 'pending').toLowerCase()
-      if (!reviewQueueProjectApplicationStatuses.includes(status) && status !== 'accepted') continue
+      if (!visibleProjectApplicationStatuses.includes(status)) continue
       companyIds.add(companyId)
       const key = `${project.id}::${companyId}`
       const rawNote = String(app.note || '').trim()
@@ -170,7 +170,7 @@ export async function getNgoCompanyApplications(ctx: AssignmentsGetContext) {
       `)
       .in('service_request_id', ownNeedIds)
       .eq('contribution_type', COMPANY_PROJECT_CONTRIBUTION_TYPE)
-      .in('status', reviewQueueProjectApplicationStatuses)
+      .in('status', visibleProjectApplicationStatuses)
       .order('created_at', { ascending: false })
 
     if (contributionsError) throw contributionsError
@@ -271,5 +271,16 @@ export async function getNgoCompanyApplications(ctx: AssignmentsGetContext) {
     }
   }
 
-  return NextResponse.json({ success: true, data: Array.from(grouped.values()) })
+  const rank = (status: string) => {
+    const normalized = String(status || '').toLowerCase()
+    if (['pending', 'pledged', 'invited', 'pending_acceptance', 'awaiting_acceptance', 'offered', 'assigned'].includes(normalized)) return 0
+    if (normalized === 'accepted') return 1
+    if (normalized === 'rejected') return 2
+    return 3
+  }
+
+  return NextResponse.json({
+    success: true,
+    data: Array.from(grouped.values()).sort((a, b) => rank(a.status) - rank(b.status)),
+  })
 }

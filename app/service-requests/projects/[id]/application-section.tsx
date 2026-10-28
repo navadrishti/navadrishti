@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { formatStatusLabel } from '@/lib/format-date';
-import { statusBadgeClass } from './helpers';
+import { applicationStatusCopy, canReapplyForTakeover, statusBadgeClass } from './helpers';
 import type { CompanyApplication } from './types';
 
 type ApplicationSectionProps = {
@@ -59,12 +59,11 @@ export function ApplicationSection({
   }
 
   if (currentApplication) {
+    const canReapply = canReapplyForTakeover(currentApplication.status)
     return (
       <div className="space-y-4">
         <Alert>
-          <AlertDescription>
-            Your company has already applied for this project.
-          </AlertDescription>
+          <AlertDescription>{applicationStatusCopy(currentApplication.status)}</AlertDescription>
         </Alert>
 
         <div className="space-y-2">
@@ -75,6 +74,12 @@ export function ApplicationSection({
             </Badge>
           </div>
         </div>
+
+        {canReapply && eligibleForApply ? (
+          <Button type="button" onClick={onApply} className="w-full" disabled={applyLoading}>
+            {applyLoading ? 'Applying...' : 'Apply again'}
+          </Button>
+        ) : null}
 
         <CsrDashboardLink disabled={!allVerified} />
       </div>
@@ -96,6 +101,7 @@ export function ApplicationSection({
       )}
 
       <Button
+        type="button"
         onClick={onApply}
         className="w-full"
         disabled={!eligibleForApply || applyLoading}

@@ -78,7 +78,9 @@ export async function getCompanyProjects(ctx: AssignmentsGetContext) {
       companyApplicationStatus = String(myApp.status || 'pending').toLowerCase()
     }
 
-    const canApplyByStatus = companyApplicationStatus === 'none'
+    const canApplyByStatus =
+      companyApplicationStatus === 'none' ||
+      ['rejected', 'expired', 'cancelled'].includes(companyApplicationStatus)
     const company_application_eligible = canApplyByStatus && companyFullyVerified
     const company_application_reason = !companyFullyVerified
       ? 'Complete email, phone, and document verification before applying for takeover.'

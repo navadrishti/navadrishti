@@ -27,6 +27,27 @@ export function projectLeadInviteId(projectId: string, ngoId: number, companyId:
   return `lead-invite:${projectId}:${ngoId}:${companyId}`
 }
 
+export function parseProjectLeadInviteId(inviteId: string) {
+  const parts = String(inviteId || '').split(':')
+  if (parts.length < 4 || parts[0] !== 'lead-invite') return null
+  const companyId = Number(parts[parts.length - 1])
+  const ngoId = Number(parts[parts.length - 2])
+  const projectId = parts.slice(1, -2).join(':')
+  if (!projectId || !Number.isFinite(ngoId) || ngoId <= 0 || !Number.isFinite(companyId) || companyId <= 0) {
+    return null
+  }
+  return { projectId, ngoId, companyId }
+}
+
+export const visibleProjectApplicationStatuses = [
+  ...reviewQueueProjectApplicationStatuses,
+  'accepted',
+  'rejected',
+  'expired',
+]
+
+export const visibleLeadInviteStatuses = [...PENDING_LEAD_INVITE_STATUSES, 'accepted', 'rejected', 'expired']
+
 type AssignmentMeta = { project_id?: unknown; note?: unknown }
 
 export function safeProjectIdFromMeta(meta: unknown): string | null {

@@ -106,28 +106,49 @@ export async function submitProjectApplication(request: NextRequest) {
       const pending = Array.isArray(projectRow.pending_company_applications)
         ? [...projectRow.pending_company_applications]
         : []
+      const reapplyStatuses = ['rejected', 'expired', 'cancelled']
+      const existingIndex = pending.findIndex((item) => Number(item.company_id) === Number(userId))
+      const existing = existingIndex >= 0 ? pending[existingIndex] : null
+      const existingStatus = String(existing?.status || 'pending').toLowerCase()
 
-      if (pending.some((item) => Number(item.company_id) === Number(userId))) {
+      if (existing && !reapplyStatuses.includes(existingStatus)) {
         return NextResponse.json({
-          error: 'You have already applied to this project.'
+          error: 'You have already applied to this project.',
+          data: {
+            projectId,
+            application: {
+              company_id: userId,
+              company_name: existing.company_name || userName || null,
+              status: existingStatus,
+              needs: [],
+            },
+          },
         }, { status: 409 })
       }
 
-      if (pending.some((item) => String(item.status || '').toLowerCase() === 'accepted')) {
+      if (pending.some((item) =>
+        String(item.status || '').toLowerCase() === 'accepted' && Number(item.company_id) !== Number(userId)
+      )) {
         return NextResponse.json({
           error: 'This project has already been accepted by a company. New applications are not allowed.'
         }, { status: 409 })
       }
 
-      pending.push({
+      const nextApplication = {
         company_id: userId,
-        company_name: userName || null,
-        note: note || null,
+        company_name: userName || existing?.company_name || null,
+        note: note || existing?.note || null,
         applied_at: new Date().toISOString(),
         status: 'pending',
         source: 'company_apply',
         applicant_user_id: userId,
-      })
+      }
+
+      if (existingIndex >= 0) {
+        pending[existingIndex] = { ...existing, ...nextApplication }
+      } else {
+        pending.push(nextApplication)
+      }
 
       const nextDescription = withProjectMeta(projectRowRaw.description, {
         ...parseProjectMeta(projectRowRaw.description),
@@ -158,6 +179,16 @@ export async function submitProjectApplication(request: NextRequest) {
           .filter((item) => ['pending', 'pledged', 'accepted', 'in_progress', 'completed'].includes(String(item.status || '').toLowerCase()))
           .map((item) => Number(item.service_request_id)))
 
+        const reopenIds = (existingRows || [])
+          .filter((item) => reapplyStatuses.includes(String(item.status || '').toLowerCase()))
+          .map((item) => item.id)
+        if (reopenIds.length > 0) {
+          await supabase
+            .from('service_request_contributions')
+            .update({ status: 'pending', updated_at: new Date().toISOString() })
+            .in('id', reopenIds)
+        }
+
         const rowsToInsert = activeNeeds
           .filter((need) => !existingNeedIds.has(Number(need.id)))
           .map((need) => ({
@@ -187,7 +218,15 @@ export async function submitProjectApplication(request: NextRequest) {
         success: true,
         data: {
           projectId,
-          message: 'Project-level CSR application submitted to NGO.'
+          message: existingIndex >= 0
+            ? 'Takeover application sent again to the NGO for review.'
+            : 'Project-level CSR application submitted to NGO.',
+          application: {
+            company_id: userId,
+            company_name: nextApplication.company_name,
+            status: 'pending',
+            needs: [],
+          },
         }
       })
     }
@@ -282,7 +321,7 @@ export async function submitProjectApplication(request: NextRequest) {
 
       const assignmentAccepted =
         Number(projectRow.assigned_company_user_id || 0) === Number(userId) &&
-        String(projectRow.assignment_status || '').toLowerCase() === 'accepted'
+        ['accepted', 'lead_selected', 'in_progress'].includes(String(projectRow.assignment_status || '').toLowerCase())
 
       if (needIds.length > 0) {
         const { data: acceptedRows, error: acceptedRowsError } = await supabase

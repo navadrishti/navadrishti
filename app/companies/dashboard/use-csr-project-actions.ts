@@ -1,7 +1,7 @@
 'use client';
 
 import { readApiError } from '@/lib/user-facing-error'
-import { getClientSessionToken } from '@/lib/client-session';
+import { clientAuthFetchInit } from '@/lib/client-session';
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import type { CompanyDashboardData } from './use-company-dashboard-data';
@@ -26,30 +26,21 @@ export function useCsrProjectActions(data: CompanyDashboardData, allVerified: bo
       }
 
       setInvitingProjectId(projectId);
-      const token = getClientSessionToken();
-      if (!token) {
-        toast({ title: 'Error', description: 'Please login again', variant: 'destructive' });
-        return;
-      }
-
       if (ngoIds.length === 0) {
         toast({ title: 'Select NGO', description: 'Choose at least one NGO to invite.', variant: 'destructive' });
         return;
       }
 
-      const response = await fetch('/api/service-request-assignments', {
+      const response = await fetch('/api/service-request-assignments', clientAuthFetchInit({
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'invite-lead-ngo',
           projectId,
           ngoIds,
           note: ''
         })
-      });
+      }));
 
       const payload = await response.json();
       if (!response.ok || !payload?.success) {
@@ -67,22 +58,13 @@ export function useCsrProjectActions(data: CompanyDashboardData, allVerified: bo
   };
 
   const revokeLeadNgoInvite = async (projectId: string, ngoId: number) => {
-    const token = getClientSessionToken();
-    if (!token) {
-      toast({ title: 'Error', description: 'Please login again', variant: 'destructive' });
-      return;
-    }
-
     try {
       setInvitingProjectId(projectId);
-      const response = await fetch('/api/service-request-assignments', {
+      const response = await fetch('/api/service-request-assignments', clientAuthFetchInit({
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'revoke-lead-ngo', projectId, ngoId })
-      });
+      }));
 
       const payload = await response.json().catch(() => null);
       if (!response.ok || !payload?.success) {
@@ -112,26 +94,26 @@ export function useCsrProjectActions(data: CompanyDashboardData, allVerified: bo
 
     try {
       setApplyingProjectId(projectId);
-      const token = getClientSessionToken();
-      if (!token) {
-        toast({ title: 'Error', description: 'Please login again', variant: 'destructive' });
-        return;
-      }
-
-      const response = await fetch('/api/service-request-assignments', {
+      const response = await fetch('/api/service-request-assignments', clientAuthFetchInit({
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'apply-project',
           projectId,
           note: projectApplicationNote
         })
-      });
+      }));
 
       const payload = await response.json();
+      if (response.status === 409 && /already applied/i.test(String(payload?.error || ''))) {
+        toast({
+          title: 'Already applied',
+          description: readApiError(payload, 'Your existing takeover application is on this project.'),
+        });
+        data.fetchProjectOpportunities();
+        data.fetchCSRTrackingAssignments();
+        return;
+      }
       if (!response.ok || !payload?.success) {
         toast({ title: 'Application failed', description: readApiError(payload, 'Could not apply for project'), variant: 'destructive' });
         return;

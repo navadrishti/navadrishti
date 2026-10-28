@@ -127,6 +127,7 @@ const response = await fetch('/api/service-offers/requests', {
     try {
       setLoadingCompanyProjectApplications(true);
 const response = await fetch('/api/service-request-assignments?mode=ngo-company-applications', {
+        credentials: 'include',
         headers: clientAuthHeaders()
       });
 
@@ -148,6 +149,7 @@ const response = await fetch('/api/service-request-assignments?mode=ngo-company-
     try {
       setLoadingCSRTrackingAssignments(true);
 const response = await fetch('/api/service-request-assignments?mode=csr-tracking', {
+        credentials: 'include',
         headers: clientAuthHeaders()
       });
 
@@ -190,6 +192,7 @@ const response = await fetch('/api/service-request-assignments?mode=csr-tracking
     try {
       setLoadingProjectLeadInvitations(true);
       const response = await fetch('/api/service-request-assignments?mode=ngo-lead-invitations', {
+        credentials: 'include',
         headers: clientAuthHeaders(),
       });
 
