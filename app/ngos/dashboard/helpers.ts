@@ -5,6 +5,16 @@ export const isActionableProjectApplicationStatus = (status: string): boolean =>
   return ['pending', 'pledged', 'invited', 'pending_acceptance', 'awaiting_acceptance', 'offered', 'assigned'].includes(normalized);
 };
 
+export function partitionCompanyApplications<T extends { status: string }>(applications: T[]) {
+  const review: T[] = []
+  const history: T[] = []
+  for (const application of applications) {
+    if (isActionableProjectApplicationStatus(application.status)) review.push(application)
+    else history.push(application)
+  }
+  return { review, history }
+}
+
 export const isActionableLeadInvitationStatus = (status: string): boolean =>
   ['pending', 'invited', 'pending_acceptance', 'awaiting_acceptance', 'offered', 'assigned'].includes(String(status || '').toLowerCase());
 

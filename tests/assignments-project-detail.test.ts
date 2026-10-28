@@ -101,7 +101,13 @@ describe('getProjectDetail', () => {
 
   it('redacts contact and applicant meta for anonymous viewers', async () => {
     detailDb({ project: project(), invites: [{ id: 'i1' }] })
-    const { json } = await detail()
+    const response = await getProjectDetail({
+      searchParams: new URLSearchParams({ projectId: 'p1' }),
+      userId: 0,
+      userType: '',
+    })
+    expect(response.headers.get('Cache-Control')).toBe('no-store, max-age=0')
+    const json = await response.json()
     expect(json.data.project).toMatchObject({ description: 'Books for all', budget_inr: 50000, contact_info: null, pending_company_applications: [] })
     expect(json.data.project).not.toHaveProperty('_raw_description')
     expect(json.data.company_applications).toEqual([])
