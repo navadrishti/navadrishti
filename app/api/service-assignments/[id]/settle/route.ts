@@ -117,7 +117,7 @@ export async function POST(
         paidInr: Number((Number(payment.amount || 0) / 100).toFixed(2)),
         orderNotes: providerOrder.notes && Object.keys(providerOrder.notes).length > 0 ? providerOrder.notes : undefined,
         orderAmountPaise: providerOrder.amount,
-        expected: { assignmentId: String(assignment.id), payerUserId: Number(decoded.id) },
+        expected: { assignmentId: String(assignment.id), payerUserId },
       })
       if (!result.ok) {
         return NextResponse.json({ error: result.error }, { status: result.status })
