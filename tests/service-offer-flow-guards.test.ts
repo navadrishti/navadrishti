@@ -27,7 +27,17 @@ vi.mock('@/lib/db', async () => {
     adjustServiceRequestProgress: mocks.adjustProgress,
   }
 })
-vi.mock('@/lib/server-auth', () => ({ resolveEffectiveVerificationStatus: mocks.verification }))
+vi.mock('@/lib/server-auth', async () => {
+  const { isCaVerifiedAccount, CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE } = await import('@/lib/auth')
+  return {
+    resolveEffectiveVerificationStatus: mocks.verification,
+    requireCaVerifiedPayer: async (userId: number, userType: string) => {
+      const status = await mocks.verification(userId, userType)
+      if (isCaVerifiedAccount(status)) return { ok: true as const }
+      return { ok: false as const, error: CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE }
+    },
+  }
+})
 vi.mock('@/lib/embeddings', () => ({ syncServiceOfferEmbedding: vi.fn(async () => undefined) }))
 vi.mock('next/server', async (importOriginal) => ({
   ...(await importOriginal<typeof import('next/server')>()),
@@ -187,6 +197,10 @@ describe('service offer payment verify', () => {
 })
 
 describe('service offer payment create-order', () => {
+  beforeEach(() => {
+    mocks.verification.mockResolvedValue('verified')
+  })
+
   function setup(responseMeta: Record<string, unknown>, upsertError: unknown = null) {
     mocks.serviceOffers.getById.mockResolvedValue({ id: 3, creator_id: OWNER, price_amount: 800, title: 'Van' })
     mocks.createPlatformPricedOrder.mockResolvedValue({
@@ -264,6 +278,15 @@ describe('service offer payment create-order', () => {
     const res = await run()
     expect(res.status).toBe(409)
     expect((await res.json()).error).toContain('has not connected a Razorpay payout account')
+  })
+
+  it('refuses unverified payers the same way as NGO network payments', async () => {
+    mocks.verification.mockResolvedValue('unverified')
+    setup({ payment_amount_inr: 900 })
+    const res = await run()
+    expect(res.status).toBe(403)
+    expect((await res.json()).error).toMatch(/CA-verified/i)
+    expect(mocks.createPlatformPricedOrder).not.toHaveBeenCalled()
   })
 })
 

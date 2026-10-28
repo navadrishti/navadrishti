@@ -7,6 +7,7 @@ import {
   CSR_WORK_END_DATE_REQUIRED_MESSAGE,
   assertCsr1CoversProject,
   assertCsr1CoversRequiredThrough,
+  caVerifiedPayerError,
   getAccountAccessBlockReason,
   ngoIsCsrEligible,
   resolveProjectCsrCoverageEndDate,
@@ -298,6 +299,21 @@ export async function resolveEffectiveVerificationStatus(
     .maybeSingle();
 
   return verRow?.verification_status || 'unverified';
+}
+
+/**
+ * Blocks Razorpay create-order / settle-start unless the live account is CA-verified.
+ * Company CA portal identities are the payer on company engagement/attendance
+ * and milestone checkout; they are not document-verified platform accounts.
+ */
+export async function requireCaVerifiedPayer(
+  userId: number,
+  userType: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (await isCompanyCAUser(userId)) return { ok: true };
+  const error = caVerifiedPayerError(await resolveEffectiveVerificationStatus(userId, userType));
+  if (error) return { ok: false, error };
+  return { ok: true };
 }
 
 export async function ngoUserIsCsrEligible(userId: number): Promise<boolean> {

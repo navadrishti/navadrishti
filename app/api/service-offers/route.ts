@@ -2,6 +2,7 @@ import { after, NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 import { syncServiceOfferEmbedding } from '@/lib/embeddings'
 import { getTokenClaims } from '@/lib/auth'
+import { resolveEffectiveVerificationStatus } from '@/lib/server-auth'
 import {
   buildUsageRecordFromClient,
   impactAreaMatchesFilter,
@@ -290,7 +291,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
 
-    const { id: userId, verification_status, user_type } = decoded
+    const { id: userId, user_type } = decoded
 
     const { data: currentUser, error: currentUserError } = await supabase
       .from('users')
@@ -303,7 +304,7 @@ export async function POST(request: NextRequest) {
     }
 
     const effectiveUserType = currentUser.user_type || user_type
-    const effectiveVerificationStatus = currentUser.verification_status || verification_status || 'unverified'
+    const effectiveVerificationStatus = await resolveEffectiveVerificationStatus(userId, effectiveUserType)
 
     if (!['ngo', 'company', 'individual'].includes(effectiveUserType)) {
       return NextResponse.json({ error: 'Only verified NGO, company, or individual accounts can create capability offers.' }, { status: 403 })

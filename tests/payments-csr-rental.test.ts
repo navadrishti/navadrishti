@@ -45,7 +45,11 @@ function matchesUpdatedAtGuard(query: FakeQuery, campaign: Row) {
   return !nullGuard || campaign.updated_at == null
 }
 
-function useCampaignDb(initial: Row, offerOverrides: Row = { id: 7, creator_id: 40, offer_type: 'service', unit_rate: 2000 }) {
+function useCampaignDb(
+  initial: Row,
+  offerOverrides: Row = { id: 7, creator_id: 40, offer_type: 'service', unit_rate: 2000 },
+  userRow: Row = {},
+) {
   const offer = { status: 'active', ...offerOverrides }
   const state = { campaign: { ...initial } }
   const fake = createSupabaseFake((query) => {
@@ -72,7 +76,15 @@ function useCampaignDb(initial: Row, offerOverrides: Row = { id: 7, creator_id: 
       if (hasCall(query, 'insert') || query.op === 'insert') return { data: { id: 'asg_1' } }
       return { data: null }
     }
-    if (query.table === 'users') return { data: { profile_data: { razorpay_linked_account_id: 'acc_provider', razorpay_link_status: 'active' } } }
+    if (query.table === 'users') {
+      return {
+        data: {
+          verification_status: 'verified',
+          profile_data: { razorpay_linked_account_id: 'acc_provider', razorpay_link_status: 'active' },
+          ...userRow,
+        },
+      }
+    }
     return undefined
   })
   mocks.supabase.from.mockImplementation(fake.from)
@@ -213,6 +225,14 @@ describe('update-campaign route', () => {
   ])('requires a company login (%s)', async (_label, token, expected) => {
     const { status } = await send(POST, request('POST', { action: 'capability_rental_create_order' }, token))
     expect(status).toBe(expected)
+  })
+
+  it('refuses unverified companies the same way as NGO network payments', async () => {
+    useCampaignDb(baseCampaign, undefined, { verification_status: 'unverified' })
+    const { status, body } = await send(POST, request('POST', { action: 'capability_rental_create_order', campaign_id: CAMPAIGN_ID, offer_id: 7 }))
+    expect(status).toBe(403)
+    expect(String(body.error)).toMatch(/CA-verified/i)
+    expect(mocks.razorpay.orders.create).not.toHaveBeenCalled()
   })
 
   it('maps a missing lead NGO to 409', async () => {

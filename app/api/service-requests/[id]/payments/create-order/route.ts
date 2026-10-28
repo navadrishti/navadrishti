@@ -7,6 +7,7 @@ import { parseAmountToInr, parseJsonObject } from '@/lib/utils';
 import {
   assertNgoLiveCsr1,
   CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE,
+  requireCaVerifiedPayer,
 } from '@/lib/server-auth';
 import { resolveFundingTargetInr } from '@/lib/service-request-allocation';
 import {
@@ -33,6 +34,11 @@ export async function POST(
 
     if (!canContributeViaPlatform(decoded.user_type)) {
       return NextResponse.json({ error: 'Only companies and individuals can contribute directly' }, { status: 403 });
+    }
+
+    const payerGate = await requireCaVerifiedPayer(decoded.id, decoded.user_type);
+    if (!payerGate.ok) {
+      return NextResponse.json({ error: payerGate.error }, { status: 403 });
     }
 
     const { id } = await params;

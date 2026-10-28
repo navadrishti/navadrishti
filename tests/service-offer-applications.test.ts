@@ -14,7 +14,17 @@ vi.mock('@/lib/db', async () => {
   const { supabaseFake: fake } = await import('./support/supabase-fake')
   return { supabase: fake.client, db: { users: mocks.users, serviceOffers: mocks.serviceOffers } }
 })
-vi.mock('@/lib/server-auth', () => ({ resolveEffectiveVerificationStatus: mocks.verification }))
+vi.mock('@/lib/server-auth', async () => {
+  const { isCaVerifiedAccount, CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE } = await import('@/lib/auth')
+  return {
+    resolveEffectiveVerificationStatus: mocks.verification,
+    requireCaVerifiedPayer: async (userId: number, userType: string) => {
+      const status = await mocks.verification(userId, userType)
+      if (isCaVerifiedAccount(status)) return { ok: true as const }
+      return { ok: false as const, error: CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE }
+    },
+  }
+})
 
 const ngoToken = jwt.sign({ id: 12, email: 'ngo@example.org', user_type: 'ngo' }, 'test-secret')
 const ownerToken = jwt.sign({ id: 40, email: 'owner@example.org', user_type: 'company' }, 'test-secret')

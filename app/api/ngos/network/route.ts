@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  getTokenClaims,
-  isCaVerifiedAccount,
-  CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE,
-} from '@/lib/auth';
+import { getTokenClaims } from '@/lib/auth';
 import { CSR_SCHEDULE_VII_CATEGORIES } from '@/lib/categories';
 import { rankRecommendedNgosForViewer } from '@/lib/csr-agent/recommendation-utils';
 import {
   assertNgoLiveCsr1,
   CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE,
-  resolveEffectiveVerificationStatus,
+  requireCaVerifiedPayer,
 } from '@/lib/server-auth';
 import {
   canContributeViaPlatform,
@@ -101,9 +97,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Only companies and individuals can pay NGOs from the network' }, { status: 403 });
     }
 
-    const effectivePayerVerificationStatus = await resolveEffectiveVerificationStatus(decoded.id, decoded.user_type);
-    if (!isCaVerifiedAccount(effectivePayerVerificationStatus)) {
-      return NextResponse.json({ error: CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE }, { status: 403 });
+    const payerGate = await requireCaVerifiedPayer(decoded.id, decoded.user_type);
+    if (!payerGate.ok) {
+      return NextResponse.json({ error: payerGate.error }, { status: 403 });
     }
 
     const body = await request.json().catch(() => ({}));

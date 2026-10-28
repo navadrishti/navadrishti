@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { isCaVerifiedAccount } from '@/lib/auth'
 import { ApplyOfferCard } from './apply-offer-card'
 import { CapabilityOfferDetailsSection } from './capability-offer-details-section'
 import { ExistingApplicationPanel } from './existing-application-panel'
@@ -41,6 +42,7 @@ export default function ServiceOfferDetailPage() {
 
   const canApplyToOffer = !!user && user.id !== offer?.creator_id && user.user_type === 'ngo'
   const canShowRespondTab = !isAuthenticated || canApplyToOffer
+  const payerVerified = isCaVerifiedAccount(user?.verification_status)
 
   if (loading) {
     return <OfferDetailSkeleton />
@@ -105,6 +107,7 @@ export default function ServiceOfferDetailPage() {
                               application={userApplication}
                               offerPriceAmount={offer.price_amount}
                               paying={paying}
+                              payerVerified={payerVerified}
                               onPay={handlePayForApplication}
                               onUpdated={refreshApplication}
                             />

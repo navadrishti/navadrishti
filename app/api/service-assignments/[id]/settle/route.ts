@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Razorpay from 'razorpay'
 import { supabase } from '@/lib/db'
-import { getTokenClaims } from '@/lib/auth'
+import { AuthError, getTokenClaims } from '@/lib/auth'
+import {
+  getCompanyCAFromRequest,
+  hasCompanyCaPermission,
+  requireCaVerifiedPayer,
+} from '@/lib/server-auth'
 import {
   createEngagementSettlementOrder,
   getAssignmentOutstandingAmount,
@@ -19,9 +24,23 @@ export async function POST(
 ) {
   try {
     const decoded = await getTokenClaims(request)
+    let payerUserId = decoded ? Number(decoded.id) : 0
+
     if (!decoded) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+      try {
+        const companyCA = await getCompanyCAFromRequest(request)
+        if (!hasCompanyCaPermission(companyCA.identity, 'can_confirm_payments')) {
+          return NextResponse.json({ error: 'Company CA does not have permission to confirm payments' }, { status: 403 })
+        }
+        payerUserId = Number(companyCA.identity.company_user_id)
+      } catch (error) {
+        if (error instanceof AuthError) {
+          return NextResponse.json({ error: error.message }, { status: error.status })
+        }
+        return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+      }
     }
+
     const { id } = await params
     const body = await request.json()
     const action = String(body.action || 'start').toLowerCase()
@@ -40,12 +59,19 @@ export async function POST(
     if (!parties.settleable) {
       return NextResponse.json({ error: parties.reason }, { status: 400 })
     }
-    if (parties.payerUserId !== Number(decoded.id)) {
+    if (parties.payerUserId !== payerUserId) {
       return NextResponse.json({ error: 'Only the paying party can settle this engagement' }, { status: 403 })
     }
 
     if (!isDailyRentalAssignment(assignment)) {
       return NextResponse.json({ error: 'Settlement is only available for daily rental engagements' }, { status: 400 })
+    }
+
+    if (action !== 'verify' && decoded) {
+      const payerGate = await requireCaVerifiedPayer(decoded.id, decoded.user_type)
+      if (!payerGate.ok) {
+        return NextResponse.json({ error: payerGate.error }, { status: 403 })
+      }
     }
 
     if (action === 'verify') {

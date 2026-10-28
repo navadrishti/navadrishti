@@ -16,6 +16,7 @@ import {
   getCompanyCAFromRequest,
   getEvidenceApproverContext,
   isCARequest,
+  requireCaVerifiedPayer,
   resolveEffectiveVerificationStatus,
   setAdminTokenCookie,
   setAuthTokenCookie,
@@ -410,6 +411,27 @@ describe('resolveEffectiveVerificationStatus', () => {
     await expect(resolveEffectiveVerificationStatus(1, 'admin')).resolves.toBe('unverified')
     supabaseFake.queue('users', { data: null })
     await expect(resolveEffectiveVerificationStatus(1, 'individual')).resolves.toBe('unverified')
+  })
+})
+
+describe('requireCaVerifiedPayer', () => {
+  it('allows a CA-verified account to pay', async () => {
+    supabaseFake.queue('users', { data: { verification_status: 'verified' } })
+    await expect(requireCaVerifiedPayer(1, 'individual')).resolves.toEqual({ ok: true })
+  })
+
+  it('lets a company CA pay without platform document verification', async () => {
+    supabaseFake.queue('company_ca_identities', { data: { id: 'ca_1' } })
+    supabaseFake.queue('users', { data: { verification_status: 'unverified' } })
+    await expect(requireCaVerifiedPayer(9, 'individual')).resolves.toEqual({ ok: true })
+  })
+
+  it('blocks unverified payers with the shared payment copy', async () => {
+    supabaseFake.queue('users', { data: { verification_status: 'unverified' } })
+    await expect(requireCaVerifiedPayer(1, 'company')).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/CA-verified/i),
+    })
   })
 })
 

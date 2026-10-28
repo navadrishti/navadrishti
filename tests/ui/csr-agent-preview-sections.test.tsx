@@ -214,6 +214,12 @@ describe('ServiceMatchesSection', () => {
     expect(screen.getByText(hint)).toBeInTheDocument()
   })
 
+  it('disables Pay & reserve until the company is CA-verified', () => {
+    render(<ServiceMatchesSection {...base} leadAccepted payerVerified={false} onPayAndReserve={vi.fn()} />)
+    expect(screen.getByRole('button', { name: 'Pay & reserve' })).toBeDisabled()
+    expect(screen.getByText(/CA-verified/i)).toBeInTheDocument()
+  })
+
   it('enables Pay & reserve once lead accepted', async () => {
     const onPayAndReserve = vi.fn()
     render(<ServiceMatchesSection {...base} leadAccepted onPayAndReserve={onPayAndReserve} />)

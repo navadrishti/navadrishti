@@ -4,7 +4,9 @@ import Link from "next/link"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { InlineCsrCapabilityDelhivery } from "@/components/service-card"
+import { VerificationRequiredNotice } from "@/components/verification-required-notice"
 import { VerifiedAccountName } from "@/components/verification-badge"
+import { CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE } from "@/lib/auth"
 import { AGENT_NAMES } from "@/lib/ai-agent-sessions"
 import { formatStatusLabel } from "@/lib/format-date"
 import type { CsrCapabilityRentalRecord } from "@/lib/service-engagement"
@@ -107,6 +109,7 @@ export function ServiceMatchesSection({
   rentalCampaignId,
   onPayAndReserve,
   onRentalUpdated,
+  payerVerified = true,
 }: {
   suggestions: ServiceSuggestion[]
   loading: boolean
@@ -119,6 +122,7 @@ export function ServiceMatchesSection({
   rentalCampaignId: string
   onPayAndReserve: (offerId: number, offerType?: string) => void | Promise<void>
   onRentalUpdated: (offerId: number) => void | Promise<void>
+  payerVerified?: boolean
 }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -126,7 +130,11 @@ export function ServiceMatchesSection({
         <p className="text-sm font-semibold text-slate-950">{AGENT_NAMES.pulse} matches</p>
         {loading && <Loader2 className="h-4 w-4 animate-spin text-slate-500" />}
       </div>
-      {!leadAccepted && suggestions.length > 0 ? (
+      {!payerVerified && suggestions.length > 0 ? (
+        <div className="mt-3">
+          <VerificationRequiredNotice description={CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE} />
+        </div>
+      ) : !leadAccepted && suggestions.length > 0 ? (
         <p className="mt-1 text-xs text-slate-500">You can pay and reserve these offers once a lead NGO accepts the campaign.</p>
       ) : null}
       <div className="mt-3 space-y-3">
@@ -153,6 +161,7 @@ export function ServiceMatchesSection({
                       paidOfferIds.includes(service.service_offer_id) ||
                       !actionsEnabled ||
                       !leadAccepted ||
+                      !payerVerified ||
                       payingOfferId === service.service_offer_id
                     }
                     variant={paidOfferIds.includes(service.service_offer_id) ? 'secondary' : 'default'}

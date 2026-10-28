@@ -3,8 +3,9 @@
 import { useIsClient } from '@/hooks/use-is-client'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, XCircle, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, XCircle } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
+import { isCaVerifiedAccount } from '@/lib/auth'
 import { Header } from '@/components/header'
 import { getFundingProgress, resolveFundingTargetInr } from '@/lib/service-request-allocation'
 import { Button } from '@/components/ui/button'
@@ -21,6 +22,7 @@ import { RequesterSection } from './requester-section'
 import { MyApplicationCard } from './my-application-card'
 import { ApplyForm } from './apply-form'
 import { ServiceRequestDetailSkeleton } from './detail-skeleton'
+import { VerificationRequiredNotice } from '@/components/verification-required-notice'
 
 export default function ServiceRequestDetailPage() {
   const params = useParams()
@@ -60,7 +62,9 @@ export default function ServiceRequestDetailPage() {
   const funding = getFundingProgress(fundingTargetInr, fundsRaisedInr)
   const fundsRemainingInr = request?.funds_remaining_inr ?? funding.remaining
   const fundingProgress = request?.funding_progress ?? funding.progress
-  const canPayForRequest = Boolean(isAuthenticated && canVolunteer && !isNgoOwner && request?.status !== 'completed' && request?.status !== 'cancelled')
+  const payerVerified = isCaVerifiedAccount(user?.verification_status)
+  const canAttemptPay = Boolean(isAuthenticated && canVolunteer && !isNgoOwner && request?.status !== 'completed' && request?.status !== 'cancelled')
+  const canPayForRequest = canAttemptPay && payerVerified
 
   const volunteer = useVolunteerApplication({
     requestId,
@@ -137,6 +141,7 @@ export default function ServiceRequestDetailPage() {
                         fundsRaisedInr={fundsRaisedInr}
                         fundsRemainingInr={fundsRemainingInr}
                         canPayForRequest={canPayForRequest}
+                        verificationRequired={canAttemptPay && !payerVerified}
                         contribution={contribution}
                       />
                     )}
@@ -146,7 +151,7 @@ export default function ServiceRequestDetailPage() {
                     <RequesterSection request={request} />
                   </TabsContent>
 
-                  <TabsContent value="volunteer" className="mt-4">
+                  <TabsContent value="volunteer" className="mt-4 space-y-4">
                     {!canShowVolunteerTab || isFinancialNeed ? null : (
                       <>
                         {!isAuthenticated && (
@@ -158,29 +163,8 @@ export default function ServiceRequestDetailPage() {
                           </div>
                         )}
 
-                        {isAuthenticated && user && user.verification_status !== 'verified' && (
-                          <div className="space-y-4">
-                            <Alert>
-                              <AlertTriangle className="h-4 w-4" />
-                              <AlertDescription>
-                                Account verification required to apply for volunteer opportunities.
-                              </AlertDescription>
-                            </Alert>
-
-                            <div className="p-4 bg-amber-50 border border-amber-200 rounded-md">
-                              <div className="flex items-start gap-3">
-                                <div>
-                                  <p className="text-amber-800 font-medium text-sm">Verification Required</p>
-                                  <p className="text-amber-700 text-sm mt-1">
-                                    You need to complete identity verification (Aadhaar & PAN) before you can apply for volunteer opportunities.
-                                    <Link href="/verification" className="underline font-medium ml-1 hover:text-amber-900">
-                                      Complete verification now
-                                    </Link>
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
+                        {isAuthenticated && user && !payerVerified && (
+                          <VerificationRequiredNotice description="Complete identity verification (Aadhaar and PAN) before you can apply for volunteer opportunities." />
                         )}
 
                         {isAuthenticated && userApplication && (
@@ -195,7 +179,7 @@ export default function ServiceRequestDetailPage() {
                           />
                         )}
 
-                        {isAuthenticated && effectiveUserType === 'individual' && !userApplication && user && user.verification_status === 'verified' && (
+                        {isAuthenticated && effectiveUserType === 'individual' && !userApplication && user && payerVerified && (
                           <ApplyForm
                             isFinancialNeed={isFinancialNeed}
                             isSkillServiceNeed={isSkillServiceNeed}

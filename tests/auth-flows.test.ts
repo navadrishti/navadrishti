@@ -11,6 +11,7 @@ import {
   getAccountLockUntil,
   getCaBadgeNumber,
   hashPassword,
+  caVerifiedPayerError,
   isCaVerifiedAccount,
   isPermanentlyBannedAccount,
   isPlatformUserSession,
@@ -281,6 +282,8 @@ describe('CA badges', () => {
     expect(visibleCaBadgeNumber('pending', { ca_badge_number: 'ND-CA-ABCDEF' })).toBeNull()
     expect(isCaVerifiedAccount('VERIFIED')).toBe(true)
     expect(isCaVerifiedAccount(null)).toBe(false)
+    expect(caVerifiedPayerError('verified')).toBeNull()
+    expect(caVerifiedPayerError('unverified')).toMatch(/CA-verified/)
   })
 })
 

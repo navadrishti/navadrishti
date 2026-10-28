@@ -9,7 +9,7 @@ import {
 } from "@/lib/csr-agent/campaign";
 import { parseLeadNgoInvites } from "@/lib/campaign-volunteer-attendance";
 import { PayeeNotConnectedError } from "@/lib/razorpay-route";
-import { assertUserType, authErrorResponse, getAuthUserFromRequest } from "@/lib/server-auth";
+import { assertUserType, authErrorResponse, getAuthUserFromRequest, requireCaVerifiedPayer } from "@/lib/server-auth";
 import { getErrorMessage, parseJsonObject } from "@/lib/utils";
 
 function safeSignatureMatch(expected: string, received: string): boolean {
@@ -49,6 +49,10 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'capability_rental_create_order') {
+      const payerGate = await requireCaVerifiedPayer(companyId, 'company');
+      if (!payerGate.ok) {
+        return NextResponse.json({ error: payerGate.error }, { status: 403 });
+      }
       const result = await createCsrCapabilityRentalOrder({ campaignId, companyId, offerId });
       return NextResponse.json({ success: true, data: result });
     }

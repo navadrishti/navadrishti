@@ -11,6 +11,7 @@ import ProtectedRoute from '@/components/protected-route'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/lib/auth-context'
+import { isCaVerifiedAccount } from '@/lib/auth'
 import { AGENT_NAMES, AGENT_ROUTES } from '@/lib/ai-agent-sessions'
 import { useToast } from '@/hooks/use-toast'
 import { buildSuggestedMilestoneSets } from '@/app/companies/csr-agent/helpers'
@@ -265,6 +266,7 @@ export default function CreateCsrCampaignPage() {
                     rentalCampaignId={draftCampaignId || ''}
                     onPayAndReserve={rentals.handlePayAndReserveOffer}
                     onRentalUpdated={rentals.refreshPaidRental}
+                    payerVerified={isCaVerifiedAccount(user?.verification_status)}
                     ngos={suggestions.ngoDirectory}
                     loadingNgos={suggestions.loadingNgos}
                     invites={suggestions.leadNgoInvites}
