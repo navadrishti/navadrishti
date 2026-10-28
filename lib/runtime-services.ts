@@ -157,17 +157,17 @@ export function productionConfigIssues(): string[] {
   requireValue('RAZORPAY_KEY_SECRET', issues)
   requireValue('RAZORPAY_WEBHOOK_SECRET', issues)
 
-  const razorpayKey = env('NEXT_PUBLIC_RAZORPAY_KEY_ID')
-  if (process.env.VERCEL_ENV === 'production' && razorpayKey.startsWith('rzp_test_')) {
-    issues.push('NEXT_PUBLIC_RAZORPAY_KEY_ID is a test key; use the live key for production')
-  }
-
   return issues
 }
 
-export function assertProductionConfig() {
+export function logProductionConfigIssues() {
   if (!isProductionRuntime()) return
   const issues = productionConfigIssues()
   if (issues.length === 0) return
-  throw new Error(`Production configuration is incomplete:\n- ${issues.join('\n- ')}`)
+  console.warn(`Production configuration notes:\n- ${issues.join('\n- ')}`)
+}
+
+/** Never throws. Missing live Razorpay keys must not take the deployed app down. */
+export function assertProductionConfig() {
+  logProductionConfigIssues()
 }

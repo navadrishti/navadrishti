@@ -32,7 +32,7 @@ The Next.js API uses `SUPABASE_SECRET_KEY` (service role) on the server. That ro
    - Admin, Cloudinary, Razorpay **live** keys, `CRON_SECRET`, `NEXT_PUBLIC_APP_URL`
 2. In the production Supabase SQL editor, run `supabase/rls-lockdown.sql` once. It enables RLS and revokes `anon` / `authenticated` on `public`. Re-run is safe.
 3. Deploy. `GET /api/health` must return 200. A 503 includes `config_issues` naming missing or swapped keys (not the values).
-4. The server refuses to boot in production if the publishable and secret keys are swapped, if `JWT_SECRET` is a placeholder, or if Razorpay is still on `rzp_test_`.
+4. `/api/health` reports missing or swapped keys as `config_issues`. Razorpay test keys are allowed until live payments are switched on. Do not put the secret key in any `NEXT_PUBLIC_*` variable.
 
 ## Health check
 
