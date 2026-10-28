@@ -49,6 +49,7 @@ export type ProjectDetail = {
   volunteers_needed?: number | null;
   csr_project_available_for_csr?: boolean | null;
   ngo?: ProjectNgo;
+  pending_company_applications?: Array<{ company_id: number; status?: string }>;
 };
 
 export type CompanyApplication = {

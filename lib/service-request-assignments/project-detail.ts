@@ -353,5 +353,8 @@ export async function getProjectDetail(ctx: AssignmentsGetContext) {
 
   // project-detail: returning payload for project
 
-  return NextResponse.json({ success: true, data: responsePayload })
+  return NextResponse.json(
+    { success: true, data: responsePayload },
+    { headers: { 'Cache-Control': 'no-store, max-age=0' } },
+  )
 }
