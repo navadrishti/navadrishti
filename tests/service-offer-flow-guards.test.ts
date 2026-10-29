@@ -66,6 +66,7 @@ beforeEach(() => {
   vi.stubEnv('RAZORPAY_KEY_SECRET', 'rzp_secret')
   vi.spyOn(console, 'error').mockImplementation(() => {})
   mocks.adjustProgress.mockImplementation(fakeAdjustProgress)
+  mocks.verification.mockResolvedValue('verified')
   supabaseFake.reset()
 })
 
@@ -392,7 +393,9 @@ describe('service offer request decisions', () => {
 
 describe('service offer listing', () => {
   const offer = { id: 3, creator_id: OWNER, title: 'Van', status: 'active', admin_status: 'approved', valid_until: null, ngo: null }
-  const client = { id: 5, service_offer_id: 3, status: 'accepted', message: 'private note', response_meta: {}, client: { name: 'NGO', email: 'ngo@example.org' } }
+  const client = { id: 5, client_id: NGO, service_offer_id: 3, status: 'accepted', message: 'private note', response_meta: {}, client: { name: 'NGO', email: 'ngo@example.org' } }
+  const payoutProfile = { razorpay_linked_account_id: 'acc_1', razorpay_link_status: 'active' }
+  const merchant = { id: OWNER, verification_status: 'verified', profile_data: payoutProfile }
 
   function setup() {
     let clientQueries = 0
@@ -404,6 +407,24 @@ describe('service offer listing', () => {
       if (query.table === 'service_offers') return { data: [offer] }
       return undefined
     })
+  }
+
+  function setupPublic(offers: unknown[], clients: unknown[] = [], users: unknown[] = [merchant]) {
+    respond((query) => {
+      if (query.table === 'service_offers') return { data: offers }
+      if (query.table === 'users') return { data: users }
+      if (query.table === 'service_clients') return { data: clients }
+      if (query.table === 'service_engagement_assignments') return { data: [] }
+      if (query.table === 'service_attendance_entries') return { data: [] }
+      return undefined
+    })
+  }
+
+  async function titlesForPublic(offers: unknown[], clients: unknown[] = [], users: unknown[] = [merchant]) {
+    setupPublic(offers, clients, users)
+    const res = await listOffers(jsonRequest('http://localhost/api/service-offers?view=all'))
+    const body = await res.json()
+    return (body.data || []).map((row: { title?: string }) => row.title)
   }
 
   it('rejects unknown views', async () => {
@@ -418,6 +439,12 @@ describe('service offer listing', () => {
     const body = await res.json()
     expect(body.data[0].usage_records[0]).not.toHaveProperty('client_email')
     expect(body.data[0].usage_records[0]).not.toHaveProperty('message')
+    expect(body.data[0].my_application).toMatchObject({
+      id: 5,
+      status: 'accepted',
+      isAssigned: true,
+      message: 'private note',
+    })
   })
 
   it('shows applicant contact details to the owner', async () => {
@@ -426,6 +453,82 @@ describe('service offer listing', () => {
     const body = await res.json()
     expect(body.data[0].usage_records[0]).toMatchObject({ client_email: 'ngo@example.org', message: 'private note' })
   })
+
+  it('does not leak provider email or payout details on the public catalog', async () => {
+    setupPublic([
+      {
+        id: 3,
+        creator_id: OWNER,
+        title: 'Solar Installation',
+        status: 'active',
+        is_listed: true,
+        valid_until: null,
+        ngo: {
+          ...merchant,
+          email: 'secret@example.org',
+          phone: '9999999999',
+          profile_data: { ...payoutProfile, payout_account: { account_number: '123456789012' }, bio: 'Public bio' },
+        },
+      },
+    ])
+    const res = await listOffers(jsonRequest('http://localhost/api/service-offers?view=all'))
+    const body = await res.json()
+    const payload = JSON.stringify(body)
+    expect(body.data[0].title).toBe('Solar Installation')
+    expect(payload).not.toContain('secret@example.org')
+    expect(payload).not.toContain('9999999999')
+    expect(payload).not.toContain('123456789012')
+    expect(payload).not.toContain('acc_1')
+    expect(body.data[0].ngo.profile_data).toEqual({ bio: 'Public bio' })
+  })
+
+  it('lists unused dashboard-listed offers even when is_listed is null and the nested merchant join is missing', async () => {
+    const titles = await titlesForPublic([
+      { id: 3, creator_id: OWNER, title: 'Solar Installation', status: 'active', admin_status: '', is_listed: null, valid_until: null, ngo: null },
+    ])
+    expect(titles).toEqual(['Solar Installation'])
+    const offerQuery = supabaseFake.find('service_offers', 'select')[0]
+    expect(offerQuery.filters.some((filter) => filter[0] === 'eq' && filter[1] === 'is_listed')).toBe(false)
+    expect(offerQuery.filters.some((filter) => filter[0] === 'or' && String(filter[1]).includes('admin_status'))).toBe(false)
+  })
+
+  it('hides an unused offer when Razorpay payout is disconnected, even if the nested merchant join comes back as an array', async () => {
+    const titles = await titlesForPublic([
+      {
+        id: 3,
+        creator_id: OWNER,
+        title: 'School bags',
+        status: 'active',
+        admin_status: 'approved',
+        is_listed: true,
+        valid_until: null,
+        ngo: [{ verification_status: 'verified', profile_data: {} }],
+      },
+    ], [], [])
+    expect(titles).toEqual([])
+  })
+
+  it('hides unlisted, in-use, unverified, rejected, and disconnected-payout offers from the public catalog', async () => {
+    setupPublic(
+      [
+        { id: 1, creator_id: OWNER, title: 'Unlisted kit', status: 'active', is_listed: false, valid_until: null, ngo: merchant },
+        { id: 2, creator_id: OWNER, title: 'Build well', status: 'active', is_listed: true, valid_until: null, ngo: merchant },
+        { id: 3, creator_id: 99, title: 'Unverified van', status: 'active', is_listed: true, valid_until: null, ngo: { verification_status: 'pending' } },
+        { id: 4, creator_id: 100, title: 'River cleaning machine', status: 'active', is_listed: true, valid_until: null, ngo: { verification_status: 'verified', profile_data: {} } },
+        { id: 5, creator_id: OWNER, title: 'Distribute school bags', status: 'active', admin_status: 'rejected', is_listed: true, valid_until: null, ngo: merchant },
+        { id: 6, creator_id: OWNER, title: 'Solar Installation', status: 'active', is_listed: true, valid_until: null, ngo: merchant },
+      ],
+      [{ id: 9, client_id: NGO, service_offer_id: 2, status: 'accepted', response_meta: {}, client: { name: 'NGO' } }],
+      [
+        merchant,
+        { id: 99, verification_status: 'pending', profile_data: payoutProfile },
+        { id: 100, verification_status: 'verified', profile_data: {} },
+      ]
+    )
+    const res = await listOffers(jsonRequest('http://localhost/api/service-offers?view=all'))
+    const body = await res.json()
+    expect((body.data || []).map((row: { title?: string }) => row.title)).toEqual(['Solar Installation'])
+  })
 })
 
 describe('service offer applications', () => {
@@ -433,7 +536,7 @@ describe('service offer applications', () => {
   const need = { id: 31, title: 'Lamps', status: 'active', request_type: 'Skill / Service Need', ngo_id: NGO }
 
   beforeEach(() => {
-    mocks.users.findById.mockResolvedValue({ id: NGO, user_type: 'ngo' })
+    mocks.users.findById.mockResolvedValue({ id: NGO, user_type: 'ngo', profile_data: { registration_type: 'Trust' } })
     mocks.verification.mockResolvedValue('verified')
     mocks.serviceOffers.getById.mockResolvedValue(offer)
   })
@@ -443,7 +546,7 @@ describe('service offer applications', () => {
 
   it.each([
     ['inactive', { status: 'inactive' }],
-    ['pending review', { admin_status: 'pending' }],
+    ['rejected', { admin_status: 'rejected' }],
     ['unlisted', { is_listed: false }],
   ])('refuses applications to an %s offer', async (_label, override) => {
     mocks.serviceOffers.getById.mockResolvedValue({ ...offer, ...override })
@@ -482,10 +585,28 @@ describe('single service offer', () => {
     expect(res.status).toBe(400)
   })
 
-  it('hides unapproved offers from the public', async () => {
+  it('hides inactive offers from the public', async () => {
     mocks.serviceOffers.getById.mockResolvedValue({ ...baseOffer, admin_status: 'pending', status: 'inactive' })
     const res = await getOffer(jsonRequest('http://localhost/api/service-offers/3'), params({ id: '3' }))
     expect(res.status).toBe(404)
+  })
+
+  it('hides unlisted offers from the public', async () => {
+    mocks.serviceOffers.getById.mockResolvedValue({ ...baseOffer, is_listed: false })
+    const res = await getOffer(jsonRequest('http://localhost/api/service-offers/3'), params({ id: '3' }))
+    expect(res.status).toBe(404)
+  })
+
+  it('hides rejected offers from the public', async () => {
+    mocks.serviceOffers.getById.mockResolvedValue({ ...baseOffer, admin_status: 'rejected' })
+    const res = await getOffer(jsonRequest('http://localhost/api/service-offers/3'), params({ id: '3' }))
+    expect(res.status).toBe(404)
+  })
+
+  it('lets the public see an active offer that is still pending leftover review', async () => {
+    mocks.serviceOffers.getById.mockResolvedValue({ ...baseOffer, admin_status: 'pending' })
+    const res = await getOffer(jsonRequest('http://localhost/api/service-offers/3'), params({ id: '3' }))
+    expect(res.status).toBe(200)
   })
 
   it('lets an applicant see an offer that closed after acceptance', async () => {
@@ -495,14 +616,21 @@ describe('single service offer', () => {
     expect(res.status).toBe(200)
   })
 
-  it('omits review details and the provider email for non-owners', async () => {
-    const provider = { name: 'Asha', email: 'owner@example.org', user_type: 'company' }
+  it('omits review details, provider email, and payout profile for non-owners', async () => {
+    const provider = {
+      name: 'Asha',
+      email: 'owner@example.org',
+      user_type: 'company',
+      profile_data: { payout_account: { account_number: '123456789012' }, bio: 'Public bio' },
+    }
     mocks.serviceOffers.getById.mockResolvedValue({ ...baseOffer, ngo: provider })
     const res = await getOffer(jsonRequest('http://localhost/api/service-offers/3'), params({ id: '3' }))
     const body = await res.json()
     expect(body).not.toHaveProperty('admin_comments')
     expect(body).not.toHaveProperty('admin_reviewed_by')
     expect(JSON.stringify(body)).not.toContain('owner@example.org')
+    expect(JSON.stringify(body)).not.toContain('123456789012')
+    expect(body.ngo.profile_data).toEqual({ bio: 'Public bio' })
     expect(body.provider_name).toBe('Asha')
 
     const owner = await getOffer(jsonRequest('http://localhost/api/service-offers/3', { token: tokenFor(OWNER, 'company') }), params({ id: '3' }))
@@ -521,12 +649,13 @@ describe('single service offer', () => {
   const put = (body: Record<string, unknown>) =>
     updateOffer(jsonRequest('http://localhost/api/service-offers/3', { token: tokenFor(OWNER, 'company'), body, method: 'PUT' }), params({ id: '3' }))
 
-  it('sends an edited approved offer back for review', async () => {
+  it('keeps an edited offer live without sending it back for review', async () => {
     mocks.serviceOffers.getById.mockResolvedValue(existingService)
     const res = await put(serviceBody)
     expect(res.status).toBe(200)
     const [update] = supabaseFake.writes('service_offers')
-    expect(update.payload).toMatchObject({ admin_status: 'pending', status: 'inactive' })
+    expect(update.payload).not.toHaveProperty('admin_status')
+    expect(update.payload).not.toHaveProperty('status')
   })
 
   it('keeps an approved offer live when nothing reviewed changed', async () => {

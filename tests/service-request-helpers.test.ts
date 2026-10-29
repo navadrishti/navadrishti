@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   enrichProjectRecord,
   formatAttendanceSummary,
+  summarizeServiceAttendanceEntries,
   formatDeliveryTrackingStatus,
   formatProjectExactAddress,
   formatProjectLocation,
@@ -13,7 +14,9 @@ import {
   isDeliveredTrackingStatus,
   isFinancialNeedType,
   isInfrastructureNeed,
+  isNeedFullyFulfilled,
   isNeedOpenForListing,
+  needBelongsInHistory,
   isPickedUpTrackingStatus,
   isReturnedToOriginTrackingStatus,
   mergeClientProjectDescription,
@@ -72,6 +75,30 @@ describe('isNeedOpenForListing', () => {
     expect(isNeedOpenForListing({ ...need, current_quantity: 10 })).toBe(false)
     expect(isNeedOpenForListing({ ...need, listing_open: false })).toBe(false)
     expect(isNeedOpenForListing(null)).toBe(false)
+  })
+
+  it('treats a need as fully fulfilled only when remaining target is zero', () => {
+    expect(isNeedFullyFulfilled({ ...need, remaining_quantity: 1 })).toBe(false)
+    expect(isNeedFullyFulfilled({ ...need, remaining_quantity: 0 })).toBe(true)
+    expect(isNeedFullyFulfilled({ request_type: 'Skill / Service Need', remaining_quantity: 200, target_quantity: 201 })).toBe(false)
+    expect(isNeedFullyFulfilled({ request_type: 'Financial Need', target_amount: 5000, remaining_amount: 0 })).toBe(true)
+    expect(isNeedFullyFulfilled({ request_type: 'Material Need', target_quantity: 0, remaining_quantity: 0 })).toBe(false)
+  })
+
+  it('puts fulfilled and cancelled needs in history, not merely completed volunteer work', () => {
+    expect(needBelongsInHistory({ ...need, remaining_quantity: 200, status: 'completed' })).toBe(false)
+    expect(needBelongsInHistory({ ...need, remaining_quantity: 0, status: 'active' })).toBe(false)
+    expect(needBelongsInHistory(
+      { ...need, remaining_quantity: 0, status: 'active' },
+      [{ status: 'accepted' }]
+    )).toBe(false)
+    expect(needBelongsInHistory(
+      { ...need, remaining_quantity: 0, status: 'active' },
+      [{ status: 'accepted', response_meta: { delivery_tracking_last_status: 'Delivered' } }]
+    )).toBe(true)
+    expect(needBelongsInHistory({ request_type: 'Skill / Service Need', target_quantity: 1, remaining_quantity: 0 })).toBe(true)
+    expect(needBelongsInHistory({ ...need, remaining_quantity: 6, status: 'cancelled' })).toBe(true)
+    expect(needBelongsInHistory({ status: 'completed' })).toBe(true)
   })
 
   it('detects financial need types', () => {
@@ -140,6 +167,22 @@ describe('skill service helpers', () => {
       paidTotal: 0,
       lastAttendanceAt: null,
     })
+  })
+
+  it('counts unique present days from live attendance entries', () => {
+    expect(summarizeServiceAttendanceEntries([
+      { attendance_date: '2026-10-28', attendance_status: 'present', attendance_source: 'pwa', amount_due: 800, payment_status: 'pending' },
+      { attendance_date: '2026-10-28T09:00:00Z', attendance_status: 'present', attendance_source: 'pwa', amount_due: 800, payment_status: 'pending' },
+      { attendance_date: '2026-10-29', attendance_status: 'present', attendance_source: 'gram_app', amount_due: 800, payment_status: 'paid' },
+      { attendance_date: '2026-10-30', attendance_status: 'absent', amount_due: 0, payment_status: 'pending' },
+    ])).toMatchObject({
+      days_attended: 2,
+      total_entries: 4,
+      last_attendance_at: '2026-10-29',
+      source: 'gram_app',
+      paid_total: 800,
+    })
+    expect(summarizeServiceAttendanceEntries(null)).toMatchObject({ days_attended: 0, total_entries: 0, last_attendance_at: null })
   })
 })
 

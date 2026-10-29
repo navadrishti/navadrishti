@@ -20,6 +20,7 @@ import {
 import {
   isCancelledTrackingStatus,
   isDeliveredTrackingStatus,
+  isNeedPhysicallyComplete,
   shouldUseDelhiveryForNeed,
 } from '@/lib/service-request-allocation';
 import { parseJsonObject } from '@/lib/utils';
@@ -210,7 +211,35 @@ export async function syncServiceRequestDelivery(input: {
 
   const updated = await db.serviceRequestApplications.update(applicationId, payload);
   if (!updated) throw new DeliveryRequestError('Failed to persist tracking details', 500);
+  if (isDeliveredTrackingStatus(snapshot.currentStatus)) {
+    await maybeCompleteMaterialNeed(input.requestId)
+  }
   return { snapshot, assignment: updated };
+}
+
+async function maybeCompleteMaterialNeed(requestId: number) {
+  const { data: request, error } = await supabase
+    .from('service_requests')
+    .select('id, status, request_type, category, remaining_quantity, remaining_amount, target_quantity, target_amount')
+    .eq('id', requestId)
+    .maybeSingle()
+  if (error || !request || !shouldUseDelhiveryForNeed(request)) return
+  if (!['active', 'in_progress'].includes(String(request.status || '').toLowerCase())) return
+
+  const { data: applications, error: applicationsError } = await supabase
+    .from('service_request_applications')
+    .select('status, response_meta')
+    .eq('service_request_id', requestId)
+  if (applicationsError || !isNeedPhysicallyComplete(request, applications || [])) return
+
+  const { error: completeError } = await supabase
+    .from('service_requests')
+    .update({ status: 'completed', updated_at: new Date().toISOString() })
+    .eq('id', requestId)
+    .in('status', ['active', 'in_progress'])
+  if (completeError) {
+    console.error('Failed to mark delivered need completed', completeError)
+  }
 }
 
 function applyBookingPartyOverlay(party: DelhiveryParty, override: unknown, label: string) {

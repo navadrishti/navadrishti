@@ -30,7 +30,7 @@ const ngoToken = jwt.sign({ id: 12, email: 'ngo@example.org', user_type: 'ngo' }
 const ownerToken = jwt.sign({ id: 40, email: 'owner@example.org', user_type: 'company' }, 'test-secret')
 
 const offer = { id: 7, creator_id: 40, offer_type: 'service', transaction_type: 'donate', price_amount: 0, valid_until: null, status: 'active', admin_status: 'approved', is_listed: true }
-const need = { id: 31, title: 'Solar lamps', status: 'active', request_type: 'Skill / Service Need', estimated_budget: null, target_amount: null, target_quantity: null, beneficiary_count: 200, ngo_id: 12, project_id: null }
+const need = { id: 31, title: 'Solar lamps', status: 'active', request_type: 'Skill / Service Need', estimated_budget: null, target_amount: null, target_quantity: null, beneficiary_count: 200, ngo_id: 12 }
 
 function apply(body: Record<string, unknown>, token: string = ngoToken) {
   return POST(
@@ -50,7 +50,7 @@ beforeEach(() => {
     'service_clients.select': [{ data: null }],
     'service_clients.insert': [{ data: { id: 5, status: 'pending' } }],
   })
-  mocks.users.findById.mockResolvedValue({ id: 12, user_type: 'ngo' })
+  mocks.users.findById.mockResolvedValue({ id: 12, user_type: 'ngo', profile_data: { registration_type: 'Trust' } })
   mocks.serviceOffers.getById.mockResolvedValue(offer)
   mocks.verification.mockResolvedValue('verified')
 })
@@ -84,6 +84,14 @@ describe('POST /api/service-offers/[id]/clients', () => {
     const res = await apply({ selected_need_ids: [31] })
     expect(res.status).toBe(403)
     expect(await res.json()).toMatchObject({ requiresVerification: true })
+  })
+
+  it('requires NGO legal registration tags', async () => {
+    mocks.users.findById.mockResolvedValue({ id: 12, user_type: 'ngo', profile_data: {} })
+    const res = await apply({ selected_need_ids: [31] })
+    expect(res.status).toBe(403)
+    expect(await res.json()).toMatchObject({ requiresLegalTags: true })
+    expect(supabaseFake.find('service_clients', 'insert')).toHaveLength(0)
   })
 
   it('rejects a need that the NGO does not own or that is closed', async () => {

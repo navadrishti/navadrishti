@@ -53,7 +53,7 @@ export function NeedsSection({ ongoingNeeds, historyNeeds, loading, tab, onTabCh
           ) : ongoingNeeds.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">
               <p className="text-lg font-medium mb-2">No ongoing needs</p>
-              <p className="text-sm">Accepted and active requests will appear here until fulfillment is confirmed.</p>
+              <p className="text-sm">Accepted and active requests stay here until the remaining target is fully fulfilled.</p>
             </div>
           ) : ongoingNeeds.map((request) => (
             <NgoNeedDashboardInline

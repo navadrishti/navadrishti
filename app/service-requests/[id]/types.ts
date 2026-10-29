@@ -110,6 +110,7 @@ export type RequestRecord = {
   beneficiary_count?: number | null
   estimated_budget?: string | number | null
   impact_description?: string
+  contact_info?: string | null
   requirements?: string | Record<string, unknown> | null
   project?: {
     id?: string | number

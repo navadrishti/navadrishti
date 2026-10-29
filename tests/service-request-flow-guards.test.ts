@@ -12,7 +12,7 @@ import { POST as settleAssignment } from '@/app/api/service-assignments/[id]/set
 import { contributionOrderNotesError } from '@/lib/service-request-payments'
 import { NeedCapacityExceededError } from '@/lib/service-requests/errors'
 import { jsonRequest, razorpaySignature, tokenFor } from './support/requests'
-import { eqsOf, hasCall, supabaseFake, type FakeQuery, type FakeResult } from './support/supabase-fake'
+import { callsOf, eqsOf, hasCall, supabaseFake, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => ({
   db: {
@@ -42,7 +42,39 @@ vi.mock('@/lib/db', async () => {
     if (!row) return row
     const { fulfillment, ...rest } = row
     const flat = Array.isArray(fulfillment) ? fulfillment[0] : fulfillment
-    return { ...rest, ...(flat && typeof flat === 'object' ? flat : {}) }
+    const picked =
+      flat && typeof flat === 'object'
+        ? Object.fromEntries(
+            Object.entries(flat).filter(([key]) =>
+              [
+                'impact_statement',
+                'estimated_impact_value',
+                'fulfillment_amount',
+                'fulfillment_quantity',
+                'assigned_amount',
+                'assigned_quantity',
+                'fulfilled_amount',
+                'fulfilled_quantity',
+                'individual_receipt_url',
+                'ngo_receipt_url',
+                'individual_done_at',
+                'ngo_confirmed_at',
+                'completion_note',
+                'completed_at',
+              ].includes(key)
+            )
+          )
+        : {}
+    return {
+      ...rest,
+      ...picked,
+      id: rest.id,
+      application_id: rest.id,
+      service_request_id: rest.service_request_id,
+      applicant_user_id: rest.applicant_user_id,
+      status: rest.status,
+      response_meta: rest.response_meta,
+    }
   }
   return {
     supabase: fake.client,
@@ -141,7 +173,13 @@ function volunteerDb(app: Record<string, unknown>, extra: Responder = () => unde
   useDb((query) => {
     const custom = extra(query)
     if (custom) return custom
-    if (query.table === 'service_request_applications' && query.op === 'select' && hasCall(query, 'single')) return { data: app }
+    if (
+      query.table === 'service_request_applications' &&
+      query.op === 'select' &&
+      (hasCall(query, 'single') || hasCall(query, 'maybeSingle'))
+    ) {
+      return { data: app }
+    }
     if (query.table === 'service_request_applications' && query.op === 'update' && hasCall(query, 'maybeSingle')) return claim
     return undefined
   })
@@ -253,10 +291,58 @@ describe('PUT volunteer status: NGO', () => {
     expect(mocks.db.serviceRequestApplications.update).not.toHaveBeenCalled()
   })
 
+  it('does not mark a material need completed until Delhivery delivers', async () => {
+    mocks.applyAllocation.mockImplementation(async (request: Record<string, unknown>) => ({
+      ...request,
+      current_quantity: 10,
+      remaining_quantity: 0,
+    }))
+    volunteerDb(application('pending'))
+    const res = await put(NGO, { status: 'accepted' })
+    expect(res.status).toBe(200)
+    expect(
+      supabaseFake
+        .find('service_requests', 'update')
+        .some((query) => (query.payload as { status?: string })?.status === 'completed')
+    ).toBe(false)
+  })
+
+  it('marks a skill need completed once remaining units hit zero', async () => {
+    const skillNeed = {
+      ...materialNeed,
+      request_type: 'Skill / Service Need',
+      remaining_quantity: 1,
+      target_quantity: 1,
+      current_quantity: 0,
+    }
+    mocks.db.serviceRequests.getById.mockResolvedValue(skillNeed)
+    mocks.applyAllocation.mockImplementation(async (request: Record<string, unknown>) => ({
+      ...request,
+      current_quantity: 1,
+      remaining_quantity: 0,
+    }))
+    volunteerDb(application('pending'))
+    const res = await put(NGO, { status: 'accepted' })
+    expect(res.status).toBe(200)
+    const completeNeed = supabaseFake
+      .find('service_requests', 'update')
+      .find((query) => (query.payload as { status?: string })?.status === 'completed')
+    expect(completeNeed).toBeDefined()
+    expect(eqsOf(completeNeed!)).toMatchObject({ id: 5 })
+    expect(callsOf(completeNeed, 'in')).toEqual([['status', ['active', 'in_progress']]])
+  })
+
   it('surfaces a failed auto-reject of remaining applicants', async () => {
     mocks.applyAllocation.mockImplementation(async (request: Record<string, unknown>) => ({ ...request, current_quantity: 10, remaining_quantity: 0 }))
     volunteerDb(application('pending'), (query) => {
-      if (query.table === 'service_request_applications' && query.op === 'select' && !hasCall(query, 'single')) return { data: [{ id: 10, response_meta: {} }] }
+      if (
+        query.table === 'service_request_applications' &&
+        query.op === 'select' &&
+        !hasCall(query, 'single') &&
+        !hasCall(query, 'maybeSingle')
+      ) {
+        return { data: [{ id: 10, response_meta: {} }] }
+      }
       if (query.table === 'service_request_applications' && query.op === 'update' && hasCall(query, 'eq', 'id', 10)) return { error: { code: '500', message: 'nope' } }
       return undefined
     })
@@ -280,6 +366,137 @@ describe('PUT volunteer status: NGO', () => {
     const res = await put(NGO, { status: 'rejected' })
     expect(res.status).toBe(200)
     expect(mocks.releaseAllocation).not.toHaveBeenCalled()
+    expect(mocks.db.serviceRequestApplications.update).toHaveBeenCalledWith(
+      9,
+      expect.objectContaining({ status: 'rejected', rejected_at: expect.any(String) })
+    )
+  })
+
+  it('accepts a skill volunteer as one slot even if the dashboard posted remaining units', async () => {
+    const skillNeed = {
+      ...materialNeed,
+      request_type: 'Skill / Service Need',
+      remaining_quantity: 201,
+      target_quantity: 201,
+      current_quantity: 0,
+    }
+    mocks.db.serviceRequests.getById.mockResolvedValue(skillNeed)
+    volunteerDb(application('pending', { applicant_user_id: 14, fulfillment_amount: 2000 }))
+    const res = await put(NGO, { status: 'accepted', allocationQuantity: 201 })
+    expect(res.status).toBe(200)
+    expect(mocks.applyAllocation).toHaveBeenCalledWith(skillNeed, { amount: 0, quantity: 1 })
+  })
+
+  it('keeps other pending applicants when a skill volunteer is accepted and remaining units stay', async () => {
+    const skillNeed = {
+      ...materialNeed,
+      request_type: 'Skill / Service Need',
+      remaining_quantity: 201,
+      target_quantity: 201,
+      current_quantity: 0,
+    }
+    mocks.db.serviceRequests.getById.mockResolvedValue(skillNeed)
+    mocks.applyAllocation.mockImplementation(async (request: Record<string, unknown>) => ({
+      ...request,
+      current_quantity: 1,
+      remaining_quantity: 200,
+    }))
+    volunteerDb(application('pending', { applicant_user_id: 14, fulfillment_amount: 2000 }), (query) => {
+      if (
+        query.table === 'service_request_applications' &&
+        query.op === 'select' &&
+        !hasCall(query, 'single') &&
+        !hasCall(query, 'maybeSingle')
+      ) {
+        return { data: [{ id: 10, response_meta: { note: 'waiting' } }] }
+      }
+      return undefined
+    })
+    const res = await put(NGO, { status: 'accepted' })
+    expect(res.status).toBe(200)
+    expect(
+      supabaseFake.find('service_request_applications', 'update').some((query) => hasCall(query, 'eq', 'id', 10))
+    ).toBe(false)
+  })
+
+  it('rejects other pending applicants when remaining units hit zero', async () => {
+    const skillNeed = {
+      ...materialNeed,
+      request_type: 'Skill / Service Need',
+      remaining_quantity: 1,
+      target_quantity: 1,
+      current_quantity: 0,
+    }
+    mocks.db.serviceRequests.getById.mockResolvedValue(skillNeed)
+    mocks.applyAllocation.mockImplementation(async (request: Record<string, unknown>) => ({
+      ...request,
+      current_quantity: 1,
+      remaining_quantity: 0,
+    }))
+    volunteerDb(application('pending', { applicant_user_id: 14, fulfillment_amount: 2000 }), (query) => {
+      if (
+        query.table === 'service_request_applications' &&
+        query.op === 'select' &&
+        !hasCall(query, 'single') &&
+        !hasCall(query, 'maybeSingle')
+      ) {
+        return { data: [{ id: 10, response_meta: { note: 'waiting' } }] }
+      }
+      return undefined
+    })
+    const res = await put(NGO, { status: 'accepted' })
+    expect(res.status).toBe(200)
+    const autoReject = supabaseFake
+      .find('service_request_applications', 'update')
+      .find((query) => hasCall(query, 'eq', 'id', 10))
+    expect(autoReject?.payload).toMatchObject({
+      status: 'rejected',
+      rejected_at: expect.any(String),
+      response_meta: { note: 'waiting', auto_rejected_reason: 'need_fully_allocated' },
+    })
+  })
+
+  it('keeps other pending applicants when a material need still has remaining units', async () => {
+    volunteerDb(application('pending'), (query) => {
+      if (
+        query.table === 'service_request_applications' &&
+        query.op === 'select' &&
+        !hasCall(query, 'single') &&
+        !hasCall(query, 'maybeSingle')
+      ) {
+        return { data: [{ id: 10, response_meta: {} }] }
+      }
+      return undefined
+    })
+    const res = await put(NGO, { status: 'accepted' })
+    expect(res.status).toBe(200)
+    expect(
+      supabaseFake.find('service_request_applications', 'update').some((query) => hasCall(query, 'eq', 'id', 10))
+    ).toBe(false)
+  })
+
+  it('rejects a pending applicant even when the dashboard posted a fulfillment id', async () => {
+    volunteerDb(application('pending'), (query) => {
+      if (query.table === 'service_request_applications' && query.op === 'select' && hasCall(query, 'eq', 'id', 77)) {
+        return { data: null }
+      }
+      if (query.table === 'service_request_fulfillments') return { data: { application_id: 9 } }
+      return undefined
+    })
+    const res = await updateVolunteer(
+      jsonRequest('http://localhost/api/service-requests/5/volunteers/77', {
+        token: NGO,
+        body: { status: 'rejected' },
+        method: 'PUT',
+      }),
+      { params: Promise.resolve({ id: '5', volunteerId: '77' }) }
+    )
+    expect(res.status).toBe(200)
+    expect(eqsOf(claimQuery()!)).toMatchObject({ id: 9, status: 'pending' })
+    expect(mocks.db.serviceRequestApplications.update).toHaveBeenCalledWith(
+      9,
+      expect.objectContaining({ status: 'rejected' })
+    )
   })
 })
 
@@ -423,6 +640,26 @@ describe('delivery sync', () => {
       bookingDb(application('accepted'), { exact_address: JSON.stringify({ address_line: 'NGO Office', city: 'Mumbai', state: 'Maharashtra', pincode: '400001' }) })
       const res = await sync(INDIVIDUAL, { action: 'book', pickup: { address_line: 'Only a street' } })
       expect(res.status).toBe(400)
+      expect(mocks.createShipment).not.toHaveBeenCalled()
+    })
+
+    it('rejects a delivery party with no street address', async () => {
+      bookingDb(application('accepted'))
+      const res = await sync(INDIVIDUAL, {
+        action: 'book',
+        consignee: {
+          name: 'Hope Foundation NGO',
+          phone: '1234567891',
+          address_line: '',
+          city: 'Mumbai',
+          state: 'Maharashtra',
+          pincode: '400001',
+        },
+      })
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({
+        error: 'Delivery address must include street address, city, state and a 6-digit pincode',
+      })
       expect(mocks.createShipment).not.toHaveBeenCalled()
     })
 

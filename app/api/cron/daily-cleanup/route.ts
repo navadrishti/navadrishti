@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 import { supabase } from '@/lib/db';
 import { releaseHeldTransfersForClosedRequests } from '@/lib/service-request-payments';
-import { autoRejectExpiredServiceOffers } from '@/lib/admin-offer-automation';
 import { processCsrCapabilityDailyCompliance, markCsrProjectCompleted, syncAllCsrCapabilityRentalsDelhivery } from '@/lib/csr-agent/campaign';
 import { getDocumentExpiries, dropExpiredCaComplianceTags } from '@/lib/auth';
 import { backfillServiceOfferEmbeddings } from '@/lib/embeddings';
@@ -117,12 +116,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    let autoRejectExpired: Awaited<ReturnType<typeof autoRejectExpiredServiceOffers>> = { rejectedCount: 0, rejectedOffers: [] };
-    try {
-      autoRejectExpired = await autoRejectExpiredServiceOffers();
-    } catch (autoRejectErr) {
-      console.error('Error auto-rejecting expired offers:', autoRejectErr);
-    }
+    const autoRejectExpired = { rejectedCount: 0, rejectedOffers: [] };
 
     // Expire capability offers past valid_until.
 

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabase, getProjectLeadNgoId, buildProjectLeadNgoPatch } from '@/lib/db'
 import { parseJsonObject } from '@/lib/utils'
-import { formatProjectLocation, parseProjectMeta } from '@/lib/service-request-allocation'
+import { formatProjectLocation, parseProjectMeta, stripProjectMetaFromDescription } from '@/lib/service-request-allocation'
 import {
   COMPANY_PROJECT_CONTRIBUTION_TYPE,
   LEAD_NGO_INVITE_CONTRIBUTION_TYPE,
@@ -48,6 +48,27 @@ type HandoffPair = {
   projectId: string
   companyId: number
   contributions: TrackingContribution[]
+}
+
+function selectedLeadNgoIdForOwner(ownerNgoId: number, leadNgoId: number): number {
+  if (leadNgoId <= 0 || (ownerNgoId > 0 && ownerNgoId === leadNgoId)) return 0
+  return leadNgoId
+}
+
+function needWorkBucket(status: string | null | undefined) {
+  const normalized = String(status || '').toLowerCase()
+  if (['completed', 'closed', 'fulfilled', 'cancelled', 'canceled'].includes(normalized)) return 'completed'
+  if (['in_progress', 'accepted', 'assigned'].includes(normalized)) return 'in_progress'
+  return 'open'
+}
+
+function summarizeTakenInNeeds(needs: Array<{ status?: string | null }>) {
+  const summary = { total: needs.length, open: 0, in_progress: 0, completed: 0 }
+  for (const need of needs) {
+    const bucket = needWorkBucket(need.status)
+    summary[bucket] += 1
+  }
+  return summary
 }
 
 export async function getCsrTracking(ctx: AssignmentsGetContext) {
@@ -271,7 +292,7 @@ export async function getCsrTracking(ctx: AssignmentsGetContext) {
       const projectId = String(project.id)
       const companyId = Number(project.assigned_company_user_id || pair.companyId || 0)
       const ownerNgoId = Number(project.ngo_id || 0)
-      const selectedLeadNgoId = getProjectLeadNgoId(project)
+      const selectedLeadNgoId = selectedLeadNgoIdForOwner(ownerNgoId, getProjectLeadNgoId(project))
       const projectNeeds = needsByProject.get(projectId) || []
       const ownerNgo = userById.get(ownerNgoId)
       const company = userById.get(companyId)
@@ -368,9 +389,10 @@ export async function getCsrTracking(ctx: AssignmentsGetContext) {
       return {
         project_id: projectId,
         project_title: project.title || 'Project',
-        project_description: project.description || '',
+        project_description: stripProjectMetaFromDescription(project.description) || '',
         project_location: formatProjectLocation(project.exact_address, project.location),
         project_timeline: project.timeline || '',
+        project_updated_at: project.updated_at || project.created_at || null,
         project_category: categoryLabels.length === 1
           ? categoryLabels[0]
           : (categoryLabels.length > 1 ? categoryLabels.join(' • ') : null),
@@ -407,7 +429,9 @@ export async function getCsrTracking(ctx: AssignmentsGetContext) {
           title: need.title,
           status: need.status,
           request_type: need.request_type || need.category,
+          updated_at: need.updated_at || null,
         })),
+        need_progress: summarizeTakenInNeeds(projectNeeds),
       }
     })
     .filter(Boolean)

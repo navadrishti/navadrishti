@@ -132,6 +132,8 @@ describe('format-date', () => {
 
   it.each([
     [{ campaignStatus: 'cancelled', startDate: '2026-07-01' }, 'completed'],
+    [{ campaignStatus: 'finished' }, 'completed'],
+    [{ campaignStatus: 'done' }, 'completed'],
     [{ startDate: '2026-05-01', endDate: '2026-05-31' }, 'completed'],
     [{ startDate: '2026-06-10', endDate: '2026-06-10' }, 'started'],
     [{ startDate: '2026-06-11' }, 'yet_to_start'],

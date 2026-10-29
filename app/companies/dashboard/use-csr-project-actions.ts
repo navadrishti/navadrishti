@@ -16,10 +16,20 @@ export function useCsrProjectActions(data: CompanyDashboardData, allVerified: bo
   const inviteLeadNgos = async (projectId: string, ngoIds: number[]) => {
     try {
       const assignment = data.csrTrackingAssignments.find((row) => row.project_id === projectId);
-      if (Number(assignment?.selected_lead_ngo_id || 0) > 0) {
+      const ownerNgoId = Number(assignment?.lead_ngo_id || 0);
+      const selectedLeadId = Number(assignment?.selected_lead_ngo_id || 0);
+      if (selectedLeadId > 0 && selectedLeadId !== ownerNgoId) {
         toast({
           title: 'Lead already assigned',
           description: 'A lead NGO is already selected for this project.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      if (ngoIds.some((ngoId) => ngoId === ownerNgoId)) {
+        toast({
+          title: 'Cannot invite owner',
+          description: 'The NGO that owns this project cannot also be the implementing lead.',
           variant: 'destructive',
         });
         return;

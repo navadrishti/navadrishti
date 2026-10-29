@@ -1,9 +1,17 @@
 import { parseJsonObject } from '@/lib/utils'
 
+export {
+  getCampaignAttendanceDate,
+  getElapsedCampaignDays,
+  getInclusiveDayCount,
+  listElapsedCampaignDates,
+  listInclusiveCampaignDates,
+} from '@/lib/campaign-days'
+
 export const CAMPAIGN_VOLUNTEER_ENGAGEMENT_KIND = 'campaign_volunteer'
 
 export function isCampaignVolunteerAssignment(
-  assignment: { target_type?: string; meta?: unknown } | null | undefined
+  assignment: { target_type?: string | null; meta?: unknown } | null | undefined
 ): boolean {
   if (!assignment) return false
   if (assignment.target_type === 'campaign') return true
@@ -13,6 +21,14 @@ export function isCampaignVolunteerAssignment(
     assignment.target_type === 'csr_project' &&
     meta.engagement_kind === CAMPAIGN_VOLUNTEER_ENGAGEMENT_KIND
   )
+}
+
+/** Paid-upfront CSR capability on a campaign. Presence is tracked; it is not billed per day. */
+export function isCsrCapabilityRentalAssignment(
+  assignment: { target_type?: string | null; meta?: unknown } | null | undefined
+): boolean {
+  if (!assignment) return false
+  return parseJsonObject(assignment.meta).flow === 'csr_capability_rental'
 }
 
 export type CampaignVolunteerApplicationEntry = {
@@ -56,6 +72,16 @@ export type LeadNgoInvite = {
   invited_at?: string
 }
 
+const PENDING_LEAD_INVITE_STATUSES = new Set([
+  'pending',
+  'invited',
+  'pending_acceptance',
+  'awaiting_acceptance',
+  'offered',
+  'assigned',
+])
+const ACCEPTED_LEAD_INVITE_STATUSES = new Set(['accepted', 'selected'])
+
 // Older drafts saved invites with camelCase keys.
 export function parseLeadNgoInvites(raw: unknown): LeadNgoInvite[] {
   if (!Array.isArray(raw)) return []
@@ -71,6 +97,51 @@ export function parseLeadNgoInvites(raw: unknown): LeadNgoInvite[] {
       }
     })
     .filter((invite) => invite.ngo_id > 0)
+}
+
+export type CampaignLeadNgoProgress = {
+  stage: 'invite' | 'pending' | 'selected'
+  progressLabel: string
+  leadNgoLabel: string
+}
+
+export function resolveCampaignLeadNgoProgress(campaign: {
+  lead_ngo_user_id?: number | string | null
+  selected_lead_ngo_name?: string | null
+  impact_metrics?: unknown
+} | null | undefined): CampaignLeadNgoProgress {
+  const impact = parseJsonObject(campaign?.impact_metrics)
+  const invites = parseLeadNgoInvites(impact.lead_ngo_invites)
+  const selectedId = getCampaignLeadNgoId(campaign)
+  const acceptedInvite =
+    invites.find((invite) => ACCEPTED_LEAD_INVITE_STATUSES.has(invite.status)) ||
+    invites.find((invite) => selectedId > 0 && invite.ngo_id === selectedId && impact.lead_ngo_accepted) ||
+    null
+  const selectedName =
+    String(acceptedInvite?.name || campaign?.selected_lead_ngo_name || '').trim() || null
+  const pendingInvites = invites.filter((invite) => PENDING_LEAD_INVITE_STATUSES.has(invite.status))
+
+  if ((impact.lead_ngo_accepted && selectedId > 0) || acceptedInvite) {
+    return {
+      stage: 'selected',
+      progressLabel: 'Lead NGO selected · ready to publish',
+      leadNgoLabel: selectedName || 'Lead NGO',
+    }
+  }
+
+  if (pendingInvites.length > 0) {
+    return {
+      stage: 'pending',
+      progressLabel: 'Waiting for lead NGO',
+      leadNgoLabel: 'Pending',
+    }
+  }
+
+  return {
+    stage: 'invite',
+    progressLabel: 'Lead NGO invite',
+    leadNgoLabel: 'Invite an NGO',
+  }
 }
 
 /** Lead NGOs coordinate CSR campaigns; they do not self-mark volunteer attendance. */
@@ -93,36 +164,25 @@ export function filterVolunteerApplicationsExcludingLeadNgo(
   return applications.filter((entry) => Number(entry?.user_id || 0) !== leadNgoId)
 }
 
-export function filterCampaignVolunteerAssignments<T extends { target_type?: string; meta?: unknown }>(
+export function filterVolunteerAssignmentsExcludingLeadNgo<T extends { assignee_user_id?: number | string | null }>(
+  campaign: CampaignLeadRef,
+  rows: T[] | null | undefined
+): T[] {
+  const leadNgoId = getCampaignLeadNgoId(campaign)
+  if (!(leadNgoId > 0)) return rows || []
+  return (rows || []).filter((row) => Number(row.assignee_user_id || 0) !== leadNgoId)
+}
+
+export function filterCampaignVolunteerAssignments<T extends { target_type?: string | null; meta?: unknown }>(
   rows: T[] | null | undefined
 ): T[] {
   return (rows || []).filter((row) => isCampaignVolunteerAssignment(row))
 }
 
-export function getInclusiveDayCount(startDate?: string | null, endDate?: string | null): number {
-  if (!startDate || !endDate) return 0
-  const start = new Date(`${String(startDate).slice(0, 10)}T00:00:00`)
-  const end = new Date(`${String(endDate).slice(0, 10)}T00:00:00`)
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return 0
-  return Math.floor((end.getTime() - start.getTime()) / 86400000) + 1
-}
-
-export function getElapsedCampaignDays(
-  startDate?: string | null,
-  endDate?: string | null,
-  reference: Date = new Date()
-): number {
-  const total = getInclusiveDayCount(startDate, endDate)
-  if (!total || !startDate) return 0
-  const start = new Date(`${String(startDate).slice(0, 10)}T00:00:00`)
-  const endCap = endDate
-    ? new Date(`${String(endDate).slice(0, 10)}T00:00:00`)
-    : reference
-  const today = new Date(reference)
-  today.setHours(0, 0, 0, 0)
-  const last = endCap < today ? endCap : today
-  if (last < start) return 0
-  return Math.floor((last.getTime() - start.getTime()) / 86400000) + 1
+export function filterCsrCapabilityRentalAssignments<T extends { target_type?: string | null; meta?: unknown }>(
+  rows: T[] | null | undefined
+): T[] {
+  return (rows || []).filter((row) => isCsrCapabilityRentalAssignment(row))
 }
 
 export type VolunteerAttendanceRosterRow = {

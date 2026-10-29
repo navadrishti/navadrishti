@@ -15,7 +15,7 @@ import { SkeletonCTA, SkeletonServiceOffer } from '@/components/ui/skeleton'
 import { Search, ArrowRight, Plus, MapPin } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
-import { IMPACT_AREA_OPTIONS, OFFER_TYPE_OPTIONS } from '@/lib/service-offers'
+import { IMPACT_AREA_OPTIONS, OFFER_TYPE_OPTIONS, ngoHasLegalEntityTag } from '@/lib/service-offers'
 import { dashboardProfilePayoutHref, usePayoutConnection } from '@/hooks/use-payout-connection'
 import type { ServiceCardProps } from '@/components/service-card/types'
 
@@ -118,7 +118,14 @@ function ServiceOffersPageContent() {
 
   const canCreateOffers = mounted && !!user && ['ngo', 'company', 'individual'].includes(user.user_type);
   const { connected: payoutConnected } = usePayoutConnection(canCreateOffers);
-  const canPublishOffers = canCreateOffers && payoutConnected === true;
+  const ngoLegalReady = user?.user_type !== 'ngo' || ngoHasLegalEntityTag({
+    profile_data: user?.profile_data || user?.profile,
+    registration_type:
+      user?.verification_details && typeof user.verification_details === 'object'
+        ? (user.verification_details as { registration_type?: string | null }).registration_type
+        : undefined,
+  })
+  const canPublishOffers = canCreateOffers && payoutConnected === true && ngoLegalReady;
   const payoutHref = dashboardProfilePayoutHref(user?.user_type);
 
   const hasActiveFilters = useMemo(
@@ -217,7 +224,7 @@ function ServiceOffersPageContent() {
 
       const token = getClientSessionToken();
       const response = await fetch(`/api/service-offers?${params.toString()}`, {
-        headers: offerView === 'my-offers' && token ? { Authorization: `Bearer ${token}` } : undefined,
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
       const data = await response.json();
 
@@ -303,6 +310,21 @@ function ServiceOffersPageContent() {
                 </Link>
               </div>
             </div>
+          </div>
+        ) : canCreateOffers && payoutConnected === true && !ngoLegalReady ? (
+          <div className="mb-8 rounded-md border border-gram-border bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-black">Add NGO legal registration to list capabilities</h2>
+            <p className="mt-1 text-sm text-gray-700">
+              Trust, Society, or Section 8 registration must be on your verified NGO profile before a capability can go live.
+            </p>
+            <Link href="/verification" className="mt-4 inline-block">
+              <Button
+                variant="outline"
+                className="border border-gram-border bg-white text-black hover:bg-gram-page"
+              >
+                Complete NGO legal details
+              </Button>
+            </Link>
           </div>
         ) : canCreateOffers ? (
           <div className="mb-8 rounded-md border border-gram-border bg-white p-6 shadow-sm">

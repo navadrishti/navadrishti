@@ -1,7 +1,6 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import Link from 'next/link';
 import { CheckCircle, Loader2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -145,11 +144,7 @@ export function OfferRequestsPanel({
             <OfferRequestSummaryCard
               key={request.id}
               request={request}
-              actions={
-                <Link href={`/service-offers/${request.service_offer_id}`}>
-                  <Button size="sm" variant="outline">View Offer</Button>
-                </Link>
-              }
+              showOverview
             />
           )}
         />

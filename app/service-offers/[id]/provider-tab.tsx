@@ -1,5 +1,5 @@
 import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar'
-import { VerifiedAccountName } from '@/components/verification-badge'
+import { NgoComplianceBadges, VerifiedAccountName } from '@/components/verification-badge'
 import { Badge } from '@/components/ui/badge'
 import { formatDate, getInitials } from './helpers'
 import type { ServiceOffer } from './types'
@@ -42,6 +42,14 @@ export function ProviderTab({ offer, isOfferExpired }: ProviderTabProps) {
             nameClassName="text-lg font-semibold leading-tight"
           />
           <p className="mt-1 text-sm text-gray-500 capitalize">{offer.provider_type || 'ngo'}</p>
+          {offer.provider_type === 'ngo' || (!offer.provider_type && (offer.ca_compliance_tags?.length || offer.registration_type)) ? (
+            <NgoComplianceBadges
+              className="mt-2"
+              tags={offer.ca_compliance_tags}
+              registrationType={offer.registration_type}
+              size="sm"
+            />
+          ) : null}
           {isOfferExpired ? (
             <Badge variant="destructive" className="mt-2 w-fit">Expired</Badge>
           ) : null}

@@ -3,15 +3,15 @@ import { jsonRequest, tokenFor } from './support/requests'
 import { businessQueries, eqValue, hasCall, supabaseFake, type FakeQuery } from './support/supabase-fake'
 import { parseProjectMeta, withProjectMeta } from '@/lib/service-request-allocation'
 import { assertNgoCsr1CoversProject } from '@/lib/server-auth'
-import { respondToLeadNgoInvitation } from '@/lib/service-request-assignments/lead-ngo'
+import { respondToLeadNgoInvitation, selectLeadNgo } from '@/lib/service-request-assignments/lead-ngo'
 import { submitProjectApplication } from '@/lib/service-request-assignments/project-applications'
-import { LEAD_NGO_INVITE_CONTRIBUTION_TYPE, projectLeadInviteId } from '@/lib/service-request-assignments/shared'
+import { LEAD_NGO_INVITE_CONTRIBUTION_TYPE, OWNER_NGO_CANNOT_BE_LEAD_MESSAGE, projectLeadInviteId } from '@/lib/service-request-assignments/shared'
 
 vi.mock('@/lib/db', async () => {
   const { supabaseFake: fake } = await import('./support/supabase-fake')
   return {
     supabase: fake.client,
-    buildProjectLeadNgoPatch: (id: number) => ({ lead_ngo_user_id: id > 0 ? id : null }),
+    buildProjectLeadNgoPatch: (id: number | null | undefined) => ({ lead_ngo_user_id: Number(id || 0) > 0 ? Number(id) : null }),
     getProjectLeadNgoId: (project: { lead_ngo_user_id?: number } | null) => Number(project?.lead_ngo_user_id || 0),
   }
 })
@@ -153,6 +153,23 @@ describe('respondToLeadNgoInvitation', () => {
     setup({ invite: { id: 'inv1', contributor_id: 5, status, meta: { project_id: 'p1' } } })
     expect((await respond({ decision: 'accepted' })).status).toBe(409)
     expect(updates()).toHaveLength(0)
+  })
+
+  it('does not let the project owner accept as lead', async () => {
+    setup()
+    supabaseFake.respondWith((query) => {
+      if (query.table === 'service_request_projects') {
+        return { data: { valid_until: null, timeline: null, ngo_id: 5 } }
+      }
+      if (query.table === 'service_request_contributions') {
+        return { data: { id: 'inv1', contributor_id: 5, status: 'pending', meta: { project_id: 'p1', inviting_company_id: 10 } } }
+      }
+      return undefined
+    })
+    const response = await respond({ decision: 'accepted' })
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({ error: OWNER_NGO_CANNOT_BE_LEAD_MESSAGE })
+    expect(supabaseFake.find('service_request_projects', 'update')).toHaveLength(0)
   })
 
   it('claims the lead conditionally and expires other invites', async () => {
@@ -319,6 +336,77 @@ describe('invite-lead-ngo without child needs', () => {
         status: 'pending',
       }),
     ])
+  })
+
+  it('rejects inviting the owner NGO as lead', async () => {
+    supabaseFake.respondWith((query) => {
+      if (query.table === 'service_request_projects') {
+        return {
+          data: {
+            id: 'p1',
+            ngo_id: 3,
+            description: 'Library',
+            assigned_company_user_id: 10,
+            assignment_status: 'accepted',
+            lead_ngo_user_id: null,
+          },
+        }
+      }
+      if (query.table === 'service_requests') return { data: [] }
+      return undefined
+    })
+
+    const response = await invite({ ngoIds: [3] })
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({ error: OWNER_NGO_CANNOT_BE_LEAD_MESSAGE })
+    expect(supabaseFake.find('service_request_projects', 'update')).toHaveLength(0)
+  })
+
+  it('clears an owner stored as lead so a real lead can be invited', async () => {
+    supabaseFake.respondWith((query) => {
+      if (query.table === 'service_request_projects') {
+        if (query.op === 'update') return { data: { id: 'p1' } }
+        return {
+          data: {
+            id: 'p1',
+            ngo_id: 3,
+            description: 'Library',
+            assigned_company_user_id: 10,
+            assignment_status: 'lead_selected',
+            lead_ngo_user_id: 3,
+          },
+        }
+      }
+      if (query.table === 'service_requests') return { data: [] }
+      if (query.table === 'users') return { data: [{ id: 6, user_type: 'ngo', verification_status: 'verified', name: 'Lead NGO', email: 'lead@example.org' }] }
+      if (query.table === 'service_request_contributions') return { data: null }
+      return undefined
+    })
+
+    const response = await invite()
+    expect(response.status).toBe(200)
+    const [clearOwner] = supabaseFake.find('service_request_projects', 'update')
+    expect(clearOwner.payload).toMatchObject({ lead_ngo_user_id: null, assignment_status: 'accepted' })
+  })
+})
+
+describe('selectLeadNgo', () => {
+  it('rejects selecting the project owner as lead', async () => {
+    supabaseFake.respondWith((query) => {
+      if (query.table === 'service_request_projects') {
+        return { data: { ngo_id: 5, valid_until: null, timeline: null } }
+      }
+      return undefined
+    })
+
+    const response = await selectLeadNgo({
+      body: { projectId: 'p1', ngoId: 5 },
+      userId: 10,
+      userType: 'company',
+    })
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({ error: OWNER_NGO_CANNOT_BE_LEAD_MESSAGE })
+    expect(supabaseFake.find('service_request_projects', 'update')).toHaveLength(0)
   })
 })
 

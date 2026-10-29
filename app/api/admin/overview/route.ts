@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { assertAdminUser, authErrorResponse } from '@/lib/server-auth';
-import { autoRejectExpiredServiceOffers } from '@/lib/admin-offer-automation';
 import { getErrorMessage } from '@/lib/utils';
 
 async function safeQuery<T>(
@@ -26,8 +25,6 @@ async function safeQuery<T>(
 export async function GET(request: NextRequest) {
   try {
     assertAdminUser(request);
-
-    await autoRejectExpiredServiceOffers();
 
     const users = await safeQuery('users', supabase.from('users').select('id, user_type, verification_status, created_at'), []);
     const offers = await safeQuery('service_offers', supabase.from('service_offers').select('id, admin_status, created_at, submitted_for_review_at'), []);

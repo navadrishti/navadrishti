@@ -2,16 +2,17 @@ import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { formatDisplayDate } from '@/lib/format-date'
+import { formatImpactAreaLabel } from '@/lib/service-offers/impact-areas'
 import {
   OFFER_TYPE_OPTIONS,
+  isCapabilityRentalTransaction,
+} from '@/lib/service-offers/offer-types'
+import {
   formatCapabilityRentalRateLabel,
   formatCapabilityTransactionLabel,
-  formatImpactAreaLabel,
   formatPastReasonLabel,
-  isCapabilityRentalTransaction,
-  type CapabilityOfferPastReason,
-  type CapabilityOfferSummary,
-} from '@/lib/service-offers'
+} from '@/lib/service-offers/formatting'
+import type { CapabilityOfferPastReason, CapabilityOfferSummary } from '@/lib/service-offers/types'
 import { DetailItem } from './detail-item'
 import { UsageRecordSection } from './usage-record-section'
 
@@ -52,13 +53,16 @@ function pastReasonBadgeClass(reason?: CapabilityOfferPastReason | null) {
 type YourCapabilityOfferCardProps = {
   offer: CapabilityOfferSummary
   pastReason?: CapabilityOfferPastReason | null
+  isOngoing?: boolean
 }
 
-export function YourCapabilityOfferCard({ offer, pastReason }: YourCapabilityOfferCardProps) {
+export function YourCapabilityOfferCard({ offer, pastReason, isOngoing = false }: YourCapabilityOfferCardProps) {
   const impactAreas = Array.isArray(offer.impact_area) ? offer.impact_area.filter(Boolean) : []
   const applicationsCount = Number(offer.applications_count || 0)
   const pendingApplications = Number(offer.pending_applications || 0)
   const usageRecords = Array.isArray(offer.usage_records) ? offer.usage_records : []
+  const showWorkTracking = isOngoing || usageRecords.length > 0
+  const showListingMeters = !showWorkTracking
 
   return (
     <div className="rounded-md border border-slate-200 bg-white p-4 space-y-4">
@@ -70,7 +74,15 @@ export function YourCapabilityOfferCard({ offer, pastReason }: YourCapabilityOff
               <Badge variant="outline" className={pastReasonBadgeClass(pastReason)}>
                 {formatPastReasonLabel(pastReason)}
               </Badge>
-            ) : null}
+            ) : isOngoing ? (
+              <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-800">
+                In use
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="border-sky-300 bg-sky-50 text-sky-800">
+                Listed
+              </Badge>
+            )}
           </div>
           {offer.description ? (
             <p className="line-clamp-2 text-sm text-muted-foreground">{offer.description}</p>
@@ -78,65 +90,71 @@ export function YourCapabilityOfferCard({ offer, pastReason }: YourCapabilityOff
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
-        <DetailItem
-          label="Offer Type"
-          value={labelForOption(OFFER_TYPE_OPTIONS, offer.offer_type || undefined)}
-        />
-        <DetailItem
-          label="Transaction Type"
-          value={formatCapabilityTransactionLabel(offer.transaction_type)}
-        />
-        <DetailItem label="Location" value={formatOfferLocation(offer)} />
-        <DetailItem label="Coverage Area" value={offer.coverage_area || 'Not set'} />
-        <DetailItem label="Price" value={formatOfferPrice(offer)} />
-        <DetailItem
-          label="Valid Until"
-          value={offer.valid_until ? formatDisplayDate(offer.valid_until) : 'Not set'}
-        />
-        {!pastReason ? (
-          <DetailItem
-            label="Applications"
-            value={
-              applicationsCount > 0
-                ? `${applicationsCount} total${pendingApplications > 0 ? ` · ${pendingApplications} pending` : ''}`
-                : 'None yet'
-            }
-          />
-        ) : null}
-      </div>
-
-      {impactAreas.length > 0 ? (
-        <div className="space-y-2">
-          <p className="text-xs text-gray-500">Impact Area</p>
-          <div className="flex flex-wrap gap-2">
-            {impactAreas.slice(0, 6).map((area) => (
-              <Badge
-                key={area}
-                variant="secondary"
-                className="border-gray-200 bg-gray-100 text-gray-700"
-              >
-                {formatImpactAreaLabel(area)}
-              </Badge>
-            ))}
-            {impactAreas.length > 6 ? (
-              <Badge variant="secondary" className="border-gray-200 bg-gray-100 text-gray-700">
-                +{impactAreas.length - 6} more
-              </Badge>
-            ) : null}
+      {showListingMeters ? (
+        <>
+          <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
+            <DetailItem
+              label="Offer Type"
+              value={labelForOption(OFFER_TYPE_OPTIONS, offer.offer_type || undefined)}
+            />
+            <DetailItem
+              label="Transaction Type"
+              value={formatCapabilityTransactionLabel(offer.transaction_type)}
+            />
+            <DetailItem label="Location" value={formatOfferLocation(offer)} />
+            <DetailItem label="Coverage Area" value={offer.coverage_area || 'Not set'} />
+            <DetailItem label="Price" value={formatOfferPrice(offer)} />
+            <DetailItem
+              label="Valid Until"
+              value={offer.valid_until ? formatDisplayDate(offer.valid_until) : 'Not set'}
+            />
+            <DetailItem
+              label="Applications"
+              value={
+                applicationsCount > 0
+                  ? `${applicationsCount} total${pendingApplications > 0 ? ` · ${pendingApplications} pending` : ''}`
+                  : 'None yet'
+              }
+            />
           </div>
-        </div>
-      ) : null}
 
-      {usageRecords.map((usage) => (
-        <UsageRecordSection key={usage.id} usage={usage} offerId={offer.id} />
-      ))}
+          {impactAreas.length > 0 ? (
+            <div className="space-y-2">
+              <p className="text-xs text-gray-500">Impact Area</p>
+              <div className="flex flex-wrap gap-2">
+                {impactAreas.slice(0, 6).map((area) => (
+                  <Badge
+                    key={area}
+                    variant="secondary"
+                    className="border-gray-200 bg-gray-100 text-gray-700"
+                  >
+                    {formatImpactAreaLabel(area)}
+                  </Badge>
+                ))}
+                {impactAreas.length > 6 ? (
+                  <Badge variant="secondary" className="border-gray-200 bg-gray-100 text-gray-700">
+                    +{impactAreas.length - 6} more
+                  </Badge>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <div className="space-y-4">
+          {usageRecords.map((usage, index) => (
+            <div key={usage.id} className={index > 0 ? 'border-t border-slate-100 pt-4' : undefined}>
+              <UsageRecordSection usage={usage} />
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2 pt-1">
         <Button size="sm" asChild>
-          <Link href={`/service-offers/${offer.id}`}>View Detail</Link>
+          <Link href={`/service-offers/${offer.id}`}>Open Detail</Link>
         </Button>
-        {!pastReason || pastReason === 'expired' ? (
+        {!pastReason || pastReason === 'expired' || pastReason === 'unlisted' ? (
           <Button size="sm" variant="outline" asChild>
             <Link href={`/service-offers/edit/${offer.id}`}>Edit</Link>
           </Button>

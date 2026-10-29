@@ -273,6 +273,26 @@ describe('getNgoLeadInvitations', () => {
     ])
   })
 
+  it('hides lead invites for the NGO that owns the project', async () => {
+    useDb((query) => {
+      if (query.table === 'service_request_contributions') {
+        return {
+          data: [
+            { id: 'i-owner', status: 'pending', reference_text: null, created_at: '2026-01-05', meta: { project_id: 'p1', inviting_company_id: COMPANY } },
+          ],
+        }
+      }
+      if (query.table === 'service_request_projects') {
+        return { data: [{ id: 'p1', ngo_id: NGO, title: 'Library', location: 'Pune', exact_address: 'Ward 4' }] }
+      }
+      if (query.table === 'users') return { data: [{ id: COMPANY, name: 'Acme', email: 'acme@example.org' }] }
+      return undefined
+    })
+
+    const { json } = await read(await getNgoLeadInvitations(ctx(NGO, 'ngo')))
+    expect(json.data).toEqual([])
+  })
+
   it('includes pending project-meta invites for the NGO', async () => {
     const invitedAt = '2026-02-01T00:00:00.000Z'
     useDb((query) => {
@@ -407,6 +427,8 @@ describe('getCsrTracking', () => {
       assigned_company_id: COMPANY,
       ngo_dashboard_role: 'request_owner',
       selected_lead_ngo_id: null,
+      project_description: 'Library',
+      need_progress: { total: 0, open: 0, in_progress: 0, completed: 0 },
     })
     expect(owner.json.data[0].lead_ngo_invites).toEqual([
       expect.objectContaining({ ngo_id: 2, status: 'accepted', selected_as_lead: true }),
@@ -448,6 +470,7 @@ describe('getCsrTracking', () => {
     expect(json.data[0]).toMatchObject({
       project_id: 'p1',
       project_category: 'Infrastructure Project',
+      need_progress: { total: 1, open: 1, in_progress: 0, completed: 0 },
       lead_ngo_id: NGO,
       lead_ngo_name: 'Seva',
       assigned_company_id: COMPANY,
@@ -504,6 +527,20 @@ describe('getCsrTracking', () => {
     const leadLookup = fake.find('service_request_projects').find((query) => query.columns === 'id, lead_ngo_user_id')
     expect(callsOf(leadLookup, 'in')).toEqual([['id', ['p1']]])
     expect(json.data.map((row: { ngo_dashboard_role: string }) => row.ngo_dashboard_role)).toEqual(['selected_lead'])
+  })
+
+  it('does not treat the owner NGO as the selected lead', async () => {
+    trackingDb({
+      assigned: [{ ...trackedProject, lead_ngo_user_id: NGO }],
+      projects: [{ ...trackedProject, lead_ngo_user_id: NGO }],
+    })
+
+    const { json } = await read(await getCsrTracking(ctx(COMPANY, 'company')))
+    expect(json.data[0]).toMatchObject({
+      lead_ngo_id: NGO,
+      selected_lead_ngo_id: null,
+      selected_lead_ngo_name: null,
+    })
   })
 
   it('repairs a project whose accepted handoff never set the assigned company', async () => {

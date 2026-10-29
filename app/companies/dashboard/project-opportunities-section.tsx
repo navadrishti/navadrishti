@@ -35,8 +35,8 @@ export function ProjectOpportunitiesSection({
   return (
     <div className="rounded-md border bg-slate-50 p-4 space-y-3">
       <div>
-        <p className="font-semibold text-slate-900">NGO Project Opportunities</p>
-        <p className="text-sm text-slate-600">Apply to take over a full CSR project package. NGO approval locks the project to your company.</p>
+        <p className="font-semibold text-slate-900">Open takeover opportunities</p>
+        <p className="text-sm text-slate-600">Apply to take over an NGO-published CSR project. Approval locks the project to your company. You then invite a different NGO as implementing lead.</p>
       </div>
 
       {!allVerified ? (

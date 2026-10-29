@@ -23,7 +23,7 @@ export function useRecommendedNgos(userId: number | undefined) {
       const params = new URLSearchParams({
         recommend: "1",
         verified_only: "true",
-        shuffle: "1",
+        shuffle: isRefresh ? "1" : "0",
       })
       const response = await fetch(`/api/ngos/network?${params.toString()}`, {
         credentials: 'include',

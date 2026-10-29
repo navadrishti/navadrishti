@@ -377,13 +377,7 @@ const response = await fetch(`/api/csr-projects/${projectId}/evidence`, {
       setLoadingData(false);
     };
 
-    loadData();
-
-    const poll = window.setInterval(() => {
-      void refreshDashboardOnLoad();
-    }, 30_000);
-
-    return () => window.clearInterval(poll);
+    void loadData();
   }, [userId]);
 
   return {
@@ -415,6 +409,7 @@ const response = await fetch(`/api/csr-projects/${projectId}/evidence`, {
     loadingOfferApplications,
     loadingOfferRequests,
     fetchServiceRequests,
+    fetchOfferApplications,
     fetchOfferRequests,
     fetchCompanyProjectApplications,
     fetchCSRTrackingAssignments,

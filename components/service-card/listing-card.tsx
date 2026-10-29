@@ -81,8 +81,6 @@ export function ListingCard({
                 images={images}
                 alt={title}
                 className="h-full w-full"
-                autoplay
-                autoplayInterval={3500}
                 showThumbnails={false}
                 showImageCount
                 enableKeyboardNav={false}

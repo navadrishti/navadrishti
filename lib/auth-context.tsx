@@ -103,6 +103,16 @@ function notifyVerificationReviewForUser(user: User) {
   }, 800);
 }
 
+function isSameUser(a: User | null | undefined, b: User | null | undefined) {
+  if (a === b) return true
+  if (!a || !b) return false
+  try {
+    return JSON.stringify(a) === JSON.stringify(b)
+  } catch {
+    return false
+  }
+}
+
 export interface User {
   id: number;
   email: string;
@@ -205,8 +215,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     if (nextUser) {
       const serializedUser = JSON.stringify(nextUser);
-      localStorage.setItem('user', serializedUser);
-      sessionStorage.setItem('user', serializedUser);
+      if (localStorage.getItem('user') !== serializedUser) {
+        localStorage.setItem('user', serializedUser);
+      }
+      if (sessionStorage.getItem('user') !== serializedUser) {
+        sessionStorage.setItem('user', serializedUser);
+      }
     } else {
       localStorage.removeItem('user');
       sessionStorage.removeItem('user');
@@ -242,7 +256,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const nextToken = options?.keepExistingToken
           ? (authToken || issuedToken)
           : (issuedToken || authToken);
-        setUser(data.user);
+        setUser((prev) => (isSameUser(prev, data.user) ? prev : data.user));
         if (nextToken && nextToken !== tokenRef.current) {
           tokenRef.current = nextToken;
           setToken(nextToken);
@@ -253,7 +267,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       if (isInvalidAuthResponse(response.status)) {
         if (options?.preserveOnUnauthorized && fallbackUser) {
-          setUser(fallbackUser);
+          setUser((prev) => (isSameUser(prev, fallbackUser) ? prev : fallbackUser));
           tokenRef.current = authToken;
           setToken(authToken);
           persistAuthSnapshot(authToken, fallbackUser);
@@ -272,7 +286,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     if (epoch !== authEpochRef.current) return null;
 
     if (fallbackUser) {
-      setUser(fallbackUser);
+      setUser((prev) => (isSameUser(prev, fallbackUser) ? prev : fallbackUser));
       setToken(authToken);
       persistAuthSnapshot(authToken, fallbackUser);
       return fallbackUser;
@@ -314,7 +328,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (storedUser) {
         try {
           fallbackUser = JSON.parse(storedUser) as User;
-          if (!alreadySignedIn) setUser(fallbackUser);
+          if (!alreadySignedIn) setUser((prev) => (isSameUser(prev, fallbackUser) ? prev : fallbackUser));
         } catch (parseError) {
           console.error('Error parsing stored user:', parseError);
         }
@@ -386,7 +400,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         
         if (response.ok) {
           const data = await response.json();
-          setUser(data.user);
+          setUser((prev) => (isSameUser(prev, data.user) ? prev : data.user));
           persistAuthSnapshot(cleanToken, data.user);
         } else if (!isInvalidAuthResponse(response.status)) {
           console.error('Token verification failed with status:', response.status);
@@ -462,7 +476,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     clearAuthRevoked();
     setToken(authToken);
     tokenRef.current = authToken;
-    setUser(sessionUser);
+    setUser((prev) => (isSameUser(prev, sessionUser) ? prev : sessionUser));
     persistAuthSnapshot(authToken, sessionUser);
     await hydrateUserFromServer(authToken, sessionUser, { preserveOnUnauthorized: true });
   };
@@ -556,7 +570,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const updateUser = (userData: Partial<User>) => {
     if (user) {
       const updatedUser = { ...user, ...userData };
-      setUser(updatedUser);
+      setUser((prev) => (isSameUser(prev, updatedUser) ? prev : updatedUser));
       persistAuthSnapshot(token, updatedUser);
     }
   };
@@ -575,7 +589,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       
       if (response.ok) {
         const data = await response.json();
-        setUser(data.user);
+        setUser((prev) => (isSameUser(prev, data.user) ? prev : data.user));
         persistAuthSnapshot(token, data.user);
       } else if (isInvalidAuthResponse(response.status)) {
         setToken(null);

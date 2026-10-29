@@ -127,9 +127,14 @@ export function useLeadNgoInvites({
 
     const accepted = acceptedLeadNgoFromRemote(data)
     if (accepted) {
-      setConfirmedLeadNgo(accepted)
+      setConfirmedLeadNgo((prev) =>
+        JSON.stringify(prev) === JSON.stringify(accepted) ? prev : accepted
+      )
     }
-    setLeadNgoInvites(leadInvitesFromRemote(data))
+    const nextInvites = leadInvitesFromRemote(data)
+    setLeadNgoInvites((prev) =>
+      JSON.stringify(prev) === JSON.stringify(nextInvites) ? prev : nextInvites
+    )
   }
 
   const syncLeadInviteStatuses = async (overrides?: { draftCampaignId?: string | null; sessionId?: string | null }) => {
@@ -259,11 +264,6 @@ export function useLeadNgoInvites({
     if (!draftCampaignId && leadNgoInvites.length === 0) return
 
     void syncInviteStatuses()
-    const interval = setInterval(() => {
-      void syncInviteStatuses()
-    }, 5000)
-
-    return () => clearInterval(interval)
   }, [mounted, userId, token, draftCampaignId, leadNgoInvites.length, hasLockedLeadNgo])
 
   return {

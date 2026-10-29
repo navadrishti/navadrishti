@@ -17,6 +17,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { buildServiceOfferPayload, validateServiceOfferForm } from '@/components/service-offer-form/helpers'
 import { ServiceOfferFormFields } from '@/components/service-offer-form/service-offer-form-fields'
 import { useServiceOfferForm } from '@/components/service-offer-form/use-service-offer-form'
+import { ngoHasLegalEntityTag } from '@/lib/service-offers'
 
 export default function CreateServiceOfferPage() {
   const router = useRouter()
@@ -75,6 +76,13 @@ export default function CreateServiceOfferPage() {
 
   const payoutHref = dashboardProfilePayoutHref(user.user_type)
   const payoutBlocked = !payoutLoading && payoutConnected === false
+  const details = user.verification_details && typeof user.verification_details === 'object'
+    ? user.verification_details as { registration_type?: string | null }
+    : null
+  const legalTagsBlocked = user.user_type === 'ngo' && !ngoHasLegalEntityTag({
+    profile_data: user.profile_data || user.profile,
+    registration_type: details?.registration_type,
+  })
 
   return (
     <ProtectedRoute requireVerification={true} permission="canCreateServiceOffers">
@@ -106,6 +114,20 @@ export default function CreateServiceOfferPage() {
               <CardContent>
                 <Button asChild>
                   <Link href={payoutHref}>Connect payout account</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          ) : legalTagsBlocked ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Add NGO legal registration to list capabilities</CardTitle>
+                <CardDescription>
+                  Trust, Society, or Section 8 registration must be on your verified NGO profile before a capability can go live.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button asChild>
+                  <Link href="/verification">Complete NGO legal details</Link>
                 </Button>
               </CardContent>
             </Card>

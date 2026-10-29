@@ -14,7 +14,12 @@ import {
   PayeeNotConnectedError,
 } from '@/lib/razorpay-route';
 import Razorpay from 'razorpay';
-import { filterNetworkNgos, loadNetworkNgos, loadRecommendationViewer } from '@/lib/ngo-network/listing';
+import {
+  filterNetworkNgos,
+  loadNetworkNgos,
+  loadRecommendationViewer,
+  redactNetworkNgoContact,
+} from '@/lib/ngo-network/listing';
 import { createNetworkDonationOrder, verifyNetworkDonation } from '@/lib/ngo-network/donation';
 
 export async function GET(request: NextRequest) {
@@ -29,6 +34,7 @@ export async function GET(request: NextRequest) {
     );
 
     const viewer = recommendMode ? await loadRecommendationViewer(request) : null;
+    const includeContact = Boolean(viewer || (await getTokenClaims(request)));
 
     const ngos = await loadNetworkNgos(verifiedOnly);
     if (!ngos) {
@@ -54,7 +60,9 @@ export async function GET(request: NextRequest) {
         poolSize: 6,
         displaySize: 4,
         shuffleTies,
-      }).map(({ search_haystack: _haystack, city: _city, state_province: _state, match_score: _score, ...ngo }) => ngo);
+      }).map(({ search_haystack: _haystack, city: _city, state_province: _state, match_score: _score, ...ngo }) =>
+        redactNetworkNgoContact(ngo, includeContact)
+      );
 
       return Response.json({
         success: true,
@@ -72,7 +80,7 @@ export async function GET(request: NextRequest) {
       compliance: searchParams.get('compliance') || '',
       registrationType: (searchParams.get('registration_type') || '').trim(),
       verifiedOnly,
-    });
+    }).map((ngo) => redactNetworkNgoContact(ngo, includeContact));
 
     return Response.json({
       success: true,

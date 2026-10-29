@@ -60,16 +60,6 @@ export function useProjectDetail(projectId: string) {
     loadProjectDetail();
   }, [user?.id, token, projectId]);
 
-  useEffect(() => {
-    if (!projectId) return;
-
-    const interval = window.setInterval(() => {
-      void loadProjectDetail({ silent: true });
-    }, 20000);
-
-    return () => window.clearInterval(interval);
-  }, [user?.id, token, projectId]);
-
   const currentCompanyApplication = useMemo(() => {
     if (!payload || userType !== 'company' || !userId) return null;
     const fromList = payload.company_applications.find((item) => Number(item.company_id) === Number(userId));

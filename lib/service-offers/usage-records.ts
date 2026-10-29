@@ -1,7 +1,13 @@
+import { formatStatusLabel } from '@/lib/format-date'
 import {
   formatAttendanceSummary,
   isDailyRentalEngagementMeta,
 } from '@/lib/service-request-allocation/skill-service'
+import {
+  isDeliveredTrackingStatus,
+  isPickedUpTrackingStatus,
+} from '@/lib/service-request-allocation/delivery-tracking'
+import { formatOfferInrAmount } from './formatting'
 import type { CapabilityOfferUsageRecord, SelectedNeedSummary } from './types'
 
 export function dedupeSelectedNeedSummaries(
@@ -121,9 +127,16 @@ export function buildUsageRecordFromClient(
     ...assignmentRecordMeta,
     attendance_summary: assignmentRecordMeta.attendance_summary ?? meta.attendance_summary,
     settled_amount: assignmentRecordMeta.settled_amount ?? meta.settled_amount,
+    settlement_status: assignmentRecordMeta.settlement_status ?? meta.settlement_status,
     settlement_mode: assignmentRecordMeta.settlement_mode ?? meta.settlement_mode,
+    delivery_tracking_id: assignmentRecordMeta.delivery_tracking_id ?? meta.delivery_tracking_id,
+    delivery_tracking_last_status:
+      assignmentRecordMeta.delivery_tracking_last_status ?? meta.delivery_tracking_last_status,
   }
   const attendance = formatAttendanceSummary(mergedMetaForAttendance)
+  const attendanceSummary = mergedMetaForAttendance.attendance_summary && typeof mergedMetaForAttendance.attendance_summary === 'object'
+    ? mergedMetaForAttendance.attendance_summary as Record<string, unknown>
+    : {}
   const isDailyRental = isDailyRentalEngagementMeta(meta) || isDailyRentalEngagementMeta(assignmentRecordMeta)
 
   const linkedServiceRequestId = Number(
@@ -167,11 +180,115 @@ export function buildUsageRecordFromClient(
     cumulative_due: attendance.totalDue,
     paid_total: attendance.paidTotal,
     last_attendance_at: attendance.lastAttendanceAt != null ? String(attendance.lastAttendanceAt) : null,
+    attendance_source: String(attendanceSummary.last_source || attendanceSummary.source || '') || null,
     settled_amount: mergedMetaForAttendance.settled_amount != null
       ? Number(mergedMetaForAttendance.settled_amount)
+      : null,
+    settlement_status: mergedMetaForAttendance.settlement_status != null
+      ? String(mergedMetaForAttendance.settlement_status)
       : null,
     settlement_mode: mergedMetaForAttendance.settlement_mode != null
       ? String(mergedMetaForAttendance.settlement_mode)
       : null,
+    delivery_tracking_id: String(
+      mergedMetaForAttendance.delivery_tracking_id
+      ?? assignmentMeta.delivery_tracking_id
+      ?? ''
+    ) || null,
+    delivery_tracking_last_status: String(
+      mergedMetaForAttendance.delivery_tracking_last_status
+      ?? assignmentMeta.delivery_tracking_last_status
+      ?? ''
+    ) || null,
+  }
+}
+
+function usageApplicationNote(message?: string | null) {
+  const trimmed = String(message || '').trim()
+  if (!trimmed) return null
+  if (/^applying for:/i.test(trimmed)) return null
+  return trimmed
+}
+
+function usagePaymentStatusLabel(input: {
+  paymentRequired: boolean
+  paymentMode: string
+  totalDue: number
+  paidTotal: number
+  settledAmount: number
+  settlementStatus: string
+}) {
+  if (!input.paymentRequired) return 'No payment'
+
+  const outstanding = Math.max(0, input.totalDue - input.paidTotal)
+  if (input.settlementStatus === 'settled' || (input.settledAmount > 0 && outstanding <= 0)) {
+    return `Settled · ${formatOfferInrAmount(input.settledAmount || input.paidTotal)}`
+  }
+  if (input.paidTotal > 0 && outstanding <= 0) {
+    return `Paid · ${formatOfferInrAmount(input.paidTotal)}`
+  }
+  if (outstanding > 0) {
+    return `Outstanding · ${formatOfferInrAmount(outstanding)}`
+  }
+  if (input.paymentMode === 'prepaid') return 'Payment due'
+  return 'Due as used'
+}
+
+function usageDeliveryStatusLabel(trackingStatus: string) {
+  if (!trackingStatus) return 'Waiting for pickup'
+  if (isDeliveredTrackingStatus(trackingStatus) || isPickedUpTrackingStatus(trackingStatus)) {
+    return trackingStatus
+  }
+  return trackingStatus
+}
+
+function usageAttendanceSourceLabel(source?: string | null, isDailyRental = false) {
+  const attendanceSource = String(source || '').trim()
+  if (!attendanceSource) return isDailyRental ? 'GRAM App · daily delivery' : null
+  if (/pwa|gram|device/i.test(attendanceSource)) return 'GRAM App'
+  if (/deliver/i.test(attendanceSource)) return 'After delivery'
+  return formatStatusLabel(attendanceSource)
+}
+
+export function getUsageEngagementOverview(usage: CapabilityOfferUsageRecord) {
+  const paymentAmount = Number(usage.payment_amount_inr || 0)
+  const paymentRequired = Boolean(usage.payment_required ?? paymentAmount > 0)
+  const isDailyRental = Boolean(
+    usage.is_daily_rental
+    || isDailyRentalEngagementMeta({
+      billing_cycle: usage.billing_cycle,
+      payment_mode: usage.payment_mode,
+    })
+  )
+  const trackingStatus = String(usage.delivery_tracking_last_status || '').trim()
+  const trackingId = String(usage.delivery_tracking_id || '').trim()
+  const daysPresent = Number(usage.days_present || 0)
+  const lastAttendanceAt = usage.last_attendance_at ? String(usage.last_attendance_at) : null
+
+  return {
+    assignedAt: usage.assigned_at || '',
+    billingLabel: `${formatStatusLabel(usage.billing_cycle || 'one_time')} · ${formatStatusLabel(usage.payment_mode || 'prepaid')}`,
+    amountLabel:
+      isDailyRental && paymentAmount > 0
+        ? `${formatOfferInrAmount(paymentAmount)}/day`
+        : formatOfferInrAmount(paymentAmount),
+    paymentStatusLabel: usagePaymentStatusLabel({
+      paymentRequired,
+      paymentMode: String(usage.payment_mode || '').toLowerCase(),
+      totalDue: Number(usage.cumulative_due || 0),
+      paidTotal: Number(usage.paid_total || 0),
+      settledAmount: Number(usage.settled_amount || 0),
+      settlementStatus: String(usage.settlement_status || '').toLowerCase(),
+    }),
+    payerLabel: usage.client_name || 'Requester',
+    payeeLabel: 'You (offering party)',
+    isDailyRental,
+    showAttendance: isDailyRental || daysPresent > 0 || Boolean(lastAttendanceAt),
+    daysPresent,
+    lastAttendanceAt,
+    attendanceSourceLabel: usageAttendanceSourceLabel(usage.attendance_source, isDailyRental),
+    showDelivery: Boolean(trackingId || trackingStatus),
+    deliveryStatusLabel: usageDeliveryStatusLabel(trackingStatus),
+    applicationNote: usageApplicationNote(usage.message),
   }
 }

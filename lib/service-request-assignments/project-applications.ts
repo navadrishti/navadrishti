@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase, getProjectLeadNgoId } from '@/lib/db'
+import { supabase, getProjectLeadNgoId, buildProjectLeadNgoPatch } from '@/lib/db'
 import {
   getTokenClaims,
   assertCsr1CoversProject,
@@ -14,8 +14,11 @@ import {
   COMPANY_PROJECT_CONTRIBUTION_TYPE,
   EXPIRED_STATUS,
   LEAD_NGO_INVITE_CONTRIBUTION_TYPE,
+  OWNER_NGO_CANNOT_BE_LEAD_MESSAGE,
   PENDING_LEAD_INVITE_STATUSES,
+  distinctLeadNgoId,
   isFullyVerifiedCompany,
+  isSamePositiveId,
   projectLeadInviteId,
 } from '@/lib/service-request-assignments/shared'
 
@@ -281,18 +284,33 @@ export async function submitProjectApplication(request: NextRequest) {
         return NextResponse.json({ error: 'At least one NGO id is required' }, { status: 400 })
       }
 
+      if (ownerNgoId > 0 && ngoIds.includes(ownerNgoId)) {
+        return NextResponse.json({ error: OWNER_NGO_CANNOT_BE_LEAD_MESSAGE }, { status: 400 })
+      }
+
+      const storedLeadId = getProjectLeadNgoId(projectRow)
+      if (storedLeadId > 0 && isSamePositiveId(ownerNgoId, storedLeadId)) {
+        const { error: clearOwnerError } = await supabase
+          .from('service_request_projects')
+          .update({
+            ...buildProjectLeadNgoPatch(null),
+            assignment_status: 'accepted',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', projectId)
+        if (clearOwnerError) throw clearOwnerError
+      } else if (distinctLeadNgoId(ownerNgoId, storedLeadId) > 0) {
+        return NextResponse.json({
+          error: 'A lead NGO is already assigned to this project. Additional invites are not allowed.'
+        }, { status: 409 })
+      }
+
       const { data: ngoRows, error: ngoRowsError } = await supabase
         .from('users')
         .select('id, user_type, verification_status, profile_data, name, email')
         .in('id', ngoIds)
 
       if (ngoRowsError) throw ngoRowsError
-
-      if (getProjectLeadNgoId(projectRow) > 0) {
-        return NextResponse.json({
-          error: 'A lead NGO is already assigned to this project. Additional invites are not allowed.'
-        }, { status: 409 })
-      }
 
       for (const row of ngoRows || []) {
         if (row.user_type !== 'ngo') {
@@ -306,12 +324,6 @@ export async function submitProjectApplication(request: NextRequest) {
 
       if ((ngoRows || []).length !== ngoIds.length) {
         return NextResponse.json({ error: CSR_ELIGIBILITY_REQUIRED_MESSAGE }, { status: 400 })
-      }
-
-      if (ownerNgoId > 0 && ngoIds.includes(ownerNgoId)) {
-        return NextResponse.json({
-          error: 'You cannot invite the NGO that owns the original project request as lead NGO.'
-        }, { status: 400 })
       }
 
       const assignmentAccepted =
@@ -340,7 +352,8 @@ export async function submitProjectApplication(request: NextRequest) {
         : []
       if (existingMetaInvites.some((invite) =>
         Number(invite.inviting_company_id) === Number(userId) &&
-        String(invite.status || '').toLowerCase() === 'accepted'
+        String(invite.status || '').toLowerCase() === 'accepted' &&
+        !isSamePositiveId(ownerNgoId, invite.ngo_id)
       )) {
         return NextResponse.json({
           error: 'A lead NGO has already accepted this project invite. No additional invites are allowed.'
@@ -359,18 +372,25 @@ export async function submitProjectApplication(request: NextRequest) {
       if (alreadyAcceptedLeadInviteError) throw alreadyAcceptedLeadInviteError
 
       if (alreadyAcceptedLeadInvite) {
-        await supabase
-          .from('service_request_contributions')
-          .update({ status: EXPIRED_STATUS, updated_at: new Date().toISOString() })
-          .eq('contribution_type', LEAD_NGO_INVITE_CONTRIBUTION_TYPE)
-          .eq('meta->>project_id', projectId)
-          .eq('meta->>inviting_company_id', String(userId))
-          .neq('id', alreadyAcceptedLeadInvite.id)
-          .in('status', ['pending', 'invited', 'pending_acceptance', 'awaiting_acceptance', 'offered', 'assigned'])
+        if (isSamePositiveId(ownerNgoId, alreadyAcceptedLeadInvite.contributor_id)) {
+          await supabase
+            .from('service_request_contributions')
+            .update({ status: EXPIRED_STATUS, updated_at: new Date().toISOString() })
+            .eq('id', alreadyAcceptedLeadInvite.id)
+        } else {
+          await supabase
+            .from('service_request_contributions')
+            .update({ status: EXPIRED_STATUS, updated_at: new Date().toISOString() })
+            .eq('contribution_type', LEAD_NGO_INVITE_CONTRIBUTION_TYPE)
+            .eq('meta->>project_id', projectId)
+            .eq('meta->>inviting_company_id', String(userId))
+            .neq('id', alreadyAcceptedLeadInvite.id)
+            .in('status', ['pending', 'invited', 'pending_acceptance', 'awaiting_acceptance', 'offered', 'assigned'])
 
-        return NextResponse.json({
-          error: 'A lead NGO has already accepted this project invite. No additional invites are allowed.'
-        }, { status: 409 })
+          return NextResponse.json({
+            error: 'A lead NGO has already accepted this project invite. No additional invites are allowed.'
+          }, { status: 409 })
+        }
       }
 
       let insertedCount = 0

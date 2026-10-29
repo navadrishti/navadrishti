@@ -136,10 +136,169 @@ describe('GET /api/service-request-assignments', () => {
     expect(json.data[0].assignments[0]).toMatchObject({ message: 'hi' })
   })
 
+  it('keeps leftover pending skill applications while remaining units are still open', async () => {
+    useDb((query) => {
+      if (query.table === 'service_requests') {
+        return {
+          data: [{
+            id: 11,
+            status: 'active',
+            request_type: 'Skill / Service Need',
+            target_quantity: 201,
+            remaining_quantity: 200,
+          }],
+        }
+      }
+      return {
+        data: [
+          { id: 1, service_request_id: 11, status: 'completed' },
+          { id: 2, service_request_id: 11, status: 'pending', response_meta: {} },
+        ],
+      }
+    })
+
+    const { json } = await read(await GET(jsonRequest(URL_BASE, { token: tokenFor(1, 'ngo') })))
+    expect(json.data[0]).toMatchObject({ accepted_count: 1, pending_count: 1 })
+    expect(json.data[0].assignments.map((item: { id: number; status: string }) => [item.id, item.status])).toEqual([
+      [1, 'completed'],
+      [2, 'pending'],
+    ])
+    expect(
+      fake.queries.some((query) => query.table === 'service_request_applications' && query.op === 'update' && query.payload)
+    ).toBe(false)
+  })
+
+  it('closes leftover pending applications once remaining target is zero', async () => {
+    useDb((query) => {
+      if (query.table === 'service_requests' && query.op === 'select') {
+        return {
+          data: [{
+            id: 11,
+            status: 'active',
+            request_type: 'Skill / Service Need',
+            target_quantity: 1,
+            remaining_quantity: 0,
+          }],
+        }
+      }
+      if (query.table === 'service_requests' && query.op === 'update') {
+        return { data: [{ id: 11, status: 'completed' }] }
+      }
+      return {
+        data: [
+          { id: 1, service_request_id: 11, status: 'accepted' },
+          { id: 2, service_request_id: 11, status: 'pending', response_meta: {} },
+        ],
+      }
+    })
+
+    const { json } = await read(await GET(jsonRequest(`${URL_BASE}?view=history`, { token: tokenFor(1, 'ngo') })))
+    expect(json.data[0]).toMatchObject({ accepted_count: 1, pending_count: 0 })
+    expect(json.data[0].assignments.map((item: { id: number; status: string }) => [item.id, item.status])).toEqual([
+      [1, 'accepted'],
+      [2, 'rejected'],
+    ])
+    const autoReject = fake.queries.find(
+      (query) => query.table === 'service_request_applications' && query.op === 'update' && query.payload
+    )
+    expect(autoReject?.payload).toMatchObject({
+      status: 'rejected',
+      response_meta: { auto_rejected_reason: 'need_fully_allocated' },
+    })
+  })
+
   it('shows an NGO its finished needs in history', async () => {
     useDb((query) => ({ data: query.table === 'service_requests' ? [{ id: 11, status: 'active' }, { id: 12, status: 'cancelled' }] : [] }))
     const { json } = await read(await GET(jsonRequest(`${URL_BASE}?view=history`, { token: tokenFor(1, 'ngo') })))
     expect(json.data.map((item: { id: number }) => item.id)).toEqual([12])
+  })
+
+  it('keeps a fully assigned material need on ongoing until Delhivery reports delivered', async () => {
+    useDb((query) => {
+      if (query.table === 'service_requests') {
+        return {
+          data: [
+            {
+              id: 11,
+              status: 'completed',
+              request_type: 'Material Need',
+              target_quantity: 1,
+              remaining_quantity: 0,
+            },
+          ],
+        }
+      }
+      return { data: [{ id: 1, service_request_id: 11, status: 'accepted' }] }
+    })
+
+    const ongoing = await read(await GET(jsonRequest(`${URL_BASE}?view=ongoing`, { token: tokenFor(1, 'ngo') })))
+    const history = await read(await GET(jsonRequest(`${URL_BASE}?view=history`, { token: tokenFor(1, 'ngo') })))
+    expect(ongoing.json.data.map((item: { id: number }) => item.id)).toEqual([11])
+    expect(history.json.data).toEqual([])
+    expect(
+      fake.queries.some((query) => query.table === 'service_requests' && query.op === 'update' && (query.payload as { status?: string })?.status === 'completed')
+    ).toBe(false)
+  })
+
+  it('moves a delivered material need into history even while its row is still active', async () => {
+    useDb((query) => {
+      if (query.table === 'service_requests' && query.op === 'select') {
+        return {
+          data: [
+            {
+              id: 11,
+              status: 'active',
+              request_type: 'Material Need',
+              target_quantity: 1,
+              remaining_quantity: 0,
+            },
+          ],
+        }
+      }
+      if (query.table === 'service_requests' && query.op === 'update') {
+        return { data: [{ id: 11, status: 'completed' }] }
+      }
+      return {
+        data: [{
+          id: 1,
+          service_request_id: 11,
+          status: 'accepted',
+          response_meta: { delivery_tracking_last_status: 'Delivered' },
+        }],
+      }
+    })
+
+    const history = await read(await GET(jsonRequest(`${URL_BASE}?view=history`, { token: tokenFor(1, 'ngo') })))
+    expect(history.json.data.map((item: { id: number }) => item.id)).toEqual([11])
+    const complete = fake.queries.find(
+      (query) => query.table === 'service_requests' && query.op === 'update'
+    )
+    expect(complete?.payload).toMatchObject({ status: 'completed' })
+    expect(callsOf(complete, 'in')).toEqual([['status', ['active', 'in_progress']]])
+  })
+
+  it('keeps a need with remaining units on ongoing even if a volunteer already finished', async () => {
+    useDb((query) => {
+      if (query.table === 'service_requests') {
+        return {
+          data: [
+            {
+              id: 11,
+              status: 'completed',
+              request_type: 'Skill / Service Need',
+              target_quantity: 201,
+              remaining_quantity: 200,
+            },
+          ],
+        }
+      }
+      return { data: [{ id: 1, service_request_id: 11, status: 'completed' }] }
+    })
+
+    const ongoing = await read(await GET(jsonRequest(`${URL_BASE}?view=ongoing`, { token: tokenFor(1, 'ngo') })))
+    const history = await read(await GET(jsonRequest(`${URL_BASE}?view=history`, { token: tokenFor(1, 'ngo') })))
+    expect(ongoing.json.data.map((item: { id: number }) => item.id)).toEqual([11])
+    expect(history.json.data).toEqual([])
   })
 
   it('skips the application lookup for an NGO without needs', async () => {

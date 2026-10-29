@@ -29,8 +29,8 @@ export function CsrCampaignsSection({ data, tab, onTabChange }: CsrCampaignsSect
       </div>
       <Tabs value={tab} onValueChange={(value) => onTabChange(value as CsrCampaignsSubTab)} className="w-full">
         <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="ongoing">Ongoing ({ongoing.length})</TabsTrigger>
-          <TabsTrigger value="completed">Completed ({completed.length})</TabsTrigger>
+          <TabsTrigger value="ongoing">Active ({ongoing.length})</TabsTrigger>
+          <TabsTrigger value="completed">History ({completed.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="ongoing" className="mt-4 space-y-3">

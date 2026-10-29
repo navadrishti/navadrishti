@@ -49,9 +49,9 @@ docs/
 
 ## Service exchange
 
-1. NGOs, individuals, and companies publish capability offers; NGOs also publish needs.
-2. Platform admin reviews listings where required.
-3. Applicants apply through `service_request_applications` or `service_clients`.
+1. NGOs, individuals, and companies publish capability offers (live after verification + Razorpay payout; NGOs also need Trust/Society/Section 8). NGOs also publish needs.
+2. Platform admin can reject a capability listing; offers are not held for approval and are not auto-rejected after 5 days.
+3. Applicants apply through `service_request_applications` or `service_clients`. CSR-1 does not gate capability applications.
 4. Owners accept, assign, and record attendance or fulfillment.
 5. Payments go through Razorpay order + webhook verification.
 

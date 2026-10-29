@@ -9,12 +9,15 @@ Production: https://your-domain.com/api
 ## Authentication
 
 ### JWT Token Authentication
-Most endpoints require authentication via Bearer token:
+Platform sessions use an httpOnly `token` cookie set at login. API routes also accept `Authorization: Bearer <jwt>` from the in-memory copy the browser keeps for the tab. The JWT is not persisted in localStorage.
 
 ```javascript
 Headers: {
   'Authorization': 'Bearer <jwt_token>',
   'Content-Type': 'application/json'
+}
+Cookies: {
+  'token': '<platform_jwt>'
 }
 ```
 
@@ -188,13 +191,17 @@ Public activity stream for the home page (joins, verifications, published needs/
 Fetch service offers.
 
 **Query Parameters:**
-- `category` (string): Filter by category
+- `category` (string): Filter by impact area
 - `location` (string): Filter by location
 - `offer_type` (string): `financial`, `material`, `service`, `infrastructure`
+- `transaction_type` (string): `volunteer`, `donate`, `rent` (`sell` is treated as rent)
 - `search` (string): Search term
 - `view` (string): `all`, `my-offers`, `my-responses` (also accepts `hired` as alias for `my-responses`)
+- `include_expired` (boolean): Keep expired rows on owner/applicant views
 
 **Headers:** Authorization required for `my-offers` and `my-responses`
+
+**Public `view=all` rules:** `status=active`, unused, `is_listed` is not `false`, `admin_status` is not `rejected`, not expired, creator `verification_status=verified`, and Razorpay payout connected. Nested `ngo` never includes email, phone, or payout/bank `profile_data`.
 
 **Response:**
 ```json
@@ -217,11 +224,11 @@ Fetch service offers.
       "ngo": {
         "id": 5,
         "name": "Tech for Good NGO",
-        "email": "info@techforgood.org",
         "user_type": "ngo",
         "verification_status": "verified",
         "profile_image": "https://example.com/logo.jpg"
       },
+      "is_listed": true,
       "location": "Bengaluru",
       "price_type": "fixed",
       "price_amount": 15000,
@@ -257,13 +264,15 @@ Create a new capability offer (verified NGO, individual, or company).
 ```
 
 **Required rules:**
+- Publisher must be a verified NGO, company, or individual with an active Razorpay payout. NGOs also need Trust, Society, or Section 8 on the verified profile.
 - `offer_type` must be one of `financial`, `material`, `service`, `infrastructure`
-- `transaction_type` must be one of `sell`, `rent`, `volunteer`
+- `transaction_type` must be one of `donate`, `rent`, `volunteer` (`sell` is stored as rent)
+- New rows post live: `status=active`, `admin_status=approved`, `is_listed=true`
 - Offer-specific fields are validated based on `offer_type`
 - Pricing fields are validated based on `transaction_type`
 
 ### GET /api/service-offers/{id}
-Get specific service offer details.
+Get specific service offer details. Guests only receive publicly visible offers (`status=active`, listed, not rejected). Provider `email` and payout/bank `profile_data` are omitted for non-owners.
 
 **Response:**
 ```json
@@ -283,28 +292,24 @@ Get specific service offer details.
 ```
 
 ### POST /api/service-offers/{id}/clients
-Apply for a service offer (hire the provider).
+Apply for a service offer. Only verified NGOs with Trust/Society/Section 8 may apply. CSR-1 is not required.
 
-**Headers:** No authorization header required in current implementation.
+**Headers:** Authorization required
 
 **Request Body:**
 ```json
 {
-  "client_id": 42,
-  "client_type": "company",
-  "message": "We would like to hire your services for our project",
-  "proposed_amount": 5000,
-  "start_date": "2024-02-01",
-  "end_date": "2024-05-01"
+  "message": "We would like to use this capability against our need",
+  "selected_need_ids": [31],
+  "proposed_amount": 5000
 }
 ```
 
 **Rules:**
-- `client_id`, `client_type`, and `message` are required
+- Applicant must be a verified NGO (not the offer owner)
+- `selected_need_ids` must include one active need
+- Offer must be open (`status=active`, not unlisted, not rejected, not expired)
 - `client_type` is recorded in `response_meta`
-- Allowed applicant user types: `individual`, `company`, `ngo`
-- Applicant must be `verified`
-- Users cannot apply to their own offer
 
 ## Service Requests
 
@@ -314,8 +319,11 @@ Fetch service requests (volunteer opportunities).
 **Query Parameters:**
 - `category` (string): Filter by category
 - `location` (string): Filter by location
+- `request_type` (string): Filter by need type
 - `urgency` (string): Filter by urgency level
-- `view` (string): "all", "my-requests", "public"
+- `view` (string): omitted/`all` (public browse), `my-requests` (NGO owner), `my-responses` (volunteer applications; `volunteering` is an alias)
+
+**Public browse (default and `view=all`):** open, unassigned, unexpired needs with remaining capacity. Required need `contact_info` is returned to every viewer (list and detail). Account email/phone on `requester` are omitted. `my-requests` and `my-responses` require a session.
 
 **Response:**
 ```json
@@ -327,19 +335,35 @@ Fetch service requests (volunteer opportunities).
       "title": "Community Garden Volunteer",
       "description": "Help maintain our community garden",
       "category": "Environment",
-      "location": "San Francisco, CA",
+      "location": "Pune",
       "volunteers_needed": 10,
-      "volunteers_registered": 7,
       "urgency_level": "medium",
-      "ngo": {
+      "contact_info": "Volunteer desk, 98765 43210",
+      "requester": {
+        "id": 12,
         "name": "Green Community NGO",
-        "verified": true
+        "user_type": "ngo",
+        "verification_status": "verified"
       },
       "created_at": "2024-01-01T00:00:00Z"
     }
   ]
 }
 ```
+
+### GET /api/service-requests/{id}
+Need detail. Public. `contact_info` is always included. `requester` email/phone are omitted unless the viewer is the owning NGO.
+
+### POST /api/service-requests
+Create a standalone need. Verified NGOs only.
+
+**Headers:** Authorization required
+
+**Required body:** `title`, `description`, `location`, `timeline`, `budget`, `contactInfo`, `impact_description`, `request_type`, `project_category` (or `category`), `beneficiary_count` > 0.
+
+`contactInfo` is required (enough detail to reach the NGO, same rule as the create form). It is stored on `service_requests.contact_info` and in `requirements.contactInfo`, and it is shown on public list and detail.
+
+Do not send `projectId` / `project`; needs are standalone.
 
 ### POST /api/service-requests/{id}/volunteers
 Volunteer for a service request.
@@ -420,70 +444,15 @@ Review and approve/reject service offer.
 }
 ```
 
-## Analytics
+## Health
 
-### GET /api/activity-feed
-Fetch user activity feed.
+### GET /api/health
+Public liveness probe. Returns `status`, `timestamp`, and coarse `checks` (`database`, `core_config`, `external_services`). Production responses do not list which secrets or integrations are configured.
 
-**Query Parameters:**
-- `userId` (required): User ID to fetch activities for
-- `limit` (number): Number of activities to return (default: 20)
+## NGO Network
 
-**Response:**
-```json
-{
-  "success": true,
-  "activities": [
-    {
-      "id": 1,
-      "user_id": 123,
-      "activity_type": "post_created",
-      "entity_type": "post",
-      "entity_id": 456,
-      "activity_data": {},
-      "visibility": "public",
-      "created_at": "2024-01-01T00:00:00Z"
-    }
-  ]
-}
-```
-
-### GET /api/platform-activities
-Fetch recent platform-wide activities (last 24 hours).
-
-**Query Parameters:** None
-
-**Response:**
-```json
-{
-  "success": true,
-  "activities": [
-    {
-      "id": "service-request-123",
-      "type": "service_request",
-      "title": "created a new service request",
-      "user": {
-        "id": 456,
-        "name": "John Doe",
-        "profile_image": "https://example.com/image.jpg",
-        "user_type": "ngo",
-        "verification_status": "verified"
-      },
-      "timestamp": "2024-01-01T00:00:00Z",
-      "metadata": {
-        "category": "Education",
-        "urgency_level": "medium"
-      },
-      "link": "/service-requests"
-    }
-  ]
-}
-```
-
-**Notes:**
-- Cached for 30 seconds
-- Returns activities from last 24 hours
-- Includes service requests, service offers, posts, users, and verifications
+### GET /api/ngos/network
+Public NGO directory. Anonymous callers do not receive `email` or `phone`. Signed-in callers still receive contact details so companies and individuals can pay or message an NGO.
 
 ## Navadrishti AI Suite
 

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/db'
+import { supabase } from '@/lib/db/client'
 import { assertUserType, authErrorResponse, getAuthUserFromRequest } from '@/lib/server-auth'
 import { buildCampaignTracking } from '@/lib/campaign-tracking'
 
-const MAX_CAMPAIGNS = 50
+const MAX_TRACKED_CAMPAIGNS = 50
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
       .select('id, status, start_date, end_date, budget_inr, impact_metrics, lead_ngo_user_id')
       .eq(ownerColumn, user.id)
       .order('created_at', { ascending: false })
-      .limit(MAX_CAMPAIGNS)
+      .limit(MAX_TRACKED_CAMPAIGNS)
     if (error) throw error
 
     const tracking = await buildCampaignTracking(campaigns || [])

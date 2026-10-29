@@ -4,11 +4,8 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-  classifyCapabilityOffer,
-  type CapabilityOfferPastReason,
-  type CapabilityOfferSummary,
-} from '@/lib/service-offers'
+import { classifyCapabilityOffer } from '@/lib/service-offers/availability'
+import type { CapabilityOfferPastReason, CapabilityOfferSummary } from '@/lib/service-offers/types'
 import { YourCapabilityOfferCard } from './your-capability-offer-card'
 
 type YourCapabilitiesPanelProps = {
@@ -39,13 +36,13 @@ export function YourCapabilitiesPanel({
   const [tab, setTab] = useState<'active' | 'past'>('active')
 
   const { activeOffers, pastOffers } = useMemo(() => {
-    const active: CapabilityOfferSummary[] = []
+    const active: Array<{ offer: CapabilityOfferSummary; isOngoing: boolean }> = []
     const past: Array<{ offer: CapabilityOfferSummary; pastReason: CapabilityOfferPastReason }> = []
 
     for (const offer of offers) {
       const classification = classifyCapabilityOffer(offer)
       if (classification.isActive) {
-        active.push(offer)
+        active.push({ offer, isOngoing: classification.isOngoing })
       } else if (classification.pastReason) {
         past.push({ offer, pastReason: classification.pastReason })
       }
@@ -98,11 +95,11 @@ export function YourCapabilitiesPanel({
         {activeOffers.length === 0 ? (
           <div className="p-8 text-center text-muted-foreground">
             <p className="text-lg font-medium mb-2">No active offers</p>
-            <p className="text-sm">Offers that are still valid and not yet used appear here.</p>
+            <p className="text-sm">Listed offers and offers currently in use appear here.</p>
           </div>
         ) : (
-          activeOffers.map((offer) => (
-            <YourCapabilityOfferCard key={offer.id} offer={offer} />
+          activeOffers.map(({ offer, isOngoing }) => (
+            <YourCapabilityOfferCard key={offer.id} offer={offer} isOngoing={isOngoing} />
           ))
         )}
       </TabsContent>

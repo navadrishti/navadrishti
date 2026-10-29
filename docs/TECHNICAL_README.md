@@ -63,7 +63,7 @@ Full-stack social-impact platform connecting NGOs, individuals, and companies fo
                                     │ HTTPS
 ┌───────────────────────────────────▼─────────────────────────────────────┐
 │                    APPLICATION LAYER (Next.js Monolith)                   │
-│  app/api/** (140 route handlers) │ lib/** (business logic)                │
+│  app/api/** (131 route handlers) │ lib/** (business logic)                │
 │  4 auth domains: Platform JWT, Admin, Platform CA, Company CA           │
 └───────┬─────────────┬──────────────┬──────────────┬───────────────────────┘
         │             │              │              │
@@ -266,7 +266,7 @@ Full-stack social-impact platform connecting NGOs, individuals, and companies fo
 | NGO Management | Registration, network, AI agent, lead NGO | NGO, Company, Admin | Implemented |
 | Projects | Parent NGO initiative containers | NGO, Company, Admin | Implemented |
 | Needs | Individual NGO needs with fulfillment routing | NGO, Individual, Admin | Implemented |
-| Capabilities | Marketplace offers with admin review | All verified users, Admin | Implemented |
+| Capabilities | Marketplace offers (live posting; payout required to appear) | All verified users, Admin | Implemented |
 | Service Engagement | Invitations, assignments, attendance | Context-dependent | Partial |
 | CSR Campaigns | Company-planned CSR with Lead NGO | Company, NGO, Admin | Implemented |
 | CSR Projects | Execution, milestones, evidence, payments | NGO, Company, CAs | Partial |
@@ -305,7 +305,7 @@ See [Database](#database) for the entity reference.
 ```
 Start → /register or type-specific register
   ↓ POST /api/auth/signup
-  ↓ JWT → localStorage + sessionStorage + cookie `token`
+  ↓ JWT in httpOnly cookie `token` (in-memory Bearer copy for the tab; not stored in localStorage)
   ↓ Redirect dashboard OR /verification
   ↓ ProtectedRoute: auth → userTypes → verification → permission → canAccessRoute
   ↓ Outcome: Access OR redirect
@@ -343,7 +343,8 @@ Start → /csr-campaigns/create (manual) or /companies/csr-agent wizard
 
 ```
 Need path  → /service-requests/create OR Atlas (Need)
-  ↓ POST /api/service-requests (project_id omitted)
+  ↓ POST /api/service-requests (project_id omitted; contactInfo required)
+  ↓ Public list + `/service-requests/[id]` show contact_info
   ↓ Outcome: Standalone need for individuals
 
 Project path → /service-requests/projects/create OR Atlas (Project)
@@ -362,10 +363,12 @@ Project path → /service-requests/projects/create OR Atlas (Project)
 ## Capability Offer Flow
 
 ```
-Create → admin_status=pending → Admin review OR auto-reject (5d cron)
-  ↓ Listed (view=all filters expired, used, and inactive from public browse)
-  ↓ NGO applies from offer detail (service_clients) — individuals/companies cannot apply here
-  ↓ Owner manages in dashboard Active/Past tabs (usage_records on accept)
+Create (verified account + active Razorpay payout; NGO also needs Trust/Society/Section 8)
+  ↓ Posts live (admin_status=approved, is_listed=true). Admin can still reject; there is no 5-day auto-reject.
+  ↓ Public catalog (view=all): unused, not rejected, not expired, creator verified, Razorpay payout active
+  ↓ Owner dashboard Listed = unused active is_listed; in-use stays Active with tracking; completed → Past
+  ↓ NGO applies from offer detail (service_clients) — CSR-1 does not gate capability applications
+  ↓ Owner manages applications; attendance/payment overlay from service_attendance_entries
   ↓ [Paid] Razorpay where applicable
 ```
 
@@ -602,7 +605,7 @@ erDiagram
 **Purpose:** Need applications. **Key fields:** service_request_id, applicant_user_id, status, applied_at. Fulfillment rows live in `service_request_fulfillments`.
 
 ### service_offers / service_clients
-**Purpose:** Capability marketplace. **Key fields:** creator_id, offer_type, transaction_type, admin_status, price_type, valid_until.
+**Purpose:** Capability marketplace. **Key fields:** creator_id, offer_type, transaction_type, admin_status, is_listed, price_type, valid_until. `is_listed=false` unlists without deleting. Public browse also requires the creator to be verified with Razorpay payout connected.
 
 ### campaigns
 **Purpose:** CSR planning. **PK:** uuid. **Key fields:** company_id, budget_inr, impact_metrics (jsonb — stores Lead NGO data), status.
@@ -666,7 +669,7 @@ erDiagram
 - **RPC:** `match_service_offers` (active offers only, same vector length as the query); `match_ngo_service` / `match_ngo_services` are unused
 - **Writes:** `syncServiceOfferEmbedding()` runs after an offer is created or edited; the daily cron embeds up to 50 active offers that are still missing one
 - **Reads:** `/api/service-requests/recommend` boosts offers by similarity; if the embed function fails, scoring falls back to keywords and capacity
-- **Catalyst offer search** (`lib/csr-agent/find-service-offers.ts`) is lexical and does not use embeddings
+- **Catalyst offer search** (`lib/csr-agent/find-service-offers.ts`) is lexical and does not use embeddings; it skips unlisted, in-use, rejected, and merchants without Razorpay payout
 
 ### Navadrishti AI Suite
 
@@ -793,7 +796,7 @@ Health: GET /api/health
 
 **Base URL:** `/api`
 
-**Total:** 140 route files under `app/api`.
+**Total:** 131 route files under `app/api`.
 
 ## Standard Formats
 
@@ -849,7 +852,7 @@ Health: GET /api/health
 `/api/payments/pending`, `/api/webhooks/razorpay`, `/api/uploads/receipt`
 
 ### Platform Admin (30 route files)
-`/api/admin/auth`, `logout`, `verify`, `overview`, `analytics`, `audit`, `settings`, `users`, `users/[id]`, `users/[id]/reverification`, `reverifications`, `campaigns`, `[id]`, `service-offers`, `[offerId]/review`, `auto-reject`, `service-requests`, `[id]`, `service-request-projects`, `[id]`, `support-tickets`, `[ticketId]`, `announcements`, `payments`, `payments/discover`, `payments/refund`, `delivery/track`, `ca-credentials`
+`/api/admin/auth`, `logout`, `verify`, `overview`, `analytics`, `audit`, `settings`, `users`, `users/[id]`, `users/[id]/reverification`, `reverifications`, `campaigns`, `[id]`, `service-offers`, `[offerId]/review`, `auto-reject` (no-op; offers post live), `service-requests`, `[id]`, `service-request-projects`, `[id]`, `support-tickets`, `[ticketId]`, `announcements`, `payments`, `payments/discover`, `payments/refund`, `delivery/track`, `ca-credentials`
 
 ### Navadrishti CA (7 route files)
 `/api/ca/auth`, `auth/verify`, `auth/logout`, `auth/change-password`, `queue`, `review`, `verification-action`
@@ -919,7 +922,7 @@ Health: GET /api/health
 | Route | Roles |
 |-------|-------|
 | `/service-offers` | Guest browse |
-| `/service-offers/create` | Verified (all types) |
+| `/service-offers/create` | Verified (all types) with Razorpay payout; NGO also needs legal registration |
 | `/service-offers/edit/[id]` | Verified creator |
 | `/service-offers/[id]` | Guest view; **NGO only** may apply (verified) |
 

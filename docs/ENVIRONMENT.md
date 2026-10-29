@@ -22,7 +22,7 @@ Only the variables below are read by the code.
 | `CA_JWT_EXPIRES_IN` | `12h` |
 | `CRON_SECRET` | required for `/api/cron/daily-cleanup` |
 
-CA accounts are created from the admin console. `CA_USERNAME` and `CA_MEMBERSHIP_NUMBER` only feed the fallback payload in `/api/ca/auth/verify`.
+CA accounts are created from the admin console. There is no `CA_USERNAME` / `CA_MEMBERSHIP_NUMBER` fallback.
 
 ## App URLs
 
@@ -70,7 +70,6 @@ Support ticket notifications go to `SUPPORT_EMAIL`, falling back to the reply-to
 | `GEMINI_API_KEY` | — |
 | `GEMINI_MODEL` | `gemini-2.5-flash` |
 | `GEMINI_FALLBACK_MODEL` | `gemini-2.5-flash-lite` |
-| `MATCH_COUNT` | `5` |
 
 ## Shipping (Delhivery)
 

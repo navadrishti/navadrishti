@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseProjectMeta, withProjectMeta } from '@/lib/service-request-allocation'
 import { reviewProjectApplication } from '@/lib/service-request-assignments/review-project-application'
 import {
+  distinctLeadNgoId,
   isFullyVerifiedCompany,
+  isSamePositiveId,
   safeBoolean,
   safeNoteFromMeta,
   safeProjectIdFromMeta,
@@ -66,6 +68,16 @@ describe('isFullyVerifiedCompany', () => {
   it('treats lookup errors as unverified', async () => {
     useDb({ 'users.select': [{ error: { message: 'boom' } }] })
     await expect(isFullyVerifiedCompany(3)).resolves.toBe(false)
+  })
+})
+
+describe('owner vs implementing lead', () => {
+  it('does not treat the owner NGO as a distinct lead', () => {
+    expect(isSamePositiveId(3, 3)).toBe(true)
+    expect(isSamePositiveId(3, 6)).toBe(false)
+    expect(distinctLeadNgoId(3, 3)).toBe(0)
+    expect(distinctLeadNgoId(3, 6)).toBe(6)
+    expect(distinctLeadNgoId(3, null)).toBe(0)
   })
 })
 
@@ -276,6 +288,10 @@ describe('reviewProjectApplication', () => {
       status: 'in_progress',
       project_context: { note: 'x', csr_assignment: { mode: 'company_project_handoff', assigned_company_id: COMPANY_ID } },
     })
+    expect(
+      (fake.writes('service_requests')[0].payload as { project_context: { csr_assignment: Record<string, unknown> } })
+        .project_context.csr_assignment,
+    ).not.toHaveProperty('lead_ngo_id')
     expect(fake.writes('service_request_projects')[0].filters).toContainEqual(['is', 'assigned_company_user_id', null])
   })
 

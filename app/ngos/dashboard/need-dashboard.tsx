@@ -1,7 +1,7 @@
 'use client';
 
 import { readApiError } from '@/lib/user-facing-error'
-import { getClientSessionToken } from '@/lib/client-session';
+import { clientAuthFetchInit } from '@/lib/client-session';
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ import {
   getNeedRemainingQuantity,
   getServiceRequestTarget,
   getNgoNeedFulfillmentMode,
+  isAssignedNeedDelivered,
   shouldUseDelhiveryForNeed,
   shouldUseNgoMarkedDailyAttendance,
 } from '@/lib/service-request-allocation';
@@ -77,6 +78,10 @@ function formatNgoNeedOfferValue(item: NgoNeedDashboardItem, assignment: NgoNeed
   return quantity > 0 ? `${quantity} units` : 'Quantity not set';
 }
 
+function needApplicantRowId(assignment: NgoNeedAssignment): number {
+  return Number(assignment.application_id || assignment.id) || 0;
+}
+
 function formatNgoNeedTargetSummary(item: NgoNeedDashboardItem) {
   const target = getServiceRequestTarget(item);
   const remaining = getNeedRemainingQuantity(item);
@@ -108,9 +113,16 @@ export function NgoNeedDashboardInline({
   const pending = getPendingNgoNeedAssignments(need);
   const { targetLabel, remainingLabel } = formatNgoNeedTargetSummary(need);
   const remainingQty = getNeedRemainingQuantity(need);
+  const assignedDelivered = accepted.length > 0 && accepted.every(isAssignedNeedDelivered);
+  const statusBadge =
+    shouldUseDelhiveryForNeed(need) && !assignedDelivered && !['cancelled', 'canceled'].includes(String(need.status || '').toLowerCase())
+      ? 'active'
+      : need.status || 'active';
   const assignmentLabel =
     remainingQty <= 0
-      ? 'Fully assigned'
+      ? assignedDelivered
+        ? 'Delivered'
+        : 'Fully assigned'
       : accepted.length > 0
         ? 'Partially assigned'
         : null;
@@ -121,17 +133,25 @@ export function NgoNeedDashboardInline({
     assignment: NgoNeedAssignment,
     decision: 'accepted' | 'rejected'
   ) => {
-    setUpdatingId(assignment.id);
-    try {
-      const token = getClientSessionToken();
-      if (!token) {
-        throw new Error('Please sign in again');
-      }
+    const applicationId = needApplicantRowId(assignment);
+    if (!(applicationId > 0)) {
+      toast({
+        title: 'Could not update application',
+        description: 'This application could not be identified. Refresh and try again.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
+    setUpdatingId(applicationId);
+    try {
       const payload: Record<string, unknown> = { status: decision };
       if (decision === 'accepted') {
         const remaining = getNeedRemainingQuantity(need);
-        if (target.isFinancial) {
+        const mode = getNgoNeedFulfillmentMode(need);
+        if (mode === 'skill_service' || mode === 'infrastructure') {
+          payload.allocationQuantity = 1;
+        } else if (target.isFinancial) {
           const offer = Number(assignment.fulfillment_amount ?? assignment.assigned_amount ?? 0);
           payload.allocationAmount = Math.min(offer > 0 ? offer : remaining, remaining);
         } else {
@@ -141,27 +161,35 @@ export function NgoNeedDashboardInline({
       }
 
       const response = await fetch(
-        `/api/service-requests/${need.id}/volunteers/${assignment.id}`,
-        {
+        `/api/service-requests/${need.id}/volunteers/${applicationId}`,
+        clientAuthFetchInit({
           method: 'PUT',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
-        }
+        })
       );
 
-      const data = await response.json();
-      if (!data.success) {
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) {
         throw new Error(readApiError(data, 'Failed to update application'));
       }
+
+      const remainingAfterAccept =
+        decision === 'accepted'
+          ? Math.max(
+              0,
+              remainingQty -
+                Number(payload.allocationAmount || payload.allocationQuantity || 0)
+            )
+          : remainingQty;
 
       toast({
         title: decision === 'accepted' ? 'Application accepted' : 'Application rejected',
         description:
           decision === 'accepted'
-            ? `${assignment.volunteer?.name || 'Applicant'} is now assigned to this need.`
+            ? remainingAfterAccept <= 0
+              ? `${assignment.volunteer?.name || 'Applicant'} is now assigned. Other pending applications were declined.`
+              : `${assignment.volunteer?.name || 'Applicant'} is now assigned. More applications can still be accepted.`
             : `${assignment.volunteer?.name || 'Applicant'} was not selected.`,
       });
 
@@ -188,7 +216,7 @@ export function NgoNeedDashboardInline({
         </div>
         <div className="flex flex-wrap gap-2">
           <Badge variant="outline" className="border-gram-border bg-gram-page text-gram-ink">
-            {formatStatusLabel(need.status || 'active')}
+            {formatStatusLabel(statusBadge)}
           </Badge>
           {variant === 'ongoing' && assignmentLabel ? (
             <Badge variant="outline" className="border-gram-border bg-gram-sage/40 text-udaan-blue">
@@ -208,9 +236,12 @@ export function NgoNeedDashboardInline({
       {pending.length > 0 && variant === 'ongoing' ? (
         <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2">
           <p className="text-sm font-medium text-amber-900">Pending applications</p>
-          {pending.map((assignment) => (
+          {pending.map((assignment) => {
+            const applicationId = needApplicantRowId(assignment);
+            const busy = updatingId === applicationId;
+            return (
             <div
-              key={assignment.id}
+              key={applicationId || assignment.id}
               className="flex flex-col gap-2 border-t border-amber-200 pt-2 first:border-t-0 first:pt-0 sm:flex-row sm:items-center sm:justify-between"
             >
               <div>
@@ -223,29 +254,32 @@ export function NgoNeedDashboardInline({
               </div>
               <div className="flex gap-2">
                 <Button
+                  type="button"
                   size="sm"
                   className="bg-green-600 hover:bg-green-700"
-                  disabled={updatingId === assignment.id}
+                  disabled={busy || remainingQty <= 0}
                   onClick={() => handleApplicantDecision(assignment, 'accepted')}
                 >
-                  {updatingId === assignment.id ? (
+                  {busy ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     'Accept'
                   )}
                 </Button>
                 <Button
+                  type="button"
                   size="sm"
                   variant="outline"
                   className="border-red-200 text-red-600 hover:bg-red-50"
-                  disabled={updatingId === assignment.id}
+                  disabled={busy}
                   onClick={() => handleApplicantDecision(assignment, 'rejected')}
                 >
                   Reject
                 </Button>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       ) : null}
 

@@ -1,6 +1,6 @@
 import { readApiError } from '@/lib/user-facing-error'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { acceptedLeadNgoFromRemote, isPendingLeadInvite, leadInvitesFromRemote, type RemoteInviteState } from '@/app/companies/csr-agent/helpers'
+import { isPendingLeadInvite, leadInvitesFromRemote, type RemoteInviteState } from '@/app/companies/csr-agent/helpers'
 import {
   getAcceptedLeadNgo,
   type LeadNgoInvite,
@@ -119,10 +119,10 @@ export function useCampaignSuggestions({
 
   const applyRemoteInviteState = (data: RemoteInviteState) => {
     if (data.draftCampaignId) setDraftCampaignId(String(data.draftCampaignId))
-    setLeadNgoInvites(leadInvitesFromRemote(data))
-    if (acceptedLeadNgoFromRemote(data)) {
-      setLeadNgoInvites(leadInvitesFromRemote(data))
-    }
+    const nextInvites = leadInvitesFromRemote(data)
+    setLeadNgoInvites((prev) =>
+      JSON.stringify(prev) === JSON.stringify(nextInvites) ? prev : nextInvites
+    )
   }
 
   useEffect(() => {
@@ -230,10 +230,6 @@ export function useCampaignSuggestions({
   useEffect(() => {
     if (!token || !draftCampaignId || hasLockedLeadNgo) return
     void syncLeadInvites(draftCampaignId)
-    const interval = window.setInterval(() => {
-      void syncLeadInvites(draftCampaignId)
-    }, 5000)
-    return () => window.clearInterval(interval)
   }, [token, draftCampaignId, hasLockedLeadNgo, syncLeadInvites])
 
   const toggleLeadInvite = async (ngo: NgoDirectoryItem, campaignId: string | null) => {

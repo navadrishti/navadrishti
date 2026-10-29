@@ -31,7 +31,7 @@ describe('useNow', () => {
     expect(renderToString(createElement(Probe))).toContain('>0<')
   })
 
-  it('rounds down to the interval and advances when the interval elapses', () => {
+  it('rounds down to the interval and does not keep ticking', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-09-28T10:00:30.000Z'))
     const { result } = renderHook(() => useNow(60_000))
@@ -42,7 +42,7 @@ describe('useNow', () => {
       vi.advanceTimersByTime(60_000)
     })
 
-    expect(result.current).toBe(Date.parse('2026-09-28T10:01:00.000Z'))
+    expect(result.current).toBe(Date.parse('2026-09-28T10:00:00.000Z'))
   })
 })
 

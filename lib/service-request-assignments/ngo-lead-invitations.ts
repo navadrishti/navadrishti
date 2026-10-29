@@ -4,6 +4,7 @@ import { parseJsonObject } from '@/lib/utils'
 import { formatProjectLocation, parseProjectMeta } from '@/lib/service-request-allocation'
 import {
   LEAD_NGO_INVITE_CONTRIBUTION_TYPE,
+  isSamePositiveId,
   visibleLeadInviteStatuses,
   type AssignmentsGetContext,
 } from '@/lib/service-request-assignments/shared'
@@ -26,7 +27,7 @@ export async function getNgoLeadInvitations(ctx: AssignmentsGetContext) {
 
   const { data: metaProjects, error: metaProjectsError } = await supabase
     .from('service_request_projects')
-    .select('id, title, location, exact_address, timeline, description')
+    .select('id, ngo_id, title, location, exact_address, timeline, description')
     .not('assigned_company_user_id', 'is', null)
     .order('updated_at', { ascending: false })
 
@@ -47,7 +48,7 @@ export async function getNgoLeadInvitations(ctx: AssignmentsGetContext) {
   const { data: projects, error: projectsError } = uniqueProjectIds.length > 0
     ? await supabase
         .from('service_request_projects')
-        .select('id, title, location, exact_address, timeline')
+        .select('id, ngo_id, title, location, exact_address, timeline')
         .in('id', uniqueProjectIds)
     : { data: [], error: null }
 
@@ -70,14 +71,15 @@ export async function getNgoLeadInvitations(ctx: AssignmentsGetContext) {
   }
   const companiesById = new Map((companies || []).map((item) => [Number(item.id), item] as const))
 
-  const payload = (invites || []).map((invite) => {
+  const payload = (invites || []).flatMap((invite) => {
     const inviteMeta = parseJsonObject(invite.meta)
     const projectId = String(inviteMeta.project_id || '')
     const companyId = Number(inviteMeta.inviting_company_id || 0)
     const project = projectsById.get(projectId)
+    if (isSamePositiveId(project?.ngo_id, userId)) return []
     const company = companiesById.get(companyId)
 
-    return {
+    return [{
       id: invite.id,
       status: invite.status,
       note: String(invite.reference_text || inviteMeta.note || ''),
@@ -89,13 +91,14 @@ export async function getNgoLeadInvitations(ctx: AssignmentsGetContext) {
       company_id: companyId,
       company_name: company?.name || 'Company',
       company_email: company?.email || ''
-    }
+    }]
   })
 
   const seenIds = new Set(payload.map((item) => item.id))
   for (const project of metaProjects || []) {
     for (const invite of parseProjectMeta(project.description).pending_lead_ngo_invites || []) {
       if (Number(invite.ngo_id) !== Number(userId)) continue
+      if (isSamePositiveId(project.ngo_id, userId)) continue
       if (!visibleLeadInviteStatuses.includes(String(invite.status || 'pending').toLowerCase())) {
         continue
       }

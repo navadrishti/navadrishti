@@ -1,5 +1,5 @@
 import type { CampaignLeadLifecycle } from '@/lib/format-date';
-import type { CampaignTracking } from '@/lib/campaign-tracking';
+import type { CampaignTracking } from '@/lib/campaign-tracking-types';
 import type { Tables } from '@/lib/database.types';
 import type { CapabilityOfferSummary } from '@/lib/service-offers';
 import type { CsrCapabilityRentalDeliveryView } from '@/lib/csr-agent/campaign';
@@ -111,6 +111,7 @@ export interface CampaignLeadInvitation {
 
 export type NgoNeedAssignment = {
   id: number;
+  application_id?: number | null;
   status?: string;
   assigned_quantity?: number | null;
   assigned_amount?: number | null;

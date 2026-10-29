@@ -15,6 +15,7 @@ import {
   getNgoNeedFulfillmentMode,
   getSkillServiceDailyRate,
   shouldCreateSkillServiceAssignment,
+  shouldUseDelhiveryForNeed,
 } from '@/lib/service-request-allocation';
 import { NeedCapacityExceededError } from '@/lib/service-requests/errors';
 import { parseAmountToInr, parseJsonObject } from '@/lib/utils';
@@ -25,6 +26,70 @@ const NGO_STATUS_TRANSITIONS: Record<string, string[]> = {
   accepted: ['completed', 'cancelled', 'rejected'],
   active: ['completed', 'cancelled', 'rejected'],
 };
+
+const APPLICATION_SELECT = `
+        *,
+        fulfillment:service_request_fulfillments!application_id(*)
+      `
+
+function asJsonObject(value: unknown): { [key: string]: Json | undefined } {
+  try {
+    const parsed = JSON.parse(JSON.stringify(parseJsonObject(value))) as unknown
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as { [key: string]: Json | undefined }
+    }
+  } catch {
+    // Malformed jsonb is treated as empty so a bad meta blob cannot block accept/reject.
+  }
+  return {}
+}
+
+function asOptionalUuid(value: unknown): string | null {
+  const text = String(value ?? '').trim()
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text)) return null
+  return text
+}
+
+function asOptionalIsoDate(value: unknown): string | null {
+  if (!value) return null
+  const ms = Date.parse(String(value))
+  return Number.isNaN(ms) ? null : new Date(ms).toISOString()
+}
+
+async function rejectOtherPendingApplications(
+  requestId: number,
+  exceptApplicationId: number,
+  reason: string
+) {
+  const { data: pendingApplicants, error: pendingError } = await supabase
+    .from('service_request_applications')
+    .select('id, response_meta')
+    .eq('service_request_id', requestId)
+    .eq('status', 'pending')
+    .neq('id', exceptApplicationId)
+  if (pendingError) throw pendingError
+
+  const nowIso = new Date().toISOString()
+  for (const applicant of pendingApplicants || []) {
+    const otherMeta = asJsonObject(applicant.response_meta)
+    const { error: autoRejectError } = await supabase
+      .from('service_request_applications')
+      .update({
+        status: 'rejected',
+        rejected_at: nowIso,
+        response_meta: {
+          ...otherMeta,
+          rejected_at: nowIso,
+          auto_rejected_reason: reason,
+        },
+        updated_at: nowIso,
+      })
+      .eq('id', applicant.id)
+      .eq('service_request_id', requestId)
+      .eq('status', 'pending')
+    if (autoRejectError) throw autoRejectError
+  }
+}
 
 // PUT - Update volunteer status
 export async function PUT(
@@ -45,14 +110,18 @@ export async function PUT(
       return NextResponse.json({ error: 'Only NGOs or individuals can update volunteer status' }, { status: 403 });
     }
 
-    const requestId = parseInt(id);
-    const volId = parseInt(volunteerId);
+    const requestId = Number(id);
+    const volunteerKey = Number(volunteerId);
     const body = await request.json();
     const { status, decisionComment, allocationAmount, allocationQuantity, receiptUrl, completionNote } = body;
 
     const validStatuses = ['pending', 'accepted', 'rejected', 'active', 'completed', 'cancelled'];
     if (!validStatuses.includes(status)) {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
+    }
+
+    if (!Number.isFinite(requestId) || requestId <= 0 || !Number.isFinite(volunteerKey) || volunteerKey <= 0) {
+      return NextResponse.json({ error: 'Volunteer not found for this request' }, { status: 404 });
     }
 
     const request_data = await db.serviceRequests.getById(requestId);
@@ -65,19 +134,40 @@ export async function PUT(
       return NextResponse.json({ error: 'You can only update volunteers for your own requests' }, { status: 403 });
     }
 
-    const { data: rawApplication, error } = await supabase
+    const byApplicationId = await supabase
       .from('service_request_applications')
-      .select(`
-        *,
-        fulfillment:service_request_fulfillments!application_id(*)
-      `)
-      .eq('id', volId)
+      .select(APPLICATION_SELECT)
+      .eq('id', volunteerKey)
       .eq('service_request_id', requestId)
-      .single();
+      .maybeSingle();
+
+    let rawApplication = byApplicationId.data
+    let error = byApplicationId.error
+
+    if (!rawApplication) {
+      const { data: fulfillmentRow } = await supabase
+        .from('service_request_fulfillments')
+        .select('application_id')
+        .eq('id', volunteerKey)
+        .eq('service_request_id', requestId)
+        .maybeSingle();
+      const mappedApplicationId = Number(fulfillmentRow?.application_id || 0);
+      if (mappedApplicationId > 0) {
+        const retry = await supabase
+          .from('service_request_applications')
+          .select(APPLICATION_SELECT)
+          .eq('id', mappedApplicationId)
+          .eq('service_request_id', requestId)
+          .maybeSingle();
+        rawApplication = retry.data;
+        error = retry.error;
+      }
+    }
 
     const volunteerApplication = shapeApplicationForApi(rawApplication);
+    const applicationId = Number(volunteerApplication?.id || 0);
 
-    if (error || !volunteerApplication) {
+    if (error || !volunteerApplication || !(applicationId > 0)) {
       return NextResponse.json({ error: 'Volunteer not found for this request' }, { status: 404 });
     }
 
@@ -85,7 +175,10 @@ export async function PUT(
       return NextResponse.json({ error: 'You can only update your own application' }, { status: 403 });
     }
 
-    const currentStatus = String(volunteerApplication.status || 'pending').toLowerCase();
+    const rawStatus = String(
+      (rawApplication as { status?: unknown } | null)?.status ?? volunteerApplication.status ?? 'pending'
+    );
+    const currentStatus = rawStatus.toLowerCase();
 
     if (userType === 'individual') {
       if (status !== 'completed' && status !== 'cancelled') {
@@ -132,10 +225,9 @@ export async function PUT(
       }
     }
 
-    const existingMeta =
-      parseJsonObject(volunteerApplication.response_meta);
+    const existingMeta = asJsonObject(volunteerApplication.response_meta);
 
-    const nextMeta: Record<string, Json | undefined> = {
+    const nextMeta = {
       ...existingMeta,
       ngo_decision_comment: status === 'rejected' ? commentText : null,
       ngo_decision_at: new Date().toISOString()
@@ -143,8 +235,12 @@ export async function PUT(
 
     const updatePayload: TablesUpdate<'service_request_applications'> & TablesUpdate<'service_request_fulfillments'> = {
       status,
-      response_meta: nextMeta,
+      response_meta: nextMeta as Json,
       updated_at: new Date().toISOString()
+    }
+
+    if (status === 'rejected') {
+      updatePayload.rejected_at = new Date().toISOString()
     }
 
     if (userType === 'ngo' && status === 'accepted') {
@@ -170,9 +266,9 @@ export async function PUT(
     const { data: claimed, error: claimError } = await supabase
       .from('service_request_applications')
       .update({ status: String(updatePayload.status), updated_at: new Date().toISOString() })
-      .eq('id', volId)
+      .eq('id', applicationId)
       .eq('service_request_id', requestId)
-      .eq('status', currentStatus)
+      .eq('status', rawStatus)
       .select('id')
       .maybeSingle();
 
@@ -181,7 +277,7 @@ export async function PUT(
       return NextResponse.json({ error: 'This application was changed by someone else. Refresh and try again.' }, { status: 409 });
     }
 
-    const updatedVolunteer = await db.serviceRequestApplications.update(volId, updatePayload);
+    const updatedVolunteer = await db.serviceRequestApplications.update(applicationId, updatePayload);
 
     if (!updatedVolunteer) {
       return NextResponse.json({ error: 'Failed to update volunteer status' }, { status: 500 });
@@ -205,7 +301,7 @@ export async function PUT(
         .from('service_engagement_assignments')
         .update({ status: 'cancelled', updated_at: new Date().toISOString() })
         .eq('application_table', 'service_request_applications')
-        .eq('application_id', String(volId))
+        .eq('application_id', String(applicationId))
         .in('status', ['active', 'in_progress']);
       if (assignmentCloseError) throw assignmentCloseError;
     }
@@ -224,7 +320,7 @@ export async function PUT(
         await supabase
           .from('service_request_applications')
           .update({ status: currentStatus, updated_at: new Date().toISOString() })
-          .eq('id', volId)
+          .eq('id', applicationId)
           .eq('service_request_id', requestId);
         if (allocationError instanceof NeedCapacityExceededError) {
           return NextResponse.json({ error: allocationError.message }, { status: 409 });
@@ -239,35 +335,55 @@ export async function PUT(
         const isInfrastructure = fulfillmentMode === 'infrastructure';
         const dailyRate = getSkillServiceDailyRate(updatedVolunteer);
 
+        const assigneeUserId = getApplicationApplicantUserId(updatedVolunteer);
         const assignmentMeta = {
           target_type: 'service_request',
           target_id: String(requestId),
-          invitation_id: acceptedMeta.invitation_id || null,
+          invitation_id: asOptionalUuid(acceptedMeta.invitation_id),
           application_table: 'service_request_applications',
-          application_id: String(volId),
-          owner_user_id: request_data.ngo_id,
-          assignee_user_id: getApplicationApplicantUserId(updatedVolunteer),
+          application_id: String(applicationId),
+          owner_user_id: Number(request_data.ngo_id),
+          assignee_user_id: assigneeUserId,
           assigned_by_user_id: userId,
           assigned_at: new Date().toISOString(),
           billing_cycle: isInfrastructure ? 'one_time' : 'daily',
           payment_mode: isInfrastructure ? 'waived' : 'daily_due',
-          valid_until: acceptedMeta.valid_until || updatedVolunteer.assigned_until || null,
+          valid_until: asOptionalIsoDate(acceptedMeta.valid_until || updatedVolunteer.assigned_until),
           rate_per_unit: isInfrastructure ? null : dailyRate,
-          rate_currency: acceptedMeta.currency || 'INR',
+          rate_currency: String(acceptedMeta.currency || 'INR'),
           fulfillment_mode: fulfillmentMode,
         };
 
-        const { fulfillment_mode: _fulfillmentMode, ...assignmentColumns } = assignmentMeta;
-        const { data: assignment, error: assignmentError } = await supabase
-          .from('service_engagement_assignments')
-          .insert({
-            ...assignmentColumns,
-            status: 'active',
-            meta: assignmentMeta,
-          })
-          .select('*')
-          .maybeSingle();
-        if (assignmentError) throw assignmentError;
+        const assignmentColumns = {
+          target_type: assignmentMeta.target_type,
+          target_id: assignmentMeta.target_id,
+          invitation_id: assignmentMeta.invitation_id,
+          application_table: assignmentMeta.application_table,
+          application_id: assignmentMeta.application_id,
+          owner_user_id: assignmentMeta.owner_user_id,
+          assignee_user_id: assignmentMeta.assignee_user_id,
+          assigned_by_user_id: assignmentMeta.assigned_by_user_id,
+          assigned_at: assignmentMeta.assigned_at,
+          billing_cycle: assignmentMeta.billing_cycle,
+          payment_mode: assignmentMeta.payment_mode,
+          valid_until: assignmentMeta.valid_until,
+          rate_per_unit: assignmentMeta.rate_per_unit,
+          rate_currency: assignmentMeta.rate_currency,
+        };
+        let assignmentId: string | null = null
+        if (assigneeUserId > 0 && Number(request_data.ngo_id) > 0) {
+          const { data: assignment, error: assignmentError } = await supabase
+            .from('service_engagement_assignments')
+            .insert({
+              ...assignmentColumns,
+              status: 'active',
+              meta: assignmentMeta as Json,
+            })
+            .select('*')
+            .maybeSingle();
+          if (assignmentError && assignmentError.code !== '23505') throw assignmentError;
+          assignmentId = assignment?.id || null
+        }
 
         const { error: metaError } = await supabase
           .from('service_request_applications')
@@ -275,14 +391,14 @@ export async function PUT(
             response_meta: {
               ...acceptedMeta,
               isAssigned: true,
-              assignment_id: assignment?.id || null,
+              assignment_id: assignmentId,
               assignment_meta: assignmentMeta,
               accepted_at: new Date().toISOString(),
               infrastructure_exclusive: isInfrastructure,
             },
             updated_at: new Date().toISOString(),
           })
-          .eq('id', volId)
+          .eq('id', applicationId)
           .eq('service_request_id', requestId);
         if (metaError) throw metaError;
       } else {
@@ -297,34 +413,29 @@ export async function PUT(
             },
             updated_at: new Date().toISOString(),
           })
-          .eq('id', volId)
+          .eq('id', applicationId)
           .eq('service_request_id', requestId);
         if (metaError) throw metaError;
       }
 
       const remaining = getNeedRemainingQuantity(refreshedRequest);
-      if (!requestTarget.isFinancial && remaining <= 0) {
-        const { data: pendingApplicants, error: pendingError } = await supabase
-          .from('service_request_applications')
-          .select('id, response_meta')
-          .eq('service_request_id', requestId)
-          .eq('status', 'pending');
-        if (pendingError) throw pendingError;
-
-        for (const pa of pendingApplicants || []) {
-          const otherMeta = pa?.response_meta && typeof pa.response_meta === 'object' ? pa.response_meta : {};
-          const { error: autoRejectError } = await supabase
-            .from('service_request_applications')
-            .update({
-              status: 'rejected',
-              response_meta: { ...otherMeta, rejected_at: new Date().toISOString(), auto_rejected_reason: 'need_fully_allocated' },
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', pa.id)
-            .eq('service_request_id', requestId)
-            .eq('status', 'pending');
-          if (autoRejectError) throw autoRejectError;
-        }
+      const fullyAllocated = requestTarget.isFinancial
+        ? requestTarget.amount > 0 && remaining <= 0
+        : requestTarget.quantity > 0 && remaining <= 0;
+      if (fullyAllocated) {
+        await rejectOtherPendingApplications(
+          requestId,
+          applicationId,
+          'need_fully_allocated'
+        );
+      }
+      if (remaining <= 0 && !shouldUseDelhiveryForNeed(request_data)) {
+        const { error: completeNeedError } = await supabase
+          .from('service_requests')
+          .update({ status: 'completed', updated_at: new Date().toISOString() })
+          .eq('id', requestId)
+          .in('status', ['active', 'in_progress']);
+        if (completeNeedError) throw completeNeedError;
       }
     }
 

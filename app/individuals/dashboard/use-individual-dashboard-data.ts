@@ -98,18 +98,9 @@ const response = await fetch('/api/campaigns/volunteer-assignments', {
 
   useEffect(() => {
     if (!userId) return;
-    fetchServiceOffers();
-    fetchOfferRequests();
-    fetchCampaignVolunteerAssignments();
-
-    const poll = window.setInterval(() => {
-      void fetchServiceOffers();
-      void fetchOfferRequests();
-      void fetchMyApplications();
-      void fetchCampaignVolunteerAssignments();
-    }, 30_000);
-
-    return () => window.clearInterval(poll);
+    void fetchServiceOffers();
+    void fetchOfferRequests();
+    void fetchCampaignVolunteerAssignments();
   }, [userId]);
 
   return {

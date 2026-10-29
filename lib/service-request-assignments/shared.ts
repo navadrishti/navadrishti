@@ -23,6 +23,21 @@ export const LEAD_NGO_INVITE_CONTRIBUTION_TYPE = 'project_lead_ngo_invite'
 export const EXPIRED_STATUS = 'expired'
 export const PENDING_LEAD_INVITE_STATUSES = ['pending', 'invited', 'pending_acceptance', 'awaiting_acceptance', 'offered']
 
+export const OWNER_NGO_CANNOT_BE_LEAD_MESSAGE =
+  'The NGO that owns this project cannot also be the implementing lead NGO.'
+
+export function isSamePositiveId(left: unknown, right: unknown): boolean {
+  const a = Number(left || 0)
+  const b = Number(right || 0)
+  return a > 0 && b > 0 && a === b
+}
+
+export function distinctLeadNgoId(ownerNgoId: unknown, leadNgoId: unknown): number {
+  const lead = Number(leadNgoId || 0)
+  if (lead <= 0 || isSamePositiveId(ownerNgoId, lead)) return 0
+  return lead
+}
+
 export function projectLeadInviteId(projectId: string, ngoId: number, companyId: number) {
   return `lead-invite:${projectId}:${ngoId}:${companyId}`
 }

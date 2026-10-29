@@ -1,7 +1,7 @@
 'use client';
 
 import { readApiError } from '@/lib/user-facing-error'
-import { getClientSessionToken } from '@/lib/client-session';
+import { clientAuthFetchInit, getClientSessionToken } from '@/lib/client-session';
 import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -249,23 +249,17 @@ export function InlineInfrastructureAssignment({
   const handleMarkComplete = async () => {
     setCompleting(true);
     try {
-      const token = getClientSessionToken();
-      if (!token) throw new Error('Please sign in again');
-
       const response = await fetch(
         `/api/service-requests/${serviceRequestId}/volunteers/${application.id}`,
-        {
+        clientAuthFetchInit({
           method: 'PUT',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: 'completed' }),
-        }
+        })
       );
 
-      const data = await response.json();
-      if (!data.success) {
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) {
         throw new Error(readApiError(data, 'Failed to mark complete'));
       }
 

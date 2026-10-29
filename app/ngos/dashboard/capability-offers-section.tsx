@@ -1,13 +1,13 @@
 'use client';
 
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { VerifiedAccountName } from '@/components/verification-badge';
 import { YourCapabilitiesPanel, InlineCsrCapabilityDelhivery } from '@/components/service-card';
-import { formatDisplayDate, formatStatusLabel } from '@/lib/format-date';
+import { YourOfferApplicationCard } from '@/components/service-card/your-offer-application-card';
+import { getApplicantOfferBucket } from '@/lib/offer-requests';
 import { OfferRequestsPanel } from './offer-requests-panel';
 import type { NgoDashboardData } from './use-ngo-dashboard-data';
 import type { NgoDashboardActions } from './use-ngo-dashboard-actions';
@@ -34,6 +34,18 @@ export function CapabilityOffersSection({
   offerRequestsTab,
   onOfferRequestsTabChange,
 }: CapabilityOffersSectionProps) {
+  const [applicationsTab, setApplicationsTab] = useState<OfferRequestsSubTab>('pending');
+  const { pendingApplications, inProgressApplications, historyApplications } = useMemo(() => {
+    const pending = data.offerApplications.filter((offer) => getApplicantOfferBucket(offer) === 'pending');
+    const inProgress = data.offerApplications.filter((offer) => getApplicantOfferBucket(offer) === 'in-progress');
+    const history = data.offerApplications.filter((offer) => getApplicantOfferBucket(offer) === 'history');
+    return {
+      pendingApplications: pending,
+      inProgressApplications: inProgress,
+      historyApplications: history,
+    };
+  }, [data.offerApplications]);
+
   return (
     <>
       <div className="flex justify-between items-center">
@@ -101,29 +113,35 @@ export function CapabilityOffersSection({
               <p className="text-lg font-medium mb-2">No applications yet</p>
               <p className="text-sm">Your applications on capability offers will appear here.</p>
             </div>
-          ) : data.offerApplications.map((offer) => (
-            <div key={offer.id} className="rounded-md border bg-white p-4 space-y-3">
-              <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                <div>
-                  <p className="font-semibold">{offer.title}</p>
-                  <VerifiedAccountName
-                    name={offer.provider_name || offer.ngo_name || 'Provider not available'}
-                    status={offer.verification_status}
-                    verified={offer.verified}
-                    size="xs"
-                    nameClassName="text-sm font-medium text-slate-800"
-                  />
-                </div>
-                <Badge variant="outline">{formatStatusLabel(offer.status || 'active')}</Badge>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Link href={`/service-offers/${offer.id}`}>
-                  <Button variant="outline" size="sm">View Offer</Button>
-                </Link>
-              </div>
-              <div className="text-xs text-slate-500">Valid until: {formatDisplayDate(offer.valid_until) || 'Not set'}</div>
-            </div>
-          ))}
+          ) : (
+            <Tabs value={applicationsTab} onValueChange={(value) => setApplicationsTab(value as OfferRequestsSubTab)} className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="pending">Pending ({pendingApplications.length})</TabsTrigger>
+                <TabsTrigger value="in-progress">In Progress ({inProgressApplications.length})</TabsTrigger>
+                <TabsTrigger value="history">History ({historyApplications.length})</TabsTrigger>
+              </TabsList>
+              {([
+                ['pending', pendingApplications, 'No pending applications', 'Applications waiting for the offering party appear here.'],
+                ['in-progress', inProgressApplications, 'No active engagements', 'Accepted applications currently in use appear here.'],
+                ['history', historyApplications, 'No history yet', 'Completed or closed applications appear here.'],
+              ] as const).map(([value, offers, emptyTitle, emptyDescription]) => (
+                <TabsContent key={value} value={value} className="mt-4 space-y-3">
+                  {offers.length === 0 ? (
+                    <div className="p-8 text-center text-muted-foreground">
+                      <p className="text-lg font-medium mb-2">{emptyTitle}</p>
+                      <p className="text-sm">{emptyDescription}</p>
+                    </div>
+                  ) : offers.map((offer) => (
+                    <YourOfferApplicationCard
+                      key={offer.id}
+                      offer={offer}
+                      onUpdated={value === 'in-progress' ? data.fetchOfferApplications : undefined}
+                    />
+                  ))}
+                </TabsContent>
+              ))}
+            </Tabs>
+          )}
         </TabsContent>
 
         <TabsContent value="requests" className="mt-4 space-y-3">
