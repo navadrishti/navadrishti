@@ -166,6 +166,13 @@ export function keepActiveAndMeaningfulSessions<T extends AgentSessionIdentity>(
   return sessions.filter((session) => session.id === activeId || isMeaningful(session))
 }
 
+/** True when both lists hold the same session objects in the same order. */
+export function areSameSessionList<T extends AgentSessionIdentity>(left: T[], right: T[]): boolean {
+  if (left === right) return true
+  if (left.length !== right.length) return false
+  return left.every((session, index) => session === right[index])
+}
+
 export function openAgentSessionList<T extends AgentSessionIdentity>(
   stored: T[],
   fresh: T,

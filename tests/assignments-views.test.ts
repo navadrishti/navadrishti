@@ -10,14 +10,10 @@ import {
 } from '@/lib/service-request-assignments/shared'
 import { callsOf, createSupabaseFake, eqsOf, unknownColumns, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
-const mocks = vi.hoisted(() => ({ from: vi.fn(), eligible: vi.fn() }))
+const mocks = vi.hoisted(() => ({ from: vi.fn() }))
 
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db/client', () => ({ supabase: { from: mocks.from } }))
-vi.mock('@/lib/auth', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/lib/auth')>()),
-  ngoIsCsrEligibleForProject: mocks.eligible,
-}))
 
 let fake = createSupabaseFake()
 
@@ -29,7 +25,6 @@ function useDb(responder: (query: FakeQuery) => FakeResult | undefined) {
 
 beforeEach(() => {
   useDb(() => undefined)
-  mocks.eligible.mockReset().mockImplementation((status: unknown) => status === 'verified')
 })
 
 afterEach(() => {
@@ -106,9 +101,15 @@ describe('getCompanyProjects', () => {
       item.company_application_eligible,
     ])).toEqual([
       ['open', 'none', true],
+      ['ineligible', 'none', true],
       ['applied', 'pending', false],
     ])
-    expect(json.data[1]).toMatchObject({ note: 'Keen', latest_application_at: '2026-01-02', ngo_name: 'Seva', ngo_verified: true })
+    expect(json.data.find((item: { project_id: string }) => item.project_id === 'applied')).toMatchObject({
+      note: 'Keen',
+      latest_application_at: '2026-01-02',
+      ngo_name: 'Seva',
+      ngo_verified: true,
+    })
   })
 
   it('lets a rejected company apply again', async () => {

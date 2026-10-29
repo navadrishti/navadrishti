@@ -255,6 +255,12 @@ describe('PWA origins', () => {
     expect(getPwaUpstreamUrl()).toBe('https://upstream.example.com')
   })
 
+  it('uses NEXT_PUBLIC_PWA_URL as the gateway fallback', () => {
+    vi.stubEnv('PWA_UPSTREAM_URL', '')
+    vi.stubEnv('NEXT_PUBLIC_PWA_URL', 'https://field.example.com/')
+    expect(getPwaUpstreamUrl()).toBe('https://field.example.com')
+  })
+
   it('allows localhost only outside production', () => {
     vi.stubEnv('NEXT_PUBLIC_PWA_URL', 'https://field.example.com')
     vi.stubEnv('PWA_CORS_ORIGIN', 'https://cors.example.com/')

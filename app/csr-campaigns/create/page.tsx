@@ -148,7 +148,7 @@ export default function CreateCsrCampaignPage() {
   const handleSaveDraft = async () => {
     try {
       const id = await ensureValidDraft()
-      toast({ title: 'Draft saved', description: 'Invite a lead NGO from the suggestions on the right. You can publish after they accept.' })
+      toast({ title: 'Draft saved', description: 'Invite a lead NGO from the directory on the right. You can publish after they accept.' })
       return id
     } catch (saveError) {
       const message = readApiError(saveError, 'Failed to save campaign draft')
@@ -208,7 +208,8 @@ export default function CreateCsrCampaignPage() {
             </Button>
             <h1 className="text-3xl font-bold tracking-tight">Create a CSR campaign</h1>
             <p className="text-muted-foreground">
-              Fill the same campaign details {AGENT_NAMES.catalyst} collects, then invite a lead NGO and matching capability offers.{' '}
+              Fill campaign details, then browse listed NGO projects, capability offers, and NGOs. Matching stays in{' '}
+              {AGENT_NAMES.catalyst}, {AGENT_NAMES.pulse}, and {AGENT_NAMES.atlas}.{' '}
               <Link href={AGENT_ROUTES.catalyst} className="text-primary underline-offset-4 hover:underline">
                 Use {AGENT_NAMES.catalyst} instead
               </Link>
@@ -221,7 +222,7 @@ export default function CreateCsrCampaignPage() {
               <CardHeader>
                 <CardTitle>Campaign details</CardTitle>
                 <CardDescription>
-                  Suggestions on the right update as you type: existing NGO projects, Pulse capability matches, and possible lead NGOs.
+                  The directory on the right lists available NGO projects, capability offers, and NGOs. Search or filter, then use a project, reserve an offer, or invite a lead NGO.
                 </CardDescription>
               </CardHeader>
               <CardContent>

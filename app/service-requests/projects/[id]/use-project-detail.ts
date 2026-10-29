@@ -1,53 +1,11 @@
 import { readApiError } from '@/lib/user-facing-error'
 import { clientAuthFetchInit } from '@/lib/client-session';
-import { useEffect, useEffectEvent, useMemo, useState } from 'react';
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { isFullyVerifiedAccount } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
+import { keepOwnApplication, mergeOwnApplication, readReturnedApplication } from './helpers';
 import type { CompanyApplication, ProjectDetailPayload } from './types';
-
-function mergeOwnApplication(payload: ProjectDetailPayload, application: CompanyApplication): ProjectDetailPayload {
-  const others = (payload.company_applications || []).filter(
-    (item) => Number(item.company_id) !== Number(application.company_id)
-  )
-  const project = payload.project
-    ? {
-        ...payload.project,
-        pending_company_applications: [
-          ...(payload.project.pending_company_applications || []).filter(
-            (item) => Number(item.company_id) !== Number(application.company_id)
-          ),
-          { company_id: application.company_id, status: application.status },
-        ],
-      }
-    : payload.project
-  return { ...payload, project, company_applications: [...others, application] }
-}
-
-function keepOwnApplication(
-  previous: ProjectDetailPayload | null,
-  next: ProjectDetailPayload,
-  companyId: number | undefined,
-  userType: string | undefined,
-): ProjectDetailPayload {
-  if (!previous || userType !== 'company' || !companyId) return next
-  const mine = previous.company_applications.find((item) => Number(item.company_id) === Number(companyId))
-  const incoming = next.company_applications.find((item) => Number(item.company_id) === Number(companyId))
-  if (mine && !incoming) return mergeOwnApplication(next, mine)
-  return next
-}
-
-function readReturnedApplication(payload: unknown, companyId: number | undefined): CompanyApplication | null {
-  if (!payload || typeof payload !== 'object' || !companyId) return null
-  const raw = (payload as { application?: unknown }).application
-  if (!raw || typeof raw !== 'object') return null
-  const row = raw as { company_id?: unknown; status?: unknown; needs?: unknown }
-  return {
-    company_id: Number(row.company_id || companyId),
-    status: String(row.status || 'pending'),
-    needs: Array.isArray(row.needs) ? (row.needs as CompanyApplication['needs']) : [],
-  }
-}
 
 export function useProjectDetail(projectId: string) {
   const { user, token } = useAuth();
@@ -56,6 +14,8 @@ export function useProjectDetail(projectId: string) {
   const [loading, setLoading] = useState(true);
   const [payload, setPayload] = useState<ProjectDetailPayload | null>(null);
   const [applyLoading, setApplyLoading] = useState(false);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const stickyApplicationRef = useRef<CompanyApplication | null>(null);
   const allVerified = isFullyVerifiedAccount(user);
   const userId = user?.id;
   const userType = user?.user_type;
@@ -81,7 +41,9 @@ export function useProjectDetail(projectId: string) {
         return;
       }
 
-      setPayload((current) => keepOwnApplication(current, data.data, userId, userType));
+      setPayload((current) =>
+        keepOwnApplication(current, data.data, userId, userType, stickyApplicationRef.current)
+      );
     } catch {
       if (!silent) {
         toast({ title: 'Error', description: 'Failed to load project', variant: 'destructive' });
@@ -124,13 +86,22 @@ export function useProjectDetail(projectId: string) {
     };
   }, [payload, userId, userType]);
 
+  const rememberApplication = (application: CompanyApplication) => {
+    stickyApplicationRef.current = application
+    setApplyError(null)
+    setPayload((current) => (current ? mergeOwnApplication(current, application) : current))
+  }
+
   const applyForFullProject = async () => {
     if (!payload) return;
     if (!allVerified) {
-      toast({ title: 'Verification required', description: 'Company must be fully verified before CSR application.', variant: 'destructive' });
+      const description = 'Company must be fully verified before CSR application.'
+      setApplyError(description)
+      toast({ title: 'Verification required', description, variant: 'destructive' });
       return;
     }
     setApplyLoading(true);
+    setApplyError(null)
 
     try {
       const response = await fetch('/api/service-request-assignments', clientAuthFetchInit({
@@ -142,14 +113,12 @@ export function useProjectDetail(projectId: string) {
         }),
       }));
 
-      const data = await response.json();
+      const data = await response.json().catch(() => null);
       const returned = readReturnedApplication(data?.data || data, userId)
         || (userId ? { company_id: Number(userId), status: 'pending', needs: [] } : null)
 
       if (response.status === 409 && /already applied/i.test(String(data?.error || ''))) {
-        if (returned) {
-          setPayload((current) => (current ? mergeOwnApplication(current, returned) : current))
-        }
+        if (returned) rememberApplication(returned)
         toast({
           title: 'Already applied',
           description: readApiError(data, 'Your existing takeover application is shown below.'),
@@ -159,17 +128,19 @@ export function useProjectDetail(projectId: string) {
       }
 
       if (!response.ok || !data?.success) {
-        toast({ title: 'Application failed', description: readApiError(data, 'Could not apply'), variant: 'destructive' });
+        const description = readApiError(data, 'Could not apply')
+        setApplyError(description)
+        toast({ title: 'Application failed', description, variant: 'destructive' });
         return;
       }
 
-      if (returned) {
-        setPayload((current) => (current ? mergeOwnApplication(current, returned) : current))
-      }
+      if (returned) rememberApplication(returned)
       toast({ title: 'Application submitted', description: data?.data?.message || 'Sent to NGO for review.' });
       await fetchProjectDetail({ silent: true });
     } catch {
-      toast({ title: 'Application failed', description: 'Could not apply', variant: 'destructive' });
+      const description = 'Could not apply'
+      setApplyError(description)
+      toast({ title: 'Application failed', description, variant: 'destructive' });
     } finally {
       setApplyLoading(false);
     }
@@ -181,6 +152,7 @@ export function useProjectDetail(projectId: string) {
     loading,
     payload,
     applyLoading,
+    applyError,
     currentCompanyApplication,
     applyForFullProject,
   };

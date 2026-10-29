@@ -16,9 +16,9 @@ import { useToast } from '@/hooks/use-toast'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { AGENT_NAMES } from '@/lib/ai-agent-sessions'
 import { AI_DRAFT_STORAGE_KEY, buildNeedPayload, createEmptyNeed, needsFromDraft, validateNeed, withoutIndex } from './helpers'
 import { NeedCard } from './need-card'
-import { getNeedRecommendations } from './recommendations'
 import { RelatedOffersSidebar } from './related-offers-sidebar'
 import type { AIGeneratedDraft, NeedDraft } from './types'
 import { useNeedImageUpload } from './use-need-image-upload'
@@ -53,8 +53,7 @@ export default function CreateServiceRequestPage() {
     localStorage.removeItem(AI_DRAFT_STORAGE_KEY)
   }, [])
 
-  const { serviceOffers, offersLoading, serverRecommendations, refreshNeedRecommendations, forgetNeedRecommendations } =
-    useNeedRecommendations(needs)
+  const { serviceOffers, offersLoading } = useNeedRecommendations()
   const { needUploadProgress, handleNeedImageFiles, removeNeedImageUrl, forgetNeedUploadProgress } =
     useNeedImageUpload(setNeeds, setError)
 
@@ -70,7 +69,6 @@ export default function CreateServiceRequestPage() {
     if (needs.length <= 1) return
     setNeeds((prev) => prev.filter((_, needIndex) => needIndex !== index))
     setSelectedOffersByNeed((prev) => withoutIndex(prev, index))
-    forgetNeedRecommendations(index)
     forgetNeedUploadProgress(index)
   }
 
@@ -93,11 +91,6 @@ export default function CreateServiceRequestPage() {
       })
       return next
     })
-  }
-
-  const getRecommendationsForNeed = (need: NeedDraft, index: number) => {
-    const serverRecs = serverRecommendations[index]
-    return serverRecs && serverRecs.length > 0 ? serverRecs : getNeedRecommendations(need, serviceOffers)
   }
 
   const applyOfferToNeed = async (offerId: number, needIndex: number, createdNeedId?: number) => {
@@ -165,7 +158,15 @@ export default function CreateServiceRequestPage() {
       for (let index = 0; index < needs.length; index += 1) {
         const need = needs[index]
         const selectedOfferIds = selectedOffersByNeed[index] || []
-        const matchedRecommendations = getNeedRecommendations(need, serviceOffers).filter((item) => selectedOfferIds.includes(item.offer.id))
+        const matchedRecommendations = serviceOffers
+          .filter((offer) => selectedOfferIds.includes(offer.id))
+          .map((offer) => ({
+            offer,
+            score: 0,
+            coverageRatio: null,
+            coverageLabel: 'possible' as const,
+            rationale: '',
+          }))
 
         const response = await fetch('/api/service-requests', {
           method: 'POST',
@@ -212,7 +213,6 @@ export default function CreateServiceRequestPage() {
           return next
         })
         for (let i = 0; i < successfulCount; i += 1) {
-          forgetNeedRecommendations(0)
           forgetNeedUploadProgress(0)
         }
       }
@@ -243,7 +243,8 @@ export default function CreateServiceRequestPage() {
 
             <h1 className="text-3xl font-bold tracking-tight">Post Needs for Individuals</h1>
             <p className="text-muted-foreground">
-              Publish standalone needs with location, Schedule VII category, timeline, and beneficiaries.{' '}
+              Publish standalone needs with location, Schedule VII category, timeline, and beneficiaries. Browse listed
+              capability offers on the right — matching stays in {AGENT_NAMES.atlas}.{' '}
               <Link href="/service-requests/projects/create" className="text-primary underline-offset-4 hover:underline">
                 Create a CSR project instead
               </Link>
@@ -255,7 +256,9 @@ export default function CreateServiceRequestPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Need Details</CardTitle>
-                <CardDescription>Every need must define who benefits, how many, and what measurable change will happen.</CardDescription>
+                <CardDescription>
+                  Every need must define who benefits, how many, and what measurable change will happen. Browse capability offers on the right to apply without recommendations.
+                </CardDescription>
               </CardHeader>
 
               <CardContent>
@@ -313,10 +316,9 @@ export default function CreateServiceRequestPage() {
 
                     <RelatedOffersSidebar
                       needs={needs}
+                      offers={serviceOffers}
                       offersLoading={offersLoading}
                       selectedOffersByNeed={selectedOffersByNeed}
-                      getRecommendations={getRecommendationsForNeed}
-                      onRefresh={refreshNeedRecommendations}
                       onApply={(offerId, index) => void applyOfferToNeed(offerId, index)}
                     />
                   </div>

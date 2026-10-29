@@ -1,19 +1,15 @@
 import { readApiError } from '@/lib/user-facing-error'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  fetchRankedProjectSuggestions,
-  fetchScoredNgoDirectory,
-  requestServiceRecommendations,
-} from '@/app/companies/csr-agent/api'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { acceptedLeadNgoFromRemote, isPendingLeadInvite, leadInvitesFromRemote, type RemoteInviteState } from '@/app/companies/csr-agent/helpers'
 import {
   getAcceptedLeadNgo,
-  parseMoneyValue,
   type LeadNgoInvite,
   type NgoDirectoryItem,
   type ProjectSuggestion,
   type ServiceSuggestion,
 } from '@/app/companies/csr-agent/session'
+import { splitLocation } from '@/lib/catalog-filters'
+import { clientAuthFetchInit } from '@/lib/client-session'
 import { authHeaders, toProjectIntake, type ManualCampaignForm } from './helpers'
 
 type UseCampaignSuggestionsOptions = {
@@ -24,6 +20,79 @@ type UseCampaignSuggestionsOptions = {
   setDraftCampaignId: (id: string) => void
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
+}
+
+function readString(value: unknown) {
+  return value == null ? '' : String(value)
+}
+
+function mapProjectRow(row: unknown): ProjectSuggestion | null {
+  const data = asRecord(row)
+  const id = readString(data.id).trim()
+  if (!id) return null
+  const location = readString(data.location_summary || data.location || data.ngo_location)
+  const parts = splitLocation(location)
+  const budget = Number(data.budget_inr)
+  return {
+    id,
+    title: readString(data.title).trim() || 'Untitled project',
+    description: readString(data.description),
+    location,
+    timeline: data.timeline ? readString(data.timeline) : undefined,
+    expected_beneficiaries:
+      data.expected_beneficiaries == null || data.expected_beneficiaries === ''
+        ? null
+        : Number(data.expected_beneficiaries),
+    valid_until: data.valid_until ? readString(data.valid_until) : null,
+    category: data.category ? readString(data.category) : null,
+    ngo_name: data.ngo_name ? readString(data.ngo_name) : null,
+    city: parts.city,
+    state: parts.state,
+    budget_inr: Number.isFinite(budget) && budget > 0 ? budget : null,
+  }
+}
+
+function mapOfferRow(row: unknown): ServiceSuggestion | null {
+  const data = asRecord(row)
+  const id = Number(data.id)
+  if (!Number.isFinite(id) || id <= 0) return null
+  const impactArea = Array.isArray(data.impact_area) ? data.impact_area.map((item) => String(item)) : []
+  return {
+    capability_id: id,
+    capability_name: readString(data.title).trim() || 'Capability offer',
+    similarity: 0,
+    service_offer_id: id,
+    offer_type: readString(data.offer_type),
+    transaction_type: readString(data.transaction_type),
+    impact_area: impactArea,
+    city: readString(data.city || data.location || data.coverage_area || data.location_scope),
+    state_province: readString(data.state_province),
+    price_amount: Number(data.price_amount ?? data.amount ?? 0) || 0,
+    price_type: readString(data.price_type),
+    score: 0,
+  }
+}
+
+function mapNgoRow(row: unknown): NgoDirectoryItem | null {
+  const data = asRecord(row)
+  const id = Number(data.id)
+  if (!Number.isFinite(id) || id <= 0) return null
+  const status = readString(data.verification_status)
+  return {
+    id,
+    name: readString(data.name).trim() || 'NGO',
+    email: readString(data.email),
+    score: 0,
+    verification_status: status || null,
+    verified: status.toLowerCase() === 'verified',
+    city: readString(data.city),
+    state: readString(data.state),
+    focus_areas: readString(data.focus_areas),
+  }
+}
+
 export function useCampaignSuggestions({
   form,
   token,
@@ -32,18 +101,17 @@ export function useCampaignSuggestions({
   setDraftCampaignId,
 }: UseCampaignSuggestionsOptions) {
   const [projectSuggestions, setProjectSuggestions] = useState<ProjectSuggestion[]>([])
-  const [loadingProjects, setLoadingProjects] = useState(false)
+  const [loadingProjects, setLoadingProjects] = useState(true)
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
 
   const [serviceSuggestions, setServiceSuggestions] = useState<ServiceSuggestion[]>([])
-  const [loadingServices, setLoadingServices] = useState(false)
+  const [loadingServices, setLoadingServices] = useState(true)
   const [serviceError, setServiceError] = useState<string | null>(null)
 
   const [ngoDirectory, setNgoDirectory] = useState<NgoDirectoryItem[]>([])
-  const [loadingNgos, setLoadingNgos] = useState(false)
+  const [loadingNgos, setLoadingNgos] = useState(true)
   const [leadNgoInvites, setLeadNgoInvites] = useState<LeadNgoInvite[]>([])
   const [inviteError, setInviteError] = useState('')
-  const lastServiceKeyRef = useRef<string | null>(null)
 
   const intake = useMemo(() => toProjectIntake(form), [form])
   const acceptedLead = useMemo(() => getAcceptedLeadNgo(leadNgoInvites), [leadNgoInvites])
@@ -58,23 +126,18 @@ export function useCampaignSuggestions({
   }
 
   useEffect(() => {
-    const title = intake.campaignName
-    const category = intake.category
-    if (!title || !category) {
-      setProjectSuggestions([])
-      return
-    }
-
     let cancelled = false
     setLoadingProjects(true)
-    void fetchRankedProjectSuggestions({
-      campaignName: title,
-      category,
-      city: intake.city,
-      state: intake.state,
-    })
-      .then((ranked) => {
-        if (!cancelled) setProjectSuggestions(ranked.slice(0, 4))
+    void fetch('/api/service-request-projects?includeEmpty=true', clientAuthFetchInit())
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null)
+        if (!response.ok || !payload?.success) {
+          throw new Error(readApiError(payload, 'Failed to load NGO projects'))
+        }
+        return Array.isArray(payload.data) ? payload.data : []
+      })
+      .then((rows) => {
+        if (!cancelled) setProjectSuggestions(rows.map(mapProjectRow).filter((row): row is ProjectSuggestion => Boolean(row)))
       })
       .catch(() => {
         if (!cancelled) setProjectSuggestions([])
@@ -86,45 +149,26 @@ export function useCampaignSuggestions({
     return () => {
       cancelled = true
     }
-  }, [intake.campaignName, intake.category, intake.city, intake.state])
-
-  const serviceKey = useMemo(
-    () =>
-      JSON.stringify({
-        category: intake.category,
-        city: intake.city,
-        state: intake.state,
-        budget: intake.budget,
-        startDate: intake.startDate,
-        endDate: intake.endDate,
-        campaignName: intake.campaignName,
-      }),
-    [intake],
-  )
+  }, [])
 
   useEffect(() => {
-    if (!userId) return
-    if (!intake.category || !intake.city || !intake.state || !intake.budget || !intake.startDate || !intake.endDate) return
-    if (!parseMoneyValue(intake.budget || '')) return
-    if (lastServiceKeyRef.current === serviceKey) return
-
     let cancelled = false
     setLoadingServices(true)
     setServiceError(null)
-    lastServiceKeyRef.current = serviceKey
-    void requestServiceRecommendations(intake, parseMoneyValue(intake.budget || '') || 0)
-      .then((result) => {
-        if (cancelled) return
-        if ('error' in result) {
-          setServiceError(result.error)
-          setServiceSuggestions([])
-          return
+    void fetch('/api/service-offers?view=all', clientAuthFetchInit())
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null)
+        if (!response.ok || !payload?.success) {
+          throw new Error(readApiError(payload, 'Failed to load capability offers'))
         }
-        setServiceSuggestions(result.suggestions)
+        return Array.isArray(payload.data) ? payload.data : []
+      })
+      .then((rows) => {
+        if (!cancelled) setServiceSuggestions(rows.map(mapOfferRow).filter((row): row is ServiceSuggestion => Boolean(row)))
       })
       .catch((error) => {
         if (!cancelled) {
-          setServiceError(readApiError(error, 'Failed to fetch recommendations'))
+          setServiceError(readApiError(error, 'Failed to load capability offers'))
           setServiceSuggestions([])
         }
       })
@@ -135,20 +179,30 @@ export function useCampaignSuggestions({
     return () => {
       cancelled = true
     }
-  }, [userId, serviceKey, intake])
+  }, [])
 
   useEffect(() => {
-    if (!token || !userId || hasLockedLeadNgo) return
-    if (!intake.campaignName || !intake.category || !intake.endDate) {
+    if (!token || !userId) {
+      setLoadingNgos(false)
       setNgoDirectory([])
       return
     }
 
     let cancelled = false
     setLoadingNgos(true)
-    void fetchScoredNgoDirectory(token, intake)
+    void fetch(
+      '/api/ngos/list?limit=250',
+      clientAuthFetchInit({ headers: authHeaders(token) }),
+    )
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null)
+        if (!response.ok || !payload?.success) {
+          throw new Error(readApiError(payload, 'Failed to load NGOs'))
+        }
+        return Array.isArray(payload.data) ? payload.data : []
+      })
       .then((rows) => {
-        if (!cancelled) setNgoDirectory(rows)
+        if (!cancelled) setNgoDirectory(rows.map(mapNgoRow).filter((row): row is NgoDirectoryItem => Boolean(row)))
       })
       .catch(() => {
         if (!cancelled) setNgoDirectory([])
@@ -160,7 +214,7 @@ export function useCampaignSuggestions({
     return () => {
       cancelled = true
     }
-  }, [token, userId, hasLockedLeadNgo, intake.campaignName, intake.category, intake.city, intake.state, intake.volunteerRequirement, intake.endDate])
+  }, [token, userId])
 
   const syncLeadInvites = useCallback(async (campaignId = draftCampaignId) => {
     if (!token || !campaignId) return null

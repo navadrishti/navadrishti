@@ -54,7 +54,7 @@ function renderPreview(selectedIds: number[]) {
 }
 
 function offerRow(title: string) {
-  const row = screen.getByRole('link', { name: title }).closest('div.rounded-md')
+  const row = screen.getByRole('link', { name: title }).closest('div.rounded-xl')
   if (!(row instanceof HTMLElement)) throw new Error(`row for ${title} not found`)
   return row
 }

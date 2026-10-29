@@ -31,7 +31,8 @@ CA accounts are created from the admin console. `CA_USERNAME` and `CA_MEMBERSHIP
 | `APP_URL` | Server-side base URL (emails, redirects) |
 | `NEXT_PUBLIC_APP_URL` | Client-side base URL |
 | `NEXT_PUBLIC_PWA_URL` | Public field-app URL shown in the platform sidebar |
-| `PWA_UPSTREAM_URL` | Server-side field-app URL used by the `/api/pwa/*` proxy |
+| `PWA_UPSTREAM_URL` | Server-side field-app URL used by the `/api/pwa/*` proxy. Falls back to `NEXT_PUBLIC_PWA_URL`. |
+| `PWA_CORS_ORIGIN` | Extra origin allowed to call `/api/pwa/*` with credentials |
 
 ## Media
 

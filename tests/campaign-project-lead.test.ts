@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { jsonRequest, tokenFor } from './support/requests'
 import { businessQueries, eqValue, hasCall, supabaseFake, type FakeQuery } from './support/supabase-fake'
 import { parseProjectMeta, withProjectMeta } from '@/lib/service-request-allocation'
+import { assertNgoCsr1CoversProject } from '@/lib/server-auth'
 import { respondToLeadNgoInvitation } from '@/lib/service-request-assignments/lead-ngo'
 import { submitProjectApplication } from '@/lib/service-request-assignments/project-applications'
 import { LEAD_NGO_INVITE_CONTRIBUTION_TYPE, projectLeadInviteId } from '@/lib/service-request-assignments/shared'
@@ -352,9 +353,11 @@ describe('apply-project', () => {
     )
 
   it('stores a pending takeover application and returns it', async () => {
+    vi.mocked(assertNgoCsr1CoversProject).mockClear()
     setup()
     const response = await apply()
     expect(response.status).toBe(200)
+    expect(assertNgoCsr1CoversProject).not.toHaveBeenCalled()
     const json = await response.json()
     expect(json.data.application).toMatchObject({ company_id: 10, status: 'pending' })
     const [update] = supabaseFake.find('service_request_projects', 'update')
@@ -364,8 +367,8 @@ describe('apply-project', () => {
     ])
   })
 
-  it('returns the existing application when the company already applied', async () => {
-    setup(withProjectMeta('', { pending_company_applications: [{ company_id: 10, status: 'pending', company_name: 'Acme', applied_at: '2026-01-02' }] }))
+  it('returns the existing application instead of writing a second one', async () => {
+    setup(withProjectMeta('', { pending_company_applications: [{ company_id: 10, status: 'pending', company_name: 'Acme' }] }))
     const response = await apply()
     expect(response.status).toBe(409)
     expect(await response.json()).toMatchObject({

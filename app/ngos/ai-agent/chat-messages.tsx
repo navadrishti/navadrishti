@@ -66,7 +66,7 @@ export function ChatMessageList({
   }
 
   return (
-    <div ref={containerRef} className="min-h-0 max-h-[11.5rem] flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain pr-2 sm:max-h-[13.5rem] lg:max-h-none">
+    <div ref={containerRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain pr-2">
       <div className="space-y-4">
         {messages.map((message, idx) => (
           <div

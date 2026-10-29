@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
-import { ngoIsCsrEligibleForProject } from '@/lib/auth'
 import { enrichProjectRecord, formatProjectLocation } from '@/lib/service-request-allocation'
 import {
   isFullyVerifiedCompany,
@@ -53,14 +52,6 @@ export async function getCompanyProjects(ctx: AssignmentsGetContext) {
     }
 
     const ngo = Array.isArray(project.ngo) ? project.ngo[0] : project.ngo
-    if (
-      !ngoIsCsrEligibleForProject(ngo?.verification_status, ngo?.profile_data, {
-        valid_until: project.valid_until,
-        timeline: project.timeline,
-      })
-    ) {
-      continue
-    }
 
     const pending = Array.isArray(project.pending_company_applications)
       ? project.pending_company_applications

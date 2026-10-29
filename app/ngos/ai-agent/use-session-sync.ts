@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import {
+  areSameSessionList,
   keepActiveAndMeaningfulSessions,
   openAgentSessionList,
   resolveHydratedActiveSession,
@@ -137,7 +138,9 @@ export function useSessionSync({ mounted, userId, token }: SessionSyncOptions) {
   const persistSessions = (nextSessions: NGOAIAgentSession[], nextActiveId?: string) => {
     const activeCandidate = nextActiveId || activeSessionId
     const visible = keepActiveAndMeaningfulSessions(nextSessions, activeCandidate, hasMeaningfulNGOSessionContent)
-    setSessions(visible)
+    if (!areSameSessionList(visible, sessionsRef.current)) {
+      setSessions(visible)
+    }
     const storageKey = userId ? `nd_ngo_ai_agent_sessions_${userId}` : undefined
     if (!storageKey || !userId) return
     const meaningful = visible.filter(hasMeaningfulNGOSessionContent)

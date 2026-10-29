@@ -59,7 +59,7 @@ export function ChatComposer({
   }
 
   return (
-    <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-2.5 shadow-sm sm:p-3">
+    <div className="-mx-3 mt-auto shrink-0 border-t border-slate-200 bg-white px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:mx-0 lg:mt-4 lg:rounded-2xl lg:border lg:px-2.5 lg:py-3 lg:pb-3 lg:shadow-sm">
       {fixedChoiceOptions.length > 0 && !(conversationStage === 'milestone-count' && milestoneMode !== 'enter') && (
         <div className="mb-2 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:thin] md:flex-wrap md:overflow-visible md:pb-0">
           {fixedChoiceOptions.map((option) => (
@@ -151,7 +151,7 @@ export function ChatComposer({
         </div>
       )}
 
-      <div className="flex flex-col gap-2 sm:flex-row">
+      <div className="flex items-end gap-2">
         <Input
           value={input}
           onChange={(event) => onInputChange(event.target.value)}
@@ -159,12 +159,13 @@ export function ChatComposer({
           onKeyDown={(event) => event.key === "Enter" && onSend()}
           placeholder={placeholder}
           disabled={disabled}
-          className="h-11 w-full flex-1 rounded-xl border-slate-200 bg-slate-50 sm:h-12"
+          className="h-11 w-full flex-1 rounded-2xl border-slate-200 bg-slate-50 lg:h-12"
         />
         <Button
           onClick={() => void onSend()}
           disabled={!input.trim() || disabled}
-          className="h-11 w-full rounded-xl bg-slate-950 px-4 text-white hover:bg-slate-800 sm:h-12 sm:w-auto sm:px-5"
+          aria-label="Send"
+          className="h-11 w-11 shrink-0 rounded-2xl bg-slate-950 px-0 text-white hover:bg-slate-800 lg:h-12 lg:w-auto lg:px-5"
         >
           <Send className="h-4 w-4" />
         </Button>

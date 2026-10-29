@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  areSameSessionList,
   keepActiveAndMeaningfulSessions,
   openAgentSessionList,
   pickPreferredActiveSessionId,
@@ -90,4 +91,13 @@ describe('keepActiveAndMeaningfulSessions', () => {
     )
     expect(kept.map((session) => session.id)).toEqual(['draft-local', 'newer-uuid'])
   })
+
+  it('treats a re-filtered list of the same session objects as unchanged', () => {
+    const sessions = [newer, older]
+    const visible = keepActiveAndMeaningfulSessions(sessions, newer.id, () => true)
+    expect(visible).not.toBe(sessions)
+    expect(areSameSessionList(sessions, visible)).toBe(true)
+    expect(areSameSessionList(sessions, [older, newer])).toBe(false)
+  })
 })
+

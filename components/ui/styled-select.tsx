@@ -21,6 +21,7 @@ type StyledSelectProps = {
   placeholder?: string
   onValueChange: (value: string) => void
   className?: string
+  ariaLabel?: string
 }
 
 export function StyledSelect({
@@ -28,7 +29,8 @@ export function StyledSelect({
   options,
   placeholder = "Select option",
   onValueChange,
-  className
+  className,
+  ariaLabel,
 }: StyledSelectProps) {
   const [open, setOpen] = useState(false)
 
@@ -52,6 +54,7 @@ export function StyledSelect({
           type="button"
           variant="outline"
           role="combobox"
+          aria-label={ariaLabel || placeholder}
           className={cn(
             "h-10 w-full justify-between rounded-md border border-input bg-background px-3 py-2 text-sm font-normal",
             className

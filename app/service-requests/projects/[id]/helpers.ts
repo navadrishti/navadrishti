@@ -1,5 +1,67 @@
 import { formatStatusLabel } from '@/lib/format-date';
-import type { NeedItem, ProjectDetail, ProjectDetailPayload } from './types';
+import type { CompanyApplication, NeedItem, ProjectDetail, ProjectDetailPayload } from './types';
+
+export function mergeOwnApplication(payload: ProjectDetailPayload, application: CompanyApplication): ProjectDetailPayload {
+  const others = (payload.company_applications || []).filter(
+    (item) => Number(item.company_id) !== Number(application.company_id)
+  )
+  const project = payload.project
+    ? {
+        ...payload.project,
+        pending_company_applications: [
+          ...(payload.project.pending_company_applications || []).filter(
+            (item) => Number(item.company_id) !== Number(application.company_id)
+          ),
+          { company_id: application.company_id, status: application.status },
+        ],
+      }
+    : payload.project
+  return { ...payload, project, company_applications: [...others, application] }
+}
+
+export function keepOwnApplication(
+  previous: ProjectDetailPayload | null,
+  next: ProjectDetailPayload,
+  companyId: number | undefined,
+  userType: string | undefined,
+  sticky: CompanyApplication | null = null,
+): ProjectDetailPayload {
+  if (userType !== 'company' || !companyId) return next
+
+  const incomingListed = (next.company_applications || []).find(
+    (item) => Number(item.company_id) === Number(companyId)
+  )
+  if (incomingListed) return next
+
+  const incomingMeta = (next.project?.pending_company_applications || []).find(
+    (item) => Number(item.company_id) === Number(companyId)
+  )
+  if (incomingMeta) {
+    return mergeOwnApplication(next, {
+      company_id: Number(incomingMeta.company_id),
+      status: String(incomingMeta.status || 'pending'),
+      needs: [],
+    })
+  }
+
+  const mine =
+    (previous?.company_applications || []).find((item) => Number(item.company_id) === Number(companyId)) || sticky
+  if (mine) return mergeOwnApplication(next, mine)
+  return next
+}
+
+export function readReturnedApplication(payload: unknown, companyId: number | undefined): CompanyApplication | null {
+  if (!payload || typeof payload !== 'object' || !companyId) return null
+  const root = payload as { application?: unknown; data?: { application?: unknown } }
+  const raw = root.application || root.data?.application
+  if (!raw || typeof raw !== 'object') return null
+  const row = raw as { company_id?: unknown; status?: unknown; needs?: unknown }
+  return {
+    company_id: Number(row.company_id || companyId),
+    status: String(row.status || 'pending'),
+    needs: Array.isArray(row.needs) ? (row.needs as CompanyApplication['needs']) : [],
+  }
+}
 
 export function applicationStatusCopy(status: string) {
   const normalized = String(status || '').toLowerCase()

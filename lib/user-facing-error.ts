@@ -160,7 +160,9 @@ function rewriteSnakeCasePhrases(text: string) {
       (_match, field: string, rest: string) =>
         `${capitalize(humanizeFieldName(field))} must be ${rest.replace(/\bstring\b/gi, '').replace(/\s+/g, ' ').trim()}.`,
     )
-    .replace(/\b([a-z]+(?:_[a-z0-9]+)+)\b/gi, (token) => humanizeFieldName(token))
+    .replace(/\b([a-z]+(?:_[a-z0-9]+)+)\b/gi, (token) =>
+      /^(pay|order|sig)_/i.test(token) ? token : humanizeFieldName(token),
+    )
 }
 
 function stripTechnicalNoise(text: string) {
@@ -178,7 +180,7 @@ function stripTechnicalNoise(text: string) {
 }
 
 export function looksTechnicalError(text: string) {
-  const value = String(text || '')
+  const value = String(text || '').replace(/\b(?:pay|order|sig)_[A-Za-z0-9]+\b/g, ' ')
   return (
     /validation failed/i.test(value) ||
     /\b[a-z]+_[a-z0-9]+\b/i.test(value) ||
