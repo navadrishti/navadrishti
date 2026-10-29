@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { CheckCircle, Loader2, XCircle, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -151,11 +150,7 @@ export function CapabilityOffersSection({
               <OfferRequestSummaryCard
                 key={request.id}
                 request={request}
-                actions={
-                  <Link href={`/service-offers/${request.service_offer_id}`}>
-                    <Button size="sm" variant="outline">View Offer</Button>
-                  </Link>
-                }
+                showOverview
               />
             ))}
           </TabsContent>

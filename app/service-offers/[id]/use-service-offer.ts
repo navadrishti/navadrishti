@@ -125,7 +125,7 @@ export function useServiceOffer(offerId: string) {
 
   useEffect(() => {
     if (offerId && !authLoading) loadOffer()
-  }, [offerId, authLoading, isAuthenticated, user])
+  }, [offerId, authLoading, isAuthenticated, user?.id])
 
   const loadNgoNeeds = useEffectEvent(() => {
     if (isAuthenticated && user?.user_type === 'ngo' && offer) {

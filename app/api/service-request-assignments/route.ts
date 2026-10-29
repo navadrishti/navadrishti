@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase, shapeApplicationForApi } from '@/lib/db'
 import { getTokenClaims } from '@/lib/auth'
+import {
+  getNeedRemainingQuantity,
+  getServiceRequestTarget,
+  isDeliveredTrackingStatus,
+  shouldUseDelhiveryForNeed,
+} from '@/lib/service-request-allocation'
+import { parseJsonObject } from '@/lib/utils'
 import { getCompanyProjects } from '@/lib/service-request-assignments/company-projects'
 import { getNgoCompanyApplications } from '@/lib/service-request-assignments/ngo-company-applications'
 import { getProjectDetail } from '@/lib/service-request-assignments/project-detail'
@@ -16,6 +23,44 @@ import {
   historyVolunteerStatuses,
   ongoingVolunteerStatuses,
 } from '@/lib/service-request-assignments/shared'
+
+function isNeedFullyFulfilled(request: { status?: unknown; request_type?: unknown; category?: unknown; remaining_quantity?: unknown; remaining_amount?: unknown; target_quantity?: unknown; target_amount?: unknown }) {
+  const target = getServiceRequestTarget(request)
+  const remaining = getNeedRemainingQuantity(request)
+  if (target.isFinancial) return target.amount > 0 && remaining <= 0
+  return target.quantity > 0 && remaining <= 0
+}
+
+function isAssignedNeedDelivered(assignment: { status?: unknown; response_meta?: unknown }) {
+  const meta = parseJsonObject(assignment.response_meta)
+  return isDeliveredTrackingStatus(String(meta.delivery_tracking_last_status || ''))
+}
+
+function isNeedPhysicallyComplete(
+  request: { status?: unknown; request_type?: unknown; category?: unknown; remaining_quantity?: unknown; remaining_amount?: unknown; target_quantity?: unknown; target_amount?: unknown },
+  assignments: Array<{ status?: unknown; response_meta?: unknown }> = []
+) {
+  if (!isNeedFullyFulfilled(request)) return false
+  if (!shouldUseDelhiveryForNeed(request)) return true
+  const accepted = assignments.filter((assignment) =>
+    ['accepted', 'active', 'completed'].includes(String(assignment.status || '').toLowerCase())
+  )
+  return accepted.length > 0 && accepted.every(isAssignedNeedDelivered)
+}
+
+function needBelongsInHistory(
+  request: { status?: unknown; request_type?: unknown; category?: unknown; remaining_quantity?: unknown; remaining_amount?: unknown; target_quantity?: unknown; target_amount?: unknown },
+  assignments: Array<{ status?: unknown; response_meta?: unknown }> = []
+) {
+  const status = String(request.status || '').toLowerCase()
+  if (['cancelled', 'canceled'].includes(status)) return true
+  if (isNeedPhysicallyComplete(request, assignments)) return true
+  if (shouldUseDelhiveryForNeed(request)) return false
+  if (status !== 'completed') return false
+  const target = getServiceRequestTarget(request)
+  const hasTarget = target.isFinancial ? target.amount > 0 : target.quantity > 0
+  return !hasTarget
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -105,6 +150,41 @@ export async function GET(request: NextRequest) {
 
       if (assignmentsError) throw assignmentsError
 
+      const fullyAllocatedNeedIds = new Set(
+        (requests || [])
+          .filter((item) => isNeedFullyFulfilled(item))
+          .map((item) => Number(item.id))
+      )
+      const nowIso = new Date().toISOString()
+      for (const row of assignments || []) {
+        if (
+          !fullyAllocatedNeedIds.has(Number(row.service_request_id)) ||
+          String(row.status || '').toLowerCase() !== 'pending'
+        ) {
+          continue
+        }
+        const meta = parseJsonObject(row.response_meta)
+        const { error: leftoverError } = await supabase
+          .from('service_request_applications')
+          .update({
+            status: 'rejected',
+            rejected_at: nowIso,
+            response_meta: {
+              ...meta,
+              rejected_at: nowIso,
+              auto_rejected_reason: 'need_fully_allocated',
+            },
+            updated_at: nowIso,
+          })
+          .eq('id', row.id)
+          .eq('status', 'pending')
+        if (leftoverError) {
+          console.error('Failed to auto-reject leftover pending application', leftoverError)
+          continue
+        }
+        row.status = 'rejected'
+      }
+
       const shapedAssignments = (assignments || []).map((row) => shapeApplicationForApi(row))
 
       const grouped = (requests || []).map((requestItem) => {
@@ -121,16 +201,33 @@ export async function GET(request: NextRequest) {
         }
       })
 
+      const nowForNeeds = new Date().toISOString()
+      for (const item of grouped) {
+        if (!isNeedPhysicallyComplete(item, item.assignments)) continue
+        const status = String(item.status || '').toLowerCase()
+        if (!['active', 'in_progress'].includes(status)) continue
+        const { error: completeError } = await supabase
+          .from('service_requests')
+          .update({ status: 'completed', updated_at: nowForNeeds })
+          .eq('id', item.id)
+          .in('status', ['active', 'in_progress'])
+        if (completeError) {
+          console.error('Failed to mark fulfilled need completed', completeError)
+          continue
+        }
+        item.status = 'completed'
+      }
+
       const filtered = view === 'history'
-        ? grouped.filter((item) => ['completed', 'cancelled'].includes(String(item.status || '').toLowerCase()))
-        : grouped.filter((item) => !['completed', 'cancelled'].includes(String(item.status || '').toLowerCase()))
+        ? grouped.filter((item) => needBelongsInHistory(item, item.assignments))
+        : grouped.filter((item) => !needBelongsInHistory(item, item.assignments))
 
       return NextResponse.json({ success: true, data: filtered })
     }
 
     return NextResponse.json({ error: 'Unsupported user type' }, { status: 403 })
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error)
+    const errorMessage = error instanceof Error ? error.message : JSON.stringify(error)
     console.error('Error fetching assignments:', {
       error: errorMessage,
       stack: error instanceof Error ? error.stack : undefined,

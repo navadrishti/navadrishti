@@ -77,7 +77,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
       toast({ title: 'Access Denied', description: 'Only NGOs can edit needs', variant: 'destructive' })
       router.push('/service-requests')
     }
-  }, [router, toast, user])
+  }, [router, toast, user?.id, user?.user_type])
 
   useEffect(() => {
     if (!user || !resolvedParams.id) return
@@ -142,7 +142,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
     }
 
     fetchRequest()
-  }, [resolvedParams.id, router, toast, user])
+  }, [resolvedParams.id, router, toast, user?.id])
 
   const handleInput = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))

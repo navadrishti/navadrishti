@@ -268,7 +268,6 @@ export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
             ...(parseJsonObject(existingContext.csr_assignment)),
             mode: 'company_project_handoff',
             project_id: projectId,
-            lead_ngo_id: userId,
             assigned_company_id: companyId,
             assignment_status: 'accepted',
             assigned_at: new Date().toISOString(),

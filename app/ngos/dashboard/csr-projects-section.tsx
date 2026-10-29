@@ -1,9 +1,11 @@
 'use client';
 
+import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SkeletonOrderItem } from '@/components/ui/skeleton';
 import { CsrTrackingProjectDetails } from '@/components/csr-tracking-project-details';
+import { partitionByWorkBucket } from '@/lib/work-item-bucket';
 import { CompanyApplicationsCard } from './company-applications-card';
 import { CsrAssignmentsPanel, type CsrAssignmentGroups } from './csr-assignments-panel';
 import { getProjectBucket } from './helpers';
@@ -36,6 +38,16 @@ export function CsrProjectsSection({
     ongoingProjects: data.csrProjects.filter((project) => getProjectBucket(project) === 'ongoing'),
     completedProjects: data.csrProjects.filter((project) => getProjectBucket(project) === 'completed'),
   };
+  const { active: activeTakenIn, history: historyTakenIn } = useMemo(
+    () =>
+      partitionByWorkBucket(data.csrTrackingAssignments, (assignment) => [
+        assignment.assignment_status,
+        assignment.project_status,
+      ]),
+    [data.csrTrackingAssignments],
+  );
+  const [takenInBucket, setTakenInBucket] = useState<'active' | 'history'>('active');
+  const visibleTakenIn = takenInBucket === 'active' ? activeTakenIn : historyTakenIn;
   const otherCsrCount =
     data.campaignLeadInvitations.length +
     data.projectLeadInvitations.length +
@@ -89,25 +101,35 @@ export function CsrProjectsSection({
                 <p className="mt-1 text-sm">When a company takes in one of your projects, it will appear here.</p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {data.csrTrackingAssignments.map((assignment) => (
-                  <div key={`${assignment.project_id}:${assignment.assigned_company_id}`} className="rounded-md border bg-white p-4">
-                    <CsrTrackingProjectDetails
-                      assignment={assignment}
-                      partnerLabel="Company"
-                      partnerName={assignment.assigned_company_name}
-                      partnerEmail={assignment.assigned_company_email}
-                      partnerStatus={assignment.assigned_company_verification_status}
-                      partnerVerified={assignment.assigned_company_verified}
-                    />
-                  </div>
-                ))}
-              </div>
+              <Tabs value={takenInBucket} onValueChange={(value) => setTakenInBucket(value as 'active' | 'history')} className="w-full">
+                <TabsList className="grid w-full grid-cols-2 h-auto">
+                  <TabsTrigger value="active">Active ({activeTakenIn.length})</TabsTrigger>
+                  <TabsTrigger value="history">History ({historyTakenIn.length})</TabsTrigger>
+                </TabsList>
+                <TabsContent value={takenInBucket} className="mt-3 space-y-3">
+                  {visibleTakenIn.length === 0 ? (
+                    <p className="py-4 text-center text-sm text-muted-foreground">
+                      {takenInBucket === 'active' ? 'No ongoing company handoffs.' : 'No completed company handoffs yet.'}
+                    </p>
+                  ) : visibleTakenIn.map((assignment) => (
+                    <div key={`${assignment.project_id}:${assignment.assigned_company_id}`} className="rounded-md border bg-white p-4">
+                      <CsrTrackingProjectDetails
+                        assignment={assignment}
+                        partnerLabel="Company"
+                        partnerName={assignment.assigned_company_name}
+                        partnerEmail={assignment.assigned_company_email}
+                        partnerStatus={assignment.assigned_company_verification_status}
+                        partnerVerified={assignment.assigned_company_verified}
+                      />
+                    </div>
+                  ))}
+                </TabsContent>
+              </Tabs>
             )}
           </div>
         </TabsContent>
 
-        <TabsContent value="other-csr" className="mt-4 space-y-4">
+        <TabsContent value="other-csr" className="mt-4">
           <CsrAssignmentsPanel
             data={data}
             actions={actions}

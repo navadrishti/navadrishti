@@ -6,6 +6,7 @@ import {
   getListingUrgency,
   isCompanyAssignedNeed,
   isProjectLocked,
+  redactNeedForViewer,
   shapeListingRequest,
   type ListingRequest,
   type ListingSource,
@@ -54,7 +55,7 @@ async function fetchVolunteerResponses(userId: number, category: string | null):
   const projectIds = [...new Set(serviceRequests.map((item) => item.project_id).filter((id): id is string => Boolean(id)))];
   const { data: users } = await supabase
     .from('users')
-    .select('id, name, email, user_type, verification_status')
+    .select('id, name, user_type, verification_status')
     .in('id', requesterIds);
   const { data: projects } = projectIds.length > 0
     ? await supabase
@@ -224,13 +225,19 @@ export async function listServiceRequests(params: ListingParams): Promise<Listin
     .filter((request) => !isHiddenNgoNetworkPaymentChannel(request))
     .map(shapeListingRequest);
 
+  const personalView =
+    Boolean(params.userId) && (params.view === 'my-requests' || params.view === 'my-responses');
+
   let finalRequests = processedRequests;
   if (params.view === 'my-requests' && params.userId) {
     finalRequests = await filterOwnUnassignedNeeds(processedRequests);
-  }
-  if (params.view === 'all') {
+  } else if (!personalView) {
     finalRequests = await filterBrowsableNeeds(processedRequests);
   }
 
-  return applySearchFilters(finalRequests, params);
+  const filtered = applySearchFilters(finalRequests, params);
+  if (personalView) return filtered;
+  return filtered.map((item) =>
+    redactNeedForViewer(item as Record<string, unknown>, params.userId) as ListingRequest
+  );
 }

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { autoRejectExpiredServiceOffers } from '@/lib/admin-offer-automation';
 import { getAdminUser } from '@/lib/server-auth';
 
-// Auto-reject service offers that have been pending for more than 5 days
 export async function POST(request: NextRequest) {
   if (!getAdminUser(request)) {
     return NextResponse.json({ error: 'Admin authentication required' }, { status: 401 });
@@ -13,7 +12,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: result.rejectedCount > 0 ? `Auto-rejected ${result.rejectedCount} expired offers` : 'No expired offers found',
+      message: 'Capability offers post live without admin review',
       rejectedCount: result.rejectedCount,
       rejectedOffers: result.rejectedOffers,
     });

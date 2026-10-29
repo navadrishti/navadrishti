@@ -8,14 +8,12 @@ import {
   changedOfferFields,
   coerceOfferBody,
   OFFER_PRICING_FIELDS,
-  OFFER_REVIEWED_FIELDS,
+  redactCapabilityMerchantForPublic,
   toOfferResponse,
   validateOfferBody,
 } from '@/lib/service-offer-payload'
-import {
-  assertUserRazorpayPayoutActiveForCapabilities,
-  CAPABILITY_LISTING_REQUIRES_PAYOUT_MESSAGE,
-} from '@/lib/razorpay-route'
+import { isCapabilityOfferPubliclyVisible, ngoLegalTagsForOffer } from '@/lib/service-offers'
+import { assertCapabilityPublisher, capabilityPublishGateResponse } from '@/lib/service-offers/publish-assert'
 import { toUserFacingError } from '@/lib/user-facing-error'
 
 function parseOfferId(id: string): number | null {
@@ -43,7 +41,7 @@ export async function GET(
 
     const claims = await getTokenClaims(request)
     const isOwner = claims !== null && serviceOffer.creator_id === claims.id
-    const isPublic = serviceOffer.status === 'active' && serviceOffer.admin_status === 'approved'
+    const isPublic = isCapabilityOfferPubliclyVisible(serviceOffer)
 
     if (!isOwner && !isPublic) {
       let isApplicant = false
@@ -74,10 +72,17 @@ export async function GET(
     const providerType = serviceOffer.ngo?.user_type || 'ngo'
     const providerProfileImage = serviceOffer.ngo?.profile_image || null
     const { admin_comments, admin_reviewed_by, ngo, ...publicOffer } = serviceOffer
-    const publicProvider = ngo ? { ...ngo, email: undefined } : ngo
+    const publicProvider = ngo ? redactCapabilityMerchantForPublic(ngo) : ngo
     const visibleOffer = isOwner
       ? { ...publicOffer, ngo, admin_comments, admin_reviewed_by }
       : { ...publicOffer, ngo: publicProvider }
+    const legalTags = providerType === 'ngo'
+      ? ngoLegalTagsForOffer({
+          verification_status: ngo?.verification_status,
+          profile_data: ngo && 'profile_data' in ngo ? ngo.profile_data : null,
+          registration_type: ngo && 'registration_type' in ngo ? ngo.registration_type : null,
+        })
+      : { registration_type: null, ca_compliance_tags: [] }
 
     return NextResponse.json({
       ...toOfferResponse(visibleOffer, capabilities || []),
@@ -85,6 +90,8 @@ export async function GET(
       provider_name: providerName,
       provider_type: providerType,
       provider_profile_image: providerProfileImage,
+      registration_type: legalTags.registration_type,
+      ca_compliance_tags: legalTags.ca_compliance_tags,
     })
   } catch {
     return NextResponse.json({ error: 'Failed to fetch service offer' }, { status: 500 })
@@ -103,7 +110,7 @@ export async function PUT(
     if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
-    const { id: userId } = decoded
+    const { id: userId, user_type: userType } = decoded
 
     const offerId = parseOfferId(id)
     if (!offerId) {
@@ -125,16 +132,9 @@ export async function PUT(
       return NextResponse.json({ error: 'You can only update your own offers' }, { status: 403 })
     }
 
-    try {
-      await assertUserRazorpayPayoutActiveForCapabilities(userId)
-    } catch (payoutError) {
-      return NextResponse.json(
-        {
-          error: payoutError instanceof Error ? payoutError.message : CAPABILITY_LISTING_REQUIRES_PAYOUT_MESSAGE,
-          requiresPayoutConnection: true,
-        },
-        { status: 403 }
-      )
+    const publishGate = await assertCapabilityPublisher(userId, userType)
+    if (!publishGate.ok) {
+      return NextResponse.json(capabilityPublishGateResponse(publishGate), { status: publishGate.status })
     }
 
     const nowIso = new Date().toISOString()
@@ -156,15 +156,8 @@ export async function PUT(
       }
     }
 
-    const adminStatus = String(existingOffer.admin_status || '').toLowerCase()
-    const reviewedChanged = changedOfferFields(existingOffer, offerRow, OFFER_REVIEWED_FIELDS).length > 0
-    const needsReview = (adminStatus === 'approved' && reviewedChanged) || adminStatus === 'rejected'
-
     const updateData = {
       ...offerRow,
-      ...(needsReview
-        ? { admin_status: 'pending' as const, status: 'inactive' as const, is_listed: false, submitted_for_review_at: nowIso }
-        : {}),
       updated_at: nowIso,
     }
     const { error: updateError } = await supabase
@@ -200,10 +193,7 @@ export async function PUT(
     return NextResponse.json({
       success: true,
       data: {
-        message: needsReview
-          ? 'Service offer updated and resubmitted for approval'
-          : 'Service offer updated successfully',
-        requiresReview: needsReview,
+        message: 'Service offer updated successfully',
       }
     })
   } catch {

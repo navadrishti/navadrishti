@@ -44,3 +44,41 @@ export function formatAttendanceSummary(meta: unknown) {
     lastAttendanceAt: summary.last_attendance_at ? String(summary.last_attendance_at) : null,
   }
 }
+
+export function summarizeServiceAttendanceEntries(
+  entries: Array<{
+    attendance_date?: string | null
+    attendance_status?: string | null
+    attendance_source?: string | null
+    amount_due?: unknown
+    payment_status?: string | null
+  }> | null | undefined
+) {
+  const rows = Array.isArray(entries) ? entries : []
+  const presentDates = [
+    ...new Set(
+      rows
+        .filter((entry) => String(entry.attendance_status || '').toLowerCase() === 'present')
+        .map((entry) => String(entry.attendance_date || '').slice(0, 10))
+        .filter(Boolean)
+    ),
+  ].sort()
+  const lastPresent = presentDates.at(-1) || null
+  const lastPresentRow = lastPresent
+    ? [...rows].reverse().find((entry) =>
+        String(entry.attendance_status || '').toLowerCase() === 'present'
+        && String(entry.attendance_date || '').slice(0, 10) === lastPresent
+      )
+    : null
+
+  return {
+    days_attended: presentDates.length,
+    total_entries: rows.length,
+    last_attendance_at: lastPresent,
+    source: lastPresentRow?.attendance_source ? String(lastPresentRow.attendance_source) : null,
+    total_due: rows.reduce((sum, entry) => sum + (Number(entry.amount_due) || 0), 0),
+    paid_total: rows
+      .filter((entry) => String(entry.payment_status || '').toLowerCase() === 'paid')
+      .reduce((sum, entry) => sum + (Number(entry.amount_due) || 0), 0),
+  }
+}

@@ -1,21 +1,19 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import Link from 'next/link';
-import { formatDisplayDate, formatStatusLabel } from '@/lib/format-date';
+import { formatStatusLabel } from '@/lib/format-date';
 import { VerifiedAccountName } from '@/components/verification-badge';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { InlineSkillServiceFulfillment } from '@/components/engagement-fulfillment';
-import { isDailyRentalEngagementMeta } from '@/lib/service-request-allocation';
-import { formatInrAmount, formatSelectedNeeds, getOfferRequestBillingDetails, offerRequestTrackHref, toOfferRentalApplication, type OfferRequestItem } from '@/lib/offer-requests';
+import { OfferEngagementOverview } from '@/components/offer-engagement-overview';
+import { formatSelectedNeeds, type OfferRequestItem } from '@/lib/offer-requests';
 
 interface OfferRequestSummaryCardProps {
   request: OfferRequestItem;
-  actions: ReactNode;
+  actions?: ReactNode;
+  showOverview?: boolean;
 }
 
-export function OfferRequestSummaryCard({ request, actions }: OfferRequestSummaryCardProps) {
+export function OfferRequestSummaryCard({ request, actions, showOverview = false }: OfferRequestSummaryCardProps) {
   return (
     <div className="rounded-md border bg-white p-4 space-y-3">
       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
@@ -32,12 +30,12 @@ export function OfferRequestSummaryCard({ request, actions }: OfferRequestSummar
             <span>({request.client?.user_type || 'participant'})</span>
           </p>
           <p className="text-sm text-muted-foreground">{request.client?.email || 'No email available'}</p>
-          {request.message ? (
+          {!showOverview && request.message ? (
             <div className="mt-2 rounded-md bg-muted p-3 text-sm text-foreground">
               {request.message}
             </div>
           ) : null}
-          {formatSelectedNeeds(request, 3).length > 0 ? (
+          {!showOverview && formatSelectedNeeds(request, 3).length > 0 ? (
             <div className="mt-3 rounded-md bg-slate-50 p-3">
               <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Selected needs</p>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -57,9 +55,8 @@ export function OfferRequestSummaryCard({ request, actions }: OfferRequestSummar
           </Badge>
         </div>
       </div>
-      <div className="flex flex-wrap gap-2">
-        {actions}
-      </div>
+      {showOverview ? <OfferEngagementOverview request={request} interactive={false} /> : null}
+      {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
     </div>
   );
 }
@@ -70,8 +67,6 @@ interface InProgressOfferRequestCardProps {
 }
 
 export function InProgressOfferRequestCard({ request, onUpdated }: InProgressOfferRequestCardProps) {
-  const billing = getOfferRequestBillingDetails(request);
-
   return (
     <div className="rounded-md border bg-white p-4 space-y-3">
       <div className="flex items-start justify-between gap-3">
@@ -95,54 +90,7 @@ export function InProgressOfferRequestCard({ request, onUpdated }: InProgressOff
           </Badge>
         </div>
       </div>
-
-      <div className="grid grid-cols-1 gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 sm:grid-cols-2 lg:grid-cols-3">
-        <div className="min-w-0">
-          <p className="text-xs uppercase tracking-wide text-slate-500">Assigned</p>
-          <p className="truncate">{formatDisplayDate(billing.assignedAt) || 'Not set'}</p>
-        </div>
-        <div className="min-w-0">
-          <p className="text-xs uppercase tracking-wide text-slate-500">Billing</p>
-          <p className="truncate">{billing.billingCycle || 'one_time'} · {billing.paymentMode || 'prepaid'}</p>
-        </div>
-        <div className="min-w-0">
-          <p className="text-xs uppercase tracking-wide text-slate-500">Amount</p>
-          <p className="truncate">{formatInrAmount(billing.paymentAmount)} · {billing.paymentRequired ? 'Due' : 'No payment'}</p>
-        </div>
-      </div>
-
-      {request.message ? <p className="text-sm text-slate-600 break-words">{request.message}</p> : null}
-      {formatSelectedNeeds(request, 3).length > 0 ? (
-        <p className="text-xs text-slate-500 break-words">
-          Needs: {formatSelectedNeeds(request, 3).join(' · ')}
-        </p>
-      ) : null}
-
-      {isDailyRentalEngagementMeta(request.response_meta) ? (
-        <InlineSkillServiceFulfillment
-          application={toOfferRentalApplication(request)}
-          role="payee"
-          title="Capability offer rental"
-          onUpdated={onUpdated}
-        />
-      ) : null}
-
-      <div className="space-y-1 text-sm text-slate-600">
-        <p>This decision is final. Use tracking and project screens to manage the engagement.</p>
-        <p className="text-xs text-slate-500">Request ID: {request.id}</p>
-        {request.service_request_id ? (
-          <p className="text-xs text-slate-500">Linked service request: {request.service_request_id}</p>
-        ) : null}
-        {request.assignment_id ? (
-          <p className="text-xs text-slate-500">Assignment ID: {request.assignment_id}</p>
-        ) : null}
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <Link href={offerRequestTrackHref(request)}>
-          <Button size="sm" variant="outline">Track engagement</Button>
-        </Link>
-      </div>
+      <OfferEngagementOverview request={request} onUpdated={onUpdated} />
     </div>
   );
 }

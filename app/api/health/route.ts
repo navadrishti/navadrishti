@@ -48,10 +48,24 @@ export async function GET() {
 
     const isHealthy = checks.checks.database === 'healthy' && checks.checks.core_config === 'healthy';
     checks.status = isHealthy ? 'healthy' : 'unhealthy';
+    const production = isProductionRuntime();
+    const externalReady = services.payments && services.webhook;
 
     return NextResponse.json({
-      ...checks,
-      ...(configIssues.length > 0 ? { config_issues: configIssues } : {}),
+      status: checks.status,
+      timestamp: checks.timestamp,
+      checks: {
+        database: checks.checks.database,
+        core_config: checks.checks.core_config,
+        external_services: externalReady ? 'healthy' : production ? 'unhealthy' : 'degraded',
+      },
+      ...(production
+        ? {}
+        : {
+            environment: checks.environment,
+            version: checks.version,
+            services,
+          }),
     }, {
       status: isHealthy ? 200 : 503,
       headers: {

@@ -101,3 +101,11 @@ export function groupPendingPayments(items: PendingPaymentItem[]): PendingPaymen
 export function pendingItemAmount(item: PendingPaymentItem) {
   return Number(item.amount_due ?? item.amount ?? 0);
 }
+
+export function csrProjectWorkStatuses(project: Pick<CsrProjectSummary, 'project_status' | 'completed_milestones_count' | 'milestones_count'>): unknown[] {
+  const allMilestonesDone =
+    Number(project.completed_milestones_count || 0) > 0 &&
+    Number(project.milestones_count || 0) > 0 &&
+    Number(project.completed_milestones_count) >= Number(project.milestones_count)
+  return [project.project_status, allMilestonesDone ? 'completed' : null]
+}

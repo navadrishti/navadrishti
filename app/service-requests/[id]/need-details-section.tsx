@@ -22,7 +22,7 @@ export function RequestNeedDetailsSection({ request }: { request: RequestRecord 
   const budget = request.estimated_budget ?? requirements.estimated_budget ?? requirements.budget
   const beneficiaryCount = request.beneficiary_count ?? Number(requirements.beneficiary_count || 0)
   const impactDescription = request.impact_description ?? requirements.impact_description
-  const contactInfo = requirements.contactInfo ?? requirements.contact_info
+  const contactInfo = request.contact_info ?? requirements.contactInfo ?? requirements.contact_info
   const timeline = request.timeline || request.deadline || requirements.timeline
   const linkedProjectId = String(request.project?.id || requirements.projectId || requirements.project_id || '').trim()
   const linkedProjectTitle = String(

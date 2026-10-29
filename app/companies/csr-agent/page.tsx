@@ -460,7 +460,7 @@ function CSRAgentPage() {
               actionsEnabled={canUseCampaignActions}
               onToggleInvite={handleInviteLeadNgoToggle}
             />
-          ) : null}
+                                ) : null}
 
           <MilestonesCard
             milestoneCount={milestoneCount}

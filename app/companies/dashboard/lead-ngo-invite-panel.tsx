@@ -37,9 +37,10 @@ export function LeadNgoInvitePanel({
   onRevokeInvite,
 }: LeadNgoInvitePanelProps) {
   const term = String(searchValue || '').toLowerCase().trim();
+  const ownerNgoId = Number(assignment.lead_ngo_id || 0)
   const inviteEntries: Array<[number, LeadNgoInvite]> = (assignment.lead_ngo_invites || [])
     .map((invite) => [Number(invite.ngo_id), invite] as [number, LeadNgoInvite])
-    .filter(([ngoId]) => Number.isFinite(ngoId) && ngoId > 0);
+    .filter(([ngoId]) => Number.isFinite(ngoId) && ngoId > 0 && ngoId !== ownerNgoId);
 
   const inviteByNgoId = new Map<number, LeadNgoInvite>(inviteEntries);
 
@@ -48,7 +49,7 @@ export function LeadNgoInvitePanel({
     timeline: assignment.project_timeline,
   });
   const availableNgos = ngoDirectory
-    .filter((ngo) => ngo.id !== Number(assignment.lead_ngo_id))
+    .filter((ngo) => ngo.id !== ownerNgoId)
     .filter((ngo) => {
       if (!workEnd) return false;
       const expiry = String(ngo.csr1_valid_until || '').trim();

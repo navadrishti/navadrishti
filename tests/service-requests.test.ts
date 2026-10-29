@@ -211,10 +211,11 @@ describe('redactNeedForViewer', () => {
     expect(redactNeedForViewer(need, 12).project.exact_address).toBe('12 Secret Lane')
   })
 
-  it('strips contact details and street address for everyone else', () => {
-    const publicNeed = redactNeedForViewer(need, null)
+  it('strips account email, phone and street address for everyone else', () => {
+    const publicNeed = redactNeedForViewer({ ...need, contact_info: '99999' }, null)
     expect(publicNeed.requester).toMatchObject({ id: 12, name: 'Asha', user_type: 'ngo' })
     expect(publicNeed.requester).not.toHaveProperty('email')
+    expect(publicNeed.contact_info).toBe('99999')
     expect(publicNeed.project.exact_address).toBeNull()
     expect(redactNeedForViewer(need, 99).requester).not.toHaveProperty('phone')
   })
@@ -249,6 +250,13 @@ describe('listServiceRequests', () => {
     useDb(applicationCounts())
     const result = await listServiceRequests(params)
     // Need 4 has one accepted applicant but 10 units still unallocated.
+    expect(result.map((item) => item.id)).toEqual([1, 4, 6])
+  })
+
+  it('uses the same browse filter when view is omitted', async () => {
+    mocks.getAll.mockResolvedValue(rows)
+    useDb(applicationCounts())
+    const result = await listServiceRequests({ ...params, view: null })
     expect(result.map((item) => item.id)).toEqual([1, 4, 6])
   })
 
@@ -321,6 +329,7 @@ describe('createNeed', () => {
     const fake = useDb({ 'service_offers.select': [{ data: [{ id: 5 }] }] })
     const result = await createNeed(12, { ...body, details: { recommended_offer_ids: [5, 6] } })
     expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/capability offers are invalid/) })
+    expect(fake.queries[0].filters).toContainEqual(['in', 'id', [5, 6]])
     expect(fake.queries[0].filters).toContainEqual(['eq', 'offer_type', 'material'])
   })
 

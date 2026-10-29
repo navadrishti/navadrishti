@@ -3,6 +3,7 @@ import {
   buildSelectedNeedSummary,
   buildUsageRecordFromClient,
   classifyCapabilityOffer,
+  getUsageEngagementOverview,
   dedupeSelectedNeedSummaries,
   formatCapabilityRentalRateLabel,
   formatCapabilityTransactionLabel,
@@ -12,7 +13,11 @@ import {
   getCapabilityNeedRequestTypes,
   impactAreaMatchesFilter,
   isCapabilityOfferAvailableForListing,
+  isCapabilityOfferOpenForApplications,
+  isCapabilityOfferPubliclyVisible,
   isOfferExpired,
+  ngoHasLegalEntityTag,
+  ngoLegalTagsForOffer,
   normalizeCapabilityTransactionType,
   normalizeDateOnlyToEndOfDayIso,
   normalizeImpactAreas,
@@ -30,8 +35,14 @@ import {
 } from '@/lib/service-offer-payload'
 import {
   formatInrAmount,
+  formatOfferBillingLabel,
   formatSelectedNeeds,
+  getApplicantOfferBucket,
+  getOfferEngagementOverview,
+  hydrateOfferRequestMeta,
+  offerRequestDetailHref,
   offerRequestTrackHref,
+  overlayLiveAttendanceSummary,
   getOfferRequestBillingDetails,
   getOfferRequestBucket,
   toOfferRentalApplication,
@@ -283,6 +294,9 @@ describe('offer availability', () => {
     ['paid rental lock', { offer_details: { csr_rental_lock: { paid_at: '2026-01-01' } } }, false],
     ['unpaid rental lock', { offer_details: { csr_rental_lock: { held_at: '2026-01-01' } } }, true],
     ['open', { status: 'active' }, true],
+    ['listed flag omitted', { status: 'active', is_listed: null }, true],
+    ['unlisted', { status: 'active', is_listed: false }, false],
+    ['rejected leftover', { status: 'active', admin_status: 'rejected', is_listed: true }, false],
   ])('lists %s offers: %s', (_label, offer, expected) => {
     expect(isCapabilityOfferAvailableForListing(offer)).toBe(expected)
   })
@@ -293,10 +307,60 @@ describe('offer availability', () => {
     [{ id: 1, isAssigned: true }, 'used'],
     [{ id: 1, is_expired: true, status: 'cancelled' }, 'expired'],
     [{ id: 1, status: 'active' }, null],
+    [{ id: 1, status: 'active', is_listed: false }, 'unlisted'],
+    [{ id: 1, status: 'active', admin_status: 'rejected', is_listed: true }, 'inactive'],
+    [{ id: 1, usage_records: [{ id: 11, status: 'accepted', selected_needs: [] }] }, null],
+    [{ id: 1, usage_records: [{ id: 12, status: 'completed', selected_needs: [] }] }, 'used'],
   ])('classifies past reason as %s', (offer, reason) => {
     const result = classifyCapabilityOffer(offer)
     expect(result.pastReason).toBe(reason)
     expect(result.isActive).toBe(reason === null)
+  })
+
+  it('keeps in-progress usage on Active and completed usage on Past', () => {
+    const ongoing = classifyCapabilityOffer({
+      id: 1,
+      status: 'active',
+      usage_records: [{ id: 11, status: 'accepted', selected_needs: [] }],
+    })
+    expect(ongoing).toMatchObject({ isActive: true, isOngoing: true, pastReason: null })
+
+    const unlistedOngoing = classifyCapabilityOffer({
+      id: 3,
+      status: 'active',
+      is_listed: false,
+      usage_records: [{ id: 13, status: 'in_progress', selected_needs: [] }],
+    })
+    expect(unlistedOngoing).toMatchObject({ isActive: true, isOngoing: true, pastReason: null })
+
+    const completed = classifyCapabilityOffer({
+      id: 2,
+      status: 'active',
+      usage_records: [{ id: 12, status: 'completed', selected_needs: [] }],
+    })
+    expect(completed).toMatchObject({ isActive: false, isOngoing: false, pastReason: 'used' })
+  })
+
+  it('lets pending leftover offers stay open once they are active and listed', () => {
+    expect(isCapabilityOfferOpenForApplications({ status: 'active', admin_status: 'pending', is_listed: true })).toBe(true)
+    expect(isCapabilityOfferPubliclyVisible({ status: 'active', admin_status: 'pending' })).toBe(true)
+    expect(isCapabilityOfferOpenForApplications({ status: 'active', admin_status: 'rejected', is_listed: true })).toBe(false)
+    expect(isCapabilityOfferPubliclyVisible({ status: 'active', admin_status: 'rejected' })).toBe(false)
+    expect(isCapabilityOfferOpenForApplications({ status: 'active', is_listed: false })).toBe(false)
+    expect(isCapabilityOfferPubliclyVisible({ status: 'active', is_listed: false })).toBe(false)
+  })
+
+  it('requires a Trust, Society, or Section 8 legal tag for NGO publishers', () => {
+    expect(ngoHasLegalEntityTag({ profile_data: { registration_type: 'Section 8' } })).toBe(true)
+    expect(ngoHasLegalEntityTag({ registration_type: 'Trust' })).toBe(true)
+    expect(ngoHasLegalEntityTag({ profile_data: {} })).toBe(false)
+    expect(ngoLegalTagsForOffer({
+      verification_status: 'verified',
+      profile_data: { registration_type: 'Society', ca_compliance_tags: ['twelve_a', 'csr1'] },
+    })).toEqual({
+      registration_type: 'Society',
+      ca_compliance_tags: ['twelve_a', 'csr1'],
+    })
   })
 })
 
@@ -359,7 +423,15 @@ describe('usage records', () => {
           accepted_at: '2026-01-01',
         },
       },
-      { meta: { attendance_summary: { days_attended: 4, total_due: 3200, paid_total: 1600 }, settled_amount: 1600 } }
+      {
+        meta: {
+          attendance_summary: { days_attended: 4, total_due: 3200, paid_total: 1600, source: 'pwa' },
+          settled_amount: 1600,
+          settlement_status: 'partial',
+          delivery_tracking_id: 'AWB9',
+          delivery_tracking_last_status: 'Out for delivery',
+        },
+      }
     )
     expect(record).toMatchObject({
       id: 5,
@@ -374,9 +446,49 @@ describe('usage records', () => {
       cumulative_due: 3200,
       paid_total: 1600,
       settled_amount: 1600,
+      settlement_status: 'partial',
+      attendance_source: 'pwa',
+      delivery_tracking_id: 'AWB9',
+      delivery_tracking_last_status: 'Out for delivery',
       linked_service_request_id: 3,
     })
     expect(record?.selected_needs.map((need) => [need.id, need.service_request_id])).toEqual([[3, 3], [4, 3]])
+    expect(getUsageEngagementOverview(record!)).toMatchObject({
+      billingLabel: 'Daily · Prepaid',
+      amountLabel: 'INR 800/day',
+      paymentStatusLabel: 'Outstanding · INR 1,600',
+      payerLabel: 'Acme',
+      payeeLabel: 'You (offering party)',
+      daysPresent: 4,
+      attendanceSourceLabel: 'GRAM App',
+      showDelivery: true,
+      deliveryStatusLabel: 'Out for delivery',
+    })
+  })
+
+  it('shows payment, attendance and delivery snapshot for completed donate usage', () => {
+    const record = buildUsageRecordFromClient({
+      id: 9,
+      status: 'completed',
+      client: { name: 'Hope Foundation NGO', user_type: 'ngo' },
+      message: 'Applying for: school kit support',
+      response_meta: {
+        billing_cycle: 'one_time',
+        payment_mode: 'prepaid',
+        payment_required: false,
+        accepted_at: '2026-05-24',
+      },
+    })
+    expect(getUsageEngagementOverview(record!)).toMatchObject({
+      billingLabel: 'One Time · Prepaid',
+      amountLabel: 'Free',
+      paymentStatusLabel: 'No payment',
+      payerLabel: 'Hope Foundation NGO',
+      payeeLabel: 'You (offering party)',
+      daysPresent: 0,
+      showDelivery: false,
+      applicationNote: null,
+    })
   })
 })
 
@@ -444,5 +556,73 @@ describe('offer requests', () => {
     expect(offerRequestTrackHref(offerRequest({ assignment_id: 'asg_1', service_request_id: 9 }))).toBe('/service-requests/9')
     expect(offerRequestTrackHref(offerRequest({ assignment_id: 'asg_1', response_meta: { service_request_id: 8 } }))).toBe('/service-requests/8')
     expect(offerRequestTrackHref(offerRequest({ assignment_id: 'asg_1' }))).toBe('/service-offers/2')
+    expect(offerRequestDetailHref(offerRequest({ assignment_id: 'asg_1', service_request_id: 9 }))).toBe('/service-offers/2')
+  })
+
+  it('overlays live daily attendance onto stored assignment summaries', () => {
+    expect(overlayLiveAttendanceSummary(
+      { attendance_summary: { days_attended: 1, source: 'stale' } },
+      [
+        { attendance_date: '2026-10-28', attendance_status: 'present', attendance_source: 'pwa', amount_due: 800, payment_status: 'pending' },
+        { attendance_date: '2026-10-29', attendance_status: 'present', attendance_source: 'gram_app', amount_due: 800, payment_status: 'paid' },
+      ]
+    ).attendance_summary).toMatchObject({
+      days_attended: 2,
+      last_attendance_at: '2026-10-29',
+      source: 'gram_app',
+      paid_total: 800,
+    })
+    expect(overlayLiveAttendanceSummary({ attendance_summary: { days_attended: 4 } }, []).attendance_summary).toEqual({ days_attended: 4 })
+  })
+
+  it('formats billing tokens as normal text', () => {
+    expect(formatOfferBillingLabel('one_time', 'prepaid')).toBe('One Time · Prepaid')
+    expect(formatOfferBillingLabel('daily', 'daily_due')).toBe('Daily · Daily Due')
+    expect(formatOfferBillingLabel(null, null)).toBe('One Time · Prepaid')
+  })
+
+  it('hydrates attendance and delivery from the assignment onto the request overview', () => {
+    const hydrated = hydrateOfferRequestMeta(
+      { billing_cycle: 'daily', payment_mode: 'daily_due', payment_required: true, payment_amount_inr: 800 },
+      {
+        meta: {
+          attendance_summary: { days_attended: 3, last_attendance_at: '2026-05-24', source: 'pwa' },
+          delivery_tracking_last_status: 'Delivered',
+          delivery_tracking_id: 'AWB1',
+          settled_amount: 2400,
+          settlement_status: 'settled',
+        },
+      }
+    )
+    const overview = getOfferEngagementOverview(offerRequest({
+      client: { name: 'Hope Foundation NGO' },
+      response_meta: hydrated,
+      selected_need_summary: [{ id: 31, title: 'school kit support', service_request_id: 31 }],
+    }))
+    expect(overview).toMatchObject({
+      billingLabel: 'Daily · Daily Due',
+      amountLabel: 'INR 800/day',
+      paymentStatusLabel: 'Settled · INR 2,400',
+      payerLabel: 'Hope Foundation NGO',
+      payeeLabel: 'You (offering party)',
+      daysPresent: 3,
+      attendanceSourceLabel: 'GRAM App',
+      showDelivery: true,
+      deliveryStatusLabel: 'Delivered',
+      linkedNeeds: [{ id: 31, label: 'school kit support', href: '/service-requests/31' }],
+    })
+    expect(getOfferEngagementOverview(offerRequest({
+      client: { name: 'Hope Foundation NGO' },
+      response_meta: hydrated,
+    }), { perspective: 'applying', counterpartyName: 'TechCorp Solutions' })).toMatchObject({
+      payerLabel: 'You',
+      payeeLabel: 'TechCorp Solutions',
+    })
+  })
+
+  it('buckets the applicant offer by their own application state', () => {
+    expect(getApplicantOfferBucket({ my_application: { id: 1, status: 'pending', isAssigned: false, selected_needs: [] } })).toBe('pending')
+    expect(getApplicantOfferBucket({ my_application: { id: 1, status: 'accepted', isAssigned: true, selected_needs: [] } })).toBe('in-progress')
+    expect(getApplicantOfferBucket({ my_application: { id: 1, status: 'completed', isAssigned: true, selected_needs: [] } })).toBe('history')
   })
 })

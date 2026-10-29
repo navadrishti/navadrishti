@@ -42,8 +42,6 @@ type NewsletterItem = {
 };
 
 const PAGE_SIZE = 15;
-const MAX_PAGE_SIZE = 30;
-const POLL_MS = 15_000;
 
 function formatTimeAgo(value: string, nowMs: number) {
   const timestamp = Date.parse(value);
@@ -175,30 +173,7 @@ export default function LandingPage() {
   }, []);
 
   useEffect(() => {
-    let intervalId: ReturnType<typeof setInterval> | undefined;
-    let cancelled = false;
-
-    const refreshVisible = () => {
-      if (document.visibilityState === 'hidden') return;
-      const limit = Math.min(MAX_PAGE_SIZE, Math.max(PAGE_SIZE, loadedCountRef.current || PAGE_SIZE));
-      void loadNewsletter({ silent: true, offset: 0, limit });
-    };
-
-    const startPolling = () => {
-      if (cancelled || intervalId !== undefined) return;
-      intervalId = setInterval(refreshVisible, POLL_MS);
-      window.addEventListener('focus', refreshVisible);
-      document.addEventListener('visibilitychange', refreshVisible);
-    };
-
-    void loadNewsletter({ offset: 0, limit: PAGE_SIZE }).finally(startPolling);
-
-    return () => {
-      cancelled = true;
-      if (intervalId !== undefined) clearInterval(intervalId);
-      window.removeEventListener('focus', refreshVisible);
-      document.removeEventListener('visibilitychange', refreshVisible);
-    };
+    void loadNewsletter({ offset: 0, limit: PAGE_SIZE });
   }, [loadNewsletter]);
 
   return (

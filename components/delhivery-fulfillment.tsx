@@ -4,9 +4,9 @@ import { readApiError } from '@/lib/user-facing-error'
 import { getClientSessionToken } from '@/lib/client-session';
 import { useEffect, useMemo, useState } from 'react';
 import { Loader2, Truck } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { TrackingIdChip } from '@/components/tracking-id-chip';
-import { useToast } from '@/hooks/use-toast';
 import { parseJsonObject } from '@/lib/utils';
 import type { PublicDelhiveryParty } from '@/lib/delhivery-parties';
 import {
@@ -18,6 +18,7 @@ import {
 } from '@/lib/service-request-allocation';
 import {
   DelhiveryPartyFields,
+  describeIncompleteDelhiveryParty,
   emptyDelhiveryPartyForm,
   partyFormToOverride,
   partyToForm,
@@ -64,13 +65,15 @@ export function DelhiveryFulfillment({
   role,
   onUpdated,
 }: DelhiveryFulfillmentProps) {
-  const { toast } = useToast();
-  const meta = parseJsonObject(responseMeta);
+  const parentMeta = parseJsonObject(responseMeta);
+  const [bookedMeta, setBookedMeta] = useState<Record<string, unknown> | null>(null);
+  const meta = { ...parentMeta, ...bookedMeta };
   const [busy, setBusy] = useState<'book' | 'sync' | null>(null);
   const [pickup, setPickup] = useState<DelhiveryPartyForm>(() => emptyDelhiveryPartyForm());
   const [consignee, setConsignee] = useState<DelhiveryPartyForm>(() => emptyDelhiveryPartyForm());
   const [consigneeSource, setConsigneeSource] = useState<'project' | 'profile' | null>(null);
   const [loadingParties, setLoadingParties] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const trackingId = String(meta.delivery_tracking_id || '').trim();
   const lastStatus = String(meta.delivery_tracking_last_status || '');
@@ -78,6 +81,9 @@ export function DelhiveryFulfillment({
   const events = useMemo(() => getDeliveryTrackingEvents(meta), [meta]);
   const stage = stageIndex(lastStatus, Boolean(trackingId) && !cancelled);
   const canBook = role === 'donor' && (!trackingId || cancelled);
+  const bookingBlockedReason =
+    describeIncompleteDelhiveryParty('Pickup party', pickup) ||
+    describeIncompleteDelhiveryParty('Delivery party', consignee);
   const bookedPickup = formatBookedParty(meta.delivery_pickup);
   const bookedConsignee = formatBookedParty(meta.delivery_consignee);
 
@@ -109,6 +115,14 @@ export function DelhiveryFulfillment({
   }, [canBook, serviceRequestId, volunteerApplicationId]);
 
   const call = async (action: 'book' | 'sync') => {
+    if (action === 'book') {
+      if (bookingBlockedReason) {
+        setFormError(bookingBlockedReason);
+        toast.error(bookingBlockedReason);
+        return;
+      }
+      setFormError(null);
+    }
     setBusy(action);
     try {
       const token = getClientSessionToken();
@@ -125,25 +139,27 @@ export function DelhiveryFulfillment({
           ),
         }
       );
-      const data = await response.json();
+      const data = await response.json().catch(() => null);
       if (!response.ok || !data?.success) {
         throw new Error(readApiError(data, action === 'book' ? 'Could not book the delivery pickup' : 'Could not refresh delivery status'));
       }
       const nextMeta = parseJsonObject(data?.data?.assignment?.response_meta);
-      toast({
-        title: action === 'book' ? 'Pickup booked' : 'Delivery status updated',
-        description:
-          action === 'book'
-            ? `The delivery partner will collect from the pickup address. Tracking ID ${nextMeta.delivery_tracking_id || ''}`.trim()
-            : formatDeliveryTrackingStatus(nextMeta),
-      });
+      if (action === 'book') {
+        setBookedMeta(nextMeta);
+        toast.success(
+          nextMeta.delivery_tracking_id
+            ? `Pickup booked. Tracking ID ${nextMeta.delivery_tracking_id}`
+            : 'Pickup booked. The delivery partner will collect from the pickup address.'
+        );
+      } else {
+        setBookedMeta(nextMeta);
+        toast.success(formatDeliveryTrackingStatus(nextMeta));
+      }
       await onUpdated?.(nextMeta);
     } catch (error) {
-      toast({
-        title: action === 'book' ? 'Booking failed' : 'Refresh failed',
-        description: readApiError(error, 'Please try again'),
-        variant: 'destructive',
-      });
+      const message = readApiError(error, 'Please try again');
+      setFormError(message);
+      toast.error(message);
     } finally {
       setBusy(null);
     }
@@ -208,7 +224,11 @@ export function DelhiveryFulfillment({
               title="Pickup party"
               hint="Where the delivery partner will collect the items."
               value={pickup}
-              onChange={setPickup}
+              onChange={(next) => {
+                setFormError(null);
+                setPickup(next);
+              }}
+              highlightMissing
             />
             <DelhiveryPartyFields
               title="Delivery party"
@@ -218,8 +238,15 @@ export function DelhiveryFulfillment({
                   : 'Filled from the NGO profile. Edit if this shipment should go somewhere else.'
               }
               value={consignee}
-              onChange={setConsignee}
+              onChange={(next) => {
+                setFormError(null);
+                setConsignee(next);
+              }}
+              highlightMissing
             />
+            {formError || bookingBlockedReason ? (
+              <p className="text-sm text-red-700">{formError || bookingBlockedReason}</p>
+            ) : null}
           </div>
         )
       ) : null}
@@ -230,7 +257,12 @@ export function DelhiveryFulfillment({
 
       <div className="flex flex-wrap gap-2">
         {canBook ? (
-          <Button size="sm" className="bg-indigo-700 hover:bg-indigo-800" onClick={() => call('book')} disabled={busy !== null || loadingParties}>
+          <Button
+            size="sm"
+            className="bg-indigo-700 hover:bg-indigo-800"
+            onClick={() => void call('book')}
+            disabled={busy !== null || loadingParties || Boolean(bookingBlockedReason)}
+          >
             {busy === 'book' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             Book pickup
           </Button>

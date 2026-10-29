@@ -72,7 +72,7 @@ export function useServiceRequestData(requestId: string) {
 
   useEffect(() => {
     if (requestId) loadForViewer()
-  }, [requestId, isAuthenticated, user])
+  }, [requestId, isAuthenticated, user?.id])
 
   return {
     request,

@@ -280,3 +280,13 @@ export function filterNetworkNgos(source: NetworkNgo[], filters: NetworkNgoFilte
 
   return ngos.map(({ search_haystack, city, state_province, ...ngo }) => ngo);
 }
+
+/** Public directory rows omit email/phone unless the caller is signed in. */
+export function redactNetworkNgoContact<T extends { email?: unknown; phone?: unknown }>(
+  ngo: T,
+  includeContact: boolean
+): T {
+  if (includeContact) return ngo;
+  const { email: _email, phone: _phone, ...safe } = ngo;
+  return safe as T;
+}

@@ -9,7 +9,8 @@ import {
   EvidencePortalShell,
 } from '@/components/evidence-verification/portal-ui';
 import { finalizeConsoleLogout } from '@/lib/utils';
-import { buildPendingEvidenceItems, buildPendingPaymentItems } from './verification-panel/helpers';
+import { partitionByWorkBucket } from '@/lib/work-item-bucket';
+import { buildPendingEvidenceItems, buildPendingPaymentItems, csrProjectWorkStatuses } from './verification-panel/helpers';
 import { MilestonePaymentsSection } from './verification-panel/milestone-payments-section';
 import { OfferPaymentsSection } from './verification-panel/offer-payments-section';
 import { PanelStats } from './verification-panel/panel-stats';
@@ -45,6 +46,7 @@ export default function VerificationPanelClient() {
 
   const pendingEvidenceItems = buildPendingEvidenceItems(projectTimelineById);
   const pendingPaymentItems = buildPendingPaymentItems(projectTimelineById, projects);
+  const activeProjectCount = partitionByWorkBucket(projects, csrProjectWorkStatuses).active.length;
   const scopeLabels = formatVerifierScopeLabels(context ?? undefined);
 
   return (
@@ -72,7 +74,7 @@ export default function VerificationPanelClient() {
             {panelMessage ? <EvidenceMessageCard>{panelMessage}</EvidenceMessageCard> : null}
 
             <PanelStats
-              projectCount={projects.length}
+              projectCount={activeProjectCount}
               pendingEvidenceItems={pendingEvidenceItems}
               volunteerAttendance={volunteerAttendance}
             />

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { getTokenClaims } from '@/lib/auth';
+import { hydrateOfferRequestMeta, overlayLiveAttendanceSummary } from '@/lib/offer-requests';
 import { parseJsonObject } from '@/lib/utils';
 
 function isNeedRecord(need: unknown): need is Record<string, unknown> {
@@ -98,8 +99,54 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch requests' }, { status: 500 });
     }
 
+    const assignmentIds = [...new Set(
+      (requests || [])
+        .map((request) => parseJsonObject(request.response_meta).assignment_id)
+        .filter((id) => id != null && String(id).length > 0)
+        .map((id) => String(id))
+    )];
+
+    const assignmentMap = new Map<string, Record<string, unknown>>();
+    const attendanceByAssignment = new Map<string, Array<{
+      assignment_id?: string
+      attendance_date?: string | null
+      attendance_status?: string | null
+      attendance_source?: string | null
+      amount_due?: unknown
+      payment_status?: string | null
+    }>>()
+    if (assignmentIds.length > 0) {
+      const { data: assignments, error: assignmentsError } = await supabase
+        .from('service_engagement_assignments')
+        .select('id, meta, status, completed_at')
+        .in('id', assignmentIds);
+
+      if (!assignmentsError) {
+        for (const assignment of assignments || []) {
+          assignmentMap.set(String(assignment.id), assignment);
+        }
+      }
+
+      const { data: attendanceEntries } = await supabase
+        .from('service_attendance_entries')
+        .select('assignment_id, attendance_date, attendance_status, attendance_source, amount_due, payment_status')
+        .in('assignment_id', assignmentIds)
+
+      for (const entry of attendanceEntries || []) {
+        const key = String(entry.assignment_id)
+        const list = attendanceByAssignment.get(key) || []
+        list.push(entry)
+        attendanceByAssignment.set(key, list)
+      }
+    }
+
     const normalizedRequests = (requests || []).map((request) => {
-      const meta = parseJsonObject(request.response_meta);
+      const rawMeta = parseJsonObject(request.response_meta);
+      const assignmentId = rawMeta.assignment_id != null ? String(rawMeta.assignment_id) : null;
+      const meta = overlayLiveAttendanceSummary(
+        hydrateOfferRequestMeta(rawMeta, assignmentId ? assignmentMap.get(assignmentId) : null),
+        assignmentId ? attendanceByAssignment.get(assignmentId) || [] : []
+      );
       const isAssigned = typeof meta.isAssigned === 'boolean' ? meta.isAssigned : request.status === 'accepted';
       const selectedNeedSummary = buildSelectedNeedSummary(meta);
 
@@ -109,7 +156,7 @@ export async function GET(request: NextRequest) {
         id: request.id,
         service_offer_id: request.service_offer_id,
         service_request_id: linkedNeedId > 0 ? linkedNeedId : null,
-        assignment_id: meta.assignment_id != null ? String(meta.assignment_id) : null,
+        assignment_id: assignmentId,
         client: request.client,
         message: request.message,
         status: request.status,

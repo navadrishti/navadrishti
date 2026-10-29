@@ -7,8 +7,6 @@ import type { CapabilityOfferSummary } from '@/lib/service-offers';
 import type { CSRTrackingAssignment } from '@/components/csr-tracking-project-details';
 import type { CompanyProjectOpportunity, NgoDirectoryItem, PublishedCsrCampaign } from './types';
 
-const DASHBOARD_POLL_MS = 30_000;
-
 export function useCompanyDashboardData({
   userId,
   highlightedRequestId,
@@ -192,14 +190,6 @@ const response = await fetch('/api/service-offers/requests', {
     ]);
 
   const loadDashboard = useEffectEvent(reloadDashboard);
-
-  useEffect(() => {
-    if (!userId) return;
-    const poll = window.setInterval(() => {
-      void loadDashboard();
-    }, DASHBOARD_POLL_MS);
-    return () => window.clearInterval(poll);
-  }, [userId]);
 
   useEffect(() => {
     if (!userId) return;

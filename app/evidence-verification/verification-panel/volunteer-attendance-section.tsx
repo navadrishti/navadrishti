@@ -1,6 +1,11 @@
+'use client';
+
+import { useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EvidenceMetaGrid, EvidenceSectionCard } from '@/components/evidence-verification/portal-ui';
-import { formatStatusLabel } from '@/lib/format-date';
+import { formatStatusLabel, getCampaignLeadLifecycle } from '@/lib/format-date';
+import { partitionByWorkBucket } from '@/lib/work-item-bucket';
 import type { CampaignVolunteerAttendanceSummary } from '@/lib/campaign-volunteer-attendance';
 import type { VolunteerAttendanceData } from './types';
 
@@ -58,19 +63,44 @@ export function VolunteerAttendanceSection({
 }: {
   volunteerAttendance: VolunteerAttendanceData | null;
 }) {
+  const campaigns = volunteerAttendance?.campaigns || [];
+  const [bucket, setBucket] = useState<'active' | 'history'>('active');
+  const { active, history } = useMemo(
+    () =>
+      partitionByWorkBucket(campaigns, (campaign) =>
+        getCampaignLeadLifecycle({
+          startDate: campaign.start_date,
+          endDate: campaign.end_date,
+          campaignStatus: campaign.status,
+        }),
+      ),
+    [campaigns],
+  );
+  const visible = bucket === 'active' ? active : history;
+
   return (
     <EvidenceSectionCard
       title="CSR volunteer attendance"
-      description="Present = sealed photo mark in GRAM App. Unmarked days count as absent. NGO volunteers count as their team capacity from one selfie."
+      description="Assigned and started campaigns stay Active. Completed campaigns move to History. Present = sealed photo mark in GRAM App."
     >
-      {!volunteerAttendance?.campaigns?.length ? (
+      {!campaigns.length ? (
         <p className="text-sm text-slate-600">No campaign volunteer attendance yet.</p>
       ) : (
-        <div className="space-y-4">
-          {volunteerAttendance.campaigns.map((campaign) => (
-            <CampaignAttendanceCard key={campaign.campaign_id} campaign={campaign} />
-          ))}
-        </div>
+        <Tabs value={bucket} onValueChange={(value) => setBucket(value as 'active' | 'history')} className="w-full">
+          <TabsList className="grid w-full grid-cols-2 h-auto">
+            <TabsTrigger value="active">Active ({active.length})</TabsTrigger>
+            <TabsTrigger value="history">History ({history.length})</TabsTrigger>
+          </TabsList>
+          <TabsContent value={bucket} className="mt-3 space-y-4">
+            {visible.length === 0 ? (
+              <p className="text-sm text-slate-600">
+                {bucket === 'active' ? 'No ongoing campaign attendance.' : 'No completed campaign attendance yet.'}
+              </p>
+            ) : visible.map((campaign) => (
+              <CampaignAttendanceCard key={campaign.campaign_id} campaign={campaign} />
+            ))}
+          </TabsContent>
+        </Tabs>
       )}
     </EvidenceSectionCard>
   );

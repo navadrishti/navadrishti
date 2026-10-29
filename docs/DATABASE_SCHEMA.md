@@ -33,11 +33,11 @@ Removed from product: `users.verified`, `users.identity_verified`
 
 ### D) Marketplace
 - `service_request_projects` — NGO CSR packages for company takeover
-- `service_requests` — needs (`ngo_id`, `volunteers_needed`, `urgency_level`, `deadline` date; funding via `target_amount` / `estimated_budget`)
+- `service_requests` — needs (`ngo_id`, `volunteers_needed`, `urgency_level`, `deadline` date, required `contact_info` shown on public list/detail; funding via `target_amount` / `estimated_budget`)
 - `service_request_applications` — apply / invite / accept / assign (`applicant_user_id`)
 - `service_request_fulfillments` — amounts, receipts, completion (1:1 with application)
 - `service_request_contributions`, `service_request_shipments` (`application_id`), `shipment_tracking_events`
-- `service_offers` (`creator_id` = offer owner), `service_clients` (`client_id` = requester), `service_offer_reviews`, `offer_capabilities`
+- `service_offers` (`creator_id` = offer owner, `is_listed` = public catalog flag), `service_clients` (`client_id` = requester), `service_offer_reviews`, `offer_capabilities`
 
 ### E) CSR planning vs execution
 - **Planning:** `campaigns` — drafts; `lead_ngo_user_id` is a real column; `milestones` / `impact_metrics` jsonb are **draft-only**

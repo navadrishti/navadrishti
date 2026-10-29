@@ -80,8 +80,8 @@ export function CsrAssignmentsPanel({ data, actions, groups, tab, onTabChange }:
         <Tabs value={tab} onValueChange={(value) => onTabChange(value as CsrProjectsTab)} className="w-full">
           <TabsList className="grid w-full grid-cols-3 h-auto">
             <TabsTrigger value="invitations">Invitations ({data.campaignLeadInvitations.length + data.projectLeadInvitations.length})</TabsTrigger>
-            <TabsTrigger value="ongoing">Ongoing CSR ({ongoingLeadAssignments.length + ongoingVolunteerAssignments.length + ongoingProjects.length})</TabsTrigger>
-            <TabsTrigger value="completed">Completed CSR ({completedLeadAssignments.length + completedVolunteerAssignments.length + completedProjects.length})</TabsTrigger>
+            <TabsTrigger value="ongoing">Active ({ongoingLeadAssignments.length + ongoingVolunteerAssignments.length + ongoingProjects.length})</TabsTrigger>
+            <TabsTrigger value="completed">History ({completedLeadAssignments.length + completedVolunteerAssignments.length + completedProjects.length})</TabsTrigger>
           </TabsList>
 
           <TabsContent value="invitations" className="mt-4 space-y-3">
@@ -104,7 +104,7 @@ export function CsrAssignmentsPanel({ data, actions, groups, tab, onTabChange }:
           <TabsContent value="ongoing" className="mt-4 space-y-3">
             {ongoingLeadAssignments.length === 0 && ongoingVolunteerAssignments.length === 0 && ongoingProjects.length === 0 ? (
               <div className="p-8 text-center text-muted-foreground">
-                <p className="text-lg font-medium mb-2">No ongoing CSR projects</p>
+                <p className="text-lg font-medium mb-2">No active CSR assignments</p>
                 <p className="text-sm">Accepted campaign assignments and active projects will appear here.</p>
               </div>
             ) : (
@@ -133,7 +133,7 @@ export function CsrAssignmentsPanel({ data, actions, groups, tab, onTabChange }:
           <TabsContent value="completed" className="mt-4 space-y-3">
             {completedLeadAssignments.length === 0 && completedVolunteerAssignments.length === 0 && completedProjects.length === 0 ? (
               <div className="p-8 text-center text-muted-foreground">
-                <p className="text-lg font-medium mb-2">No completed CSR projects yet</p>
+                <p className="text-lg font-medium mb-2">No CSR history yet</p>
                 <p className="text-sm">Completed campaigns and projects will appear here for reference and reporting.</p>
               </div>
             ) : (

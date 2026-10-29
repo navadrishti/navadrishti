@@ -1,6 +1,6 @@
 import type { CSRTrackingAssignment } from '@/components/csr-tracking-project-details';
 import type { Tables } from '@/lib/database.types';
-import type { CampaignTracking } from '@/lib/campaign-tracking';
+import type { CampaignTracking } from '@/lib/campaign-tracking-types';
 
 export type { CompanyCaIdSuccessionOption } from '@/lib/company-ca';
 
@@ -44,6 +44,8 @@ export interface PublishedCsrCampaign {
   end_date: string | null;
   status?: string | null;
   impact_metrics?: Record<string, unknown> | null;
+  lead_ngo_user_id?: number | null;
+  selected_lead_ngo_name?: string | null;
   company_id?: number | null;
   created_at?: string | null;
   tracking?: CampaignTracking | null;
@@ -84,6 +86,8 @@ export interface CreatedCompanyCaCredentials {
   password: string;
   ca_id: string;
 }
+
+export type CsrProjectsSubTab = 'takeover' | 'campaigns';
 
 export type CapabilityOffersSubTab = 'your-capabilities' | 'requests';
 

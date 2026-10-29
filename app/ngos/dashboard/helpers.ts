@@ -26,7 +26,7 @@ export const getProjectBucket = (project: NgoCsrProject): 'invitation' | 'ongoin
     return 'completed';
   }
 
-  if (['invited', 'pending', 'pending_acceptance', 'awaiting_acceptance', 'assigned', 'offered'].includes(status)) {
+  if (['invited', 'pending', 'pending_acceptance', 'awaiting_acceptance', 'offered'].includes(status)) {
     return 'invitation';
   }
 

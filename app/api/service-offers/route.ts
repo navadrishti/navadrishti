@@ -2,19 +2,26 @@ import { after, NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 import { syncServiceOfferEmbedding } from '@/lib/embeddings'
 import { getTokenClaims } from '@/lib/auth'
-import { resolveEffectiveVerificationStatus } from '@/lib/server-auth'
+import { hydrateOfferRequestMeta } from '@/lib/offer-requests'
 import {
+  buildSelectedNeedSummary,
   buildUsageRecordFromClient,
   impactAreaMatchesFilter,
   isCapabilityOfferAvailableForListing,
+  overlayLiveAttendanceSummary,
+  type CapabilityOfferMyApplication,
   type CapabilityOfferUsageRecord,
 } from '@/lib/service-offers'
+import { assertCapabilityPublisher, capabilityPublishGateResponse } from '@/lib/service-offers/publish-assert'
+import { isMerchantRazorpayPayoutActive } from '@/lib/razorpay-route'
 import {
-  assertUserRazorpayPayoutActiveForCapabilities,
-  CAPABILITY_LISTING_REQUIRES_PAYOUT_MESSAGE,
-  isMerchantRazorpayPayoutActive,
-} from '@/lib/razorpay-route'
-import { buildOfferCapabilityRow, buildOfferRow, coerceOfferBody, toOfferResponse, validateOfferBody } from '@/lib/service-offer-payload'
+  buildOfferCapabilityRow,
+  buildOfferRow,
+  coerceOfferBody,
+  redactCapabilityMerchantForPublic,
+  toOfferResponse,
+  validateOfferBody,
+} from '@/lib/service-offer-payload'
 import { toUserFacingError } from '@/lib/user-facing-error'
 import { getErrorMessage, parseJsonObject } from '@/lib/utils'
 
@@ -36,6 +43,28 @@ type OfferListExtras = {
   pending_applications?: number
   isAssigned?: boolean
   usage_records?: CapabilityOfferUsageRecord[]
+  my_application?: CapabilityOfferMyApplication | null
+}
+
+type JoinedMerchant = {
+  id?: number
+  name?: string | null
+  user_type?: string | null
+  verification_status?: string | null
+  profile_data?: unknown
+}
+
+function firstJoined<T>(value: T | T[] | null | undefined): T | null {
+  if (Array.isArray(value)) return value[0] ?? null
+  return value ?? null
+}
+
+function isVerifiedPayoutMerchant(user: JoinedMerchant | null | undefined): boolean {
+  if (!user) return false
+  return (
+    String(user.verification_status || '').toLowerCase() === 'verified'
+    && isMerchantRazorpayPayoutActive(parseJsonObject(user.profile_data))
+  )
 }
 
 // GET - List service offers with type, category, location and search filters
@@ -102,7 +131,9 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
 
     if (view === 'all' || !view) {
-      query = query.or('admin_status.eq.approved,admin_status.is.null').eq('status', 'active')
+      // Keep this aligned with dashboard Listed: unused active offers stay in the
+      // catalog. Rejected / unlisted / in-use rows are dropped in JS below.
+      query = query.eq('status', 'active')
     } else if (view === 'my-responses') {
       query = query.in('id', responseOfferIds || [])
     }
@@ -121,17 +152,38 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch service offers' }, { status: 500 })
     }
 
-    let filteredOffers = (offers || []).map((offer) => toOfferResponse<typeof offer & OfferListExtras>(offer))
+    let filteredOffers = (offers || []).map((offer) => {
+      const shaped = toOfferResponse<typeof offer & OfferListExtras>(offer)
+      return { ...shaped, ngo: firstJoined(shaped.ngo) }
+    })
 
-    // Public marketplace: only list capabilities from merchants with Razorpay connected.
+    // Public marketplace: unused offers from verified merchants with Razorpay payout connected.
+    // Creator rows are loaded directly so a nested join cannot skip the payout gate.
     if (view === 'all' || !view) {
-      filteredOffers = filteredOffers.filter((offer) =>
-        isMerchantRazorpayPayoutActive(parseJsonObject(offer?.ngo?.profile_data))
-      )
+      const creatorIds = [...new Set(
+        filteredOffers
+          .map((offer) => Number(offer.creator_id || offer.ngo_id || 0))
+          .filter((id) => Number.isFinite(id) && id > 0)
+      )]
+      const merchantById = new Map<number, JoinedMerchant>()
+      if (creatorIds.length > 0) {
+        const { data: creators } = await supabase
+          .from('users')
+          .select('id, verification_status, profile_data')
+          .in('id', creatorIds)
+        for (const creator of creators || []) {
+          merchantById.set(Number(creator.id), creator)
+        }
+      }
+      filteredOffers = filteredOffers.filter((offer) => {
+        const nested = firstJoined(offer.ngo)
+        const creator = merchantById.get(Number(offer.creator_id || offer.ngo_id || 0))
+        return isVerifiedPayoutMerchant(creator || nested)
+      })
     }
 
     // Server-side: remove expired offers based on expires_at if present
-    const shouldIncludeExpired = includeExpired || view === 'my-offers'
+    const shouldIncludeExpired = includeExpired || view === 'my-offers' || view === 'my-responses'
     filteredOffers = filteredOffers.filter((offer) => {
       if (!offer) return false
       if (shouldIncludeExpired) return true
@@ -205,6 +257,7 @@ export async function GET(request: NextRequest) {
         .from('service_clients')
         .select(`
           id,
+          client_id,
           service_offer_id,
           status,
           message,
@@ -213,6 +266,7 @@ export async function GET(request: NextRequest) {
           fulfilled_quantity,
           assigned_at,
           accepted_at,
+          applied_at,
           completed_at,
           service_request_id,
           proposed_amount,
@@ -227,6 +281,14 @@ export async function GET(request: NextRequest) {
           .map((id: unknown) => String(id))
 
         const assignmentMap = new Map<string, Record<string, unknown>>()
+        const attendanceByAssignment = new Map<string, Array<{
+          assignment_id?: string
+          attendance_date?: string | null
+          attendance_status?: string | null
+          attendance_source?: string | null
+          amount_due?: unknown
+          payment_status?: string | null
+        }>>()
         if (assignmentIds.length > 0) {
           const { data: assignments } = await supabase
             .from('service_engagement_assignments')
@@ -236,8 +298,21 @@ export async function GET(request: NextRequest) {
           for (const assignment of assignments || []) {
             assignmentMap.set(String(assignment.id), assignment)
           }
+
+          const { data: attendanceEntries } = await supabase
+            .from('service_attendance_entries')
+            .select('assignment_id, attendance_date, attendance_status, attendance_source, amount_due, payment_status')
+            .in('assignment_id', assignmentIds)
+
+          for (const entry of attendanceEntries || []) {
+            const key = String(entry.assignment_id)
+            const list = attendanceByAssignment.get(key) || []
+            list.push(entry)
+            attendanceByAssignment.set(key, list)
+          }
         }
 
+        const myApplications = new Map<number, CapabilityOfferMyApplication>()
         const counts = clients.reduce((acc: Record<number, OfferUsageCounts>, client) => {
           if (!acc[client.service_offer_id]) {
             acc[client.service_offer_id] = { total: 0, accepted: 0, pending: 0, usage: [] }
@@ -247,14 +322,55 @@ export async function GET(request: NextRequest) {
           if (client.status === 'accepted') acc[client.service_offer_id].accepted += 1
           if (client.status === 'pending') acc[client.service_offer_id].pending += 1
 
+          const rawMeta = parseJsonObject(client.response_meta)
+          const assignmentId = rawMeta.assignment_id != null ? String(rawMeta.assignment_id) : ''
+          const assignment = assignmentId ? assignmentMap.get(assignmentId) : null
+          if (assignment) {
+            assignment.meta = overlayLiveAttendanceSummary(
+              parseJsonObject(assignment.meta),
+              attendanceByAssignment.get(assignmentId) || []
+            )
+          }
+          const hydratedMeta = overlayLiveAttendanceSummary(
+            hydrateOfferRequestMeta(rawMeta, assignment),
+            assignmentId ? attendanceByAssignment.get(assignmentId) || [] : []
+          )
           const usageRecord = buildUsageRecordFromClient(
-            client,
-            parseJsonObject(client.response_meta).assignment_id
-              ? assignmentMap.get(String(parseJsonObject(client.response_meta).assignment_id))
-              : null
+            { ...client, response_meta: hydratedMeta },
+            assignment
           )
           if (usageRecord) {
             acc[client.service_offer_id].usage.push(usageRecord)
+          }
+
+          if (authenticatedUserId != null && Number(client.client_id) === authenticatedUserId) {
+            const isAssigned = typeof hydratedMeta.isAssigned === 'boolean'
+              ? Boolean(hydratedMeta.isAssigned)
+              : client.status === 'accepted'
+            myApplications.set(client.service_offer_id, {
+              id: Number(client.id),
+              status: String(client.status || 'pending'),
+              isAssigned,
+              message: client.message != null ? String(client.message) : null,
+              assigned_at: String(
+                hydratedMeta.accepted_at
+                ?? hydratedMeta.assigned_at
+                ?? client.assigned_at
+                ?? client.accepted_at
+                ?? ''
+              ) || null,
+              applied_at: client.applied_at != null ? String(client.applied_at) : null,
+              completed_at: client.completed_at != null
+                ? String(client.completed_at)
+                : assignment?.completed_at != null
+                  ? String(assignment.completed_at)
+                  : null,
+              service_request_id: Number(client.service_request_id ?? hydratedMeta.service_request_id ?? 0) || null,
+              assignment_id: hydratedMeta.assignment_id != null ? String(hydratedMeta.assignment_id) : null,
+              response_meta: hydratedMeta,
+              selected_needs: buildSelectedNeedSummary(hydratedMeta),
+              usage: usageRecord,
+            })
           }
 
           return acc
@@ -263,22 +379,44 @@ export async function GET(request: NextRequest) {
         filteredOffers.forEach((offer) => {
           const offerCounts = counts[offer.id] || { total: 0, accepted: 0, pending: 0, usage: [] }
           const isOwner = authenticatedUserId !== null && offer.creator_id === authenticatedUserId
+          const myApplication = myApplications.get(offer.id) || null
           offer.applications_count = offerCounts.total
           offer.pending_applications = offerCounts.pending
           offer.isAssigned = offerCounts.accepted > 0 || offerCounts.usage.length > 0
-          offer.usage_records = isOwner
-            ? offerCounts.usage
-            : offerCounts.usage.map(({ client_email: _email, message: _message, ...record }) => record)
+          offer.my_application = view === 'my-responses' ? myApplication : null
+          if (view === 'my-responses') {
+            const ownUsage = myApplication?.usage
+            if (ownUsage) {
+              const { client_email: _email, message: _message, ...record } = ownUsage
+              offer.usage_records = [record]
+            } else {
+              offer.usage_records = []
+            }
+            offer.isAssigned = Boolean(myApplication?.isAssigned || ownUsage)
+          } else {
+            offer.usage_records = isOwner
+              ? offerCounts.usage
+              : offerCounts.usage.map(({ client_email: _email, message: _message, ...record }) => record)
+          }
         })
       }
     }
 
     if (view === 'all' || !view) {
-      filteredOffers = filteredOffers.filter((offer) => isCapabilityOfferAvailableForListing(offer))
+      filteredOffers = filteredOffers.filter((offer) =>
+        isCapabilityOfferAvailableForListing(offer)
+        && String(offer.admin_status || '').toLowerCase() !== 'rejected'
+      )
     }
 
+    filteredOffers = filteredOffers.map((offer) => ({
+      ...offer,
+      ngo: redactCapabilityMerchantForPublic(offer.ngo),
+    }))
+
     return NextResponse.json({ success: true, data: filteredOffers })
-  } catch {
+  } catch (error) {
+    console.error('Failed to fetch service offers', error)
     return NextResponse.json({ error: 'Failed to fetch service offers' }, { status: 500 })
   }
 }
@@ -304,29 +442,9 @@ export async function POST(request: NextRequest) {
     }
 
     const effectiveUserType = currentUser.user_type || user_type
-    const effectiveVerificationStatus = await resolveEffectiveVerificationStatus(userId, effectiveUserType)
-
-    if (!['ngo', 'company', 'individual'].includes(effectiveUserType)) {
-      return NextResponse.json({ error: 'Only verified NGO, company, or individual accounts can create capability offers.' }, { status: 403 })
-    }
-
-    if (effectiveVerificationStatus !== 'verified') {
-      return NextResponse.json({
-        error: 'You need to complete verification before creating capability offers.',
-        requiresVerification: true
-      }, { status: 403 })
-    }
-
-    try {
-      await assertUserRazorpayPayoutActiveForCapabilities(userId)
-    } catch (payoutError) {
-      return NextResponse.json(
-        {
-          error: payoutError instanceof Error ? payoutError.message : CAPABILITY_LISTING_REQUIRES_PAYOUT_MESSAGE,
-          requiresPayoutConnection: true,
-        },
-        { status: 403 }
-      )
+    const publishGate = await assertCapabilityPublisher(userId, effectiveUserType)
+    if (!publishGate.ok) {
+      return NextResponse.json(capabilityPublishGateResponse(publishGate), { status: publishGate.status })
     }
 
     let body: ReturnType<typeof coerceOfferBody>
@@ -346,8 +464,8 @@ export async function POST(request: NextRequest) {
     const offerData = {
       ...buildOfferRow(body),
       creator_id: userId,
-      status: 'inactive',
-      admin_status: 'pending',
+      status: 'active',
+      admin_status: 'approved',
       is_listed: true,
     }
 
@@ -394,7 +512,7 @@ export async function POST(request: NextRequest) {
 
     const responseData: { id: number; message: string; warning?: string; capability_id?: number } = {
       id: offer.id,
-      message: 'Capability offer created successfully and submitted for approval'
+      message: 'Capability offer created successfully'
     }
     
     if (capabilityWarning) {

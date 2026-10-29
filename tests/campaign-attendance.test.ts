@@ -3,11 +3,16 @@ import {
   attendanceSummaryFromEntries,
   CAMPAIGN_VOLUNTEER_ENGAGEMENT_KIND,
   filterCampaignVolunteerAssignments,
+  filterCsrCapabilityRentalAssignments,
   getElapsedCampaignDays,
   getInclusiveDayCount,
   getVolunteerApplicationForUser,
   isCampaignVolunteerAssignment,
+  isCsrCapabilityRentalAssignment,
   isVolunteeringBanned,
+  listElapsedCampaignDates,
+  listInclusiveCampaignDates,
+  resolveCampaignLeadNgoProgress,
 } from '@/lib/campaign-volunteer-attendance'
 import { formatLeadNgoInviteStatusLabel, isRemovableLeadInviteStatus } from '@/app/companies/dashboard/format'
 
@@ -23,10 +28,25 @@ describe('campaign volunteer assignments', () => {
     expect(isCampaignVolunteerAssignment(assignment)).toBe(expected)
   })
 
+  it.each([
+    [{ meta: { flow: 'csr_capability_rental' } }, true],
+    [{ meta: JSON.stringify({ flow: 'csr_capability_rental' }) }, true],
+    [{ target_type: 'campaign', meta: { flow: 'other' } }, false],
+    [null, false],
+  ])('%j is CSR capability rental: %s', (assignment, expected) => {
+    expect(isCsrCapabilityRentalAssignment(assignment)).toBe(expected)
+  })
+
   it('filters rows', () => {
     const rows = [{ target_type: 'campaign', id: 1 }, { target_type: 'service_request', id: 2 }]
     expect(filterCampaignVolunteerAssignments(rows).map((row) => row.id)).toEqual([1])
     expect(filterCampaignVolunteerAssignments(null)).toEqual([])
+    expect(
+      filterCsrCapabilityRentalAssignments([
+        { id: 1, meta: { flow: 'csr_capability_rental' } },
+        { id: 2, meta: { flow: 'other' } },
+      ]).map((row) => row.id)
+    ).toEqual([1])
   })
 
   it('summarises live attendance entries for a volunteer', () => {
@@ -67,6 +87,18 @@ describe('campaign day counts', () => {
     expect(getElapsedCampaignDays('2026-01-01', '2026-01-03', reference)).toBe(3)
     expect(getElapsedCampaignDays('2026-02-01', '2026-02-10', reference)).toBe(0)
     expect(getElapsedCampaignDays('2026-01-01', null, reference)).toBe(0)
+  })
+
+  it('lists every inclusive campaign day from start through end', () => {
+    const dates = listInclusiveCampaignDates('2026-07-01', '2026-10-01')
+    expect(dates).toHaveLength(93)
+    expect(dates[0]).toBe('2026-07-01')
+    expect(dates.at(-1)).toBe('2026-10-01')
+    expect(listElapsedCampaignDates('2026-07-01', '2026-10-01', new Date(2026, 6, 3, 12))).toEqual([
+      '2026-07-01',
+      '2026-07-02',
+      '2026-07-03',
+    ])
   })
 })
 
@@ -109,5 +141,38 @@ describe('lead invite status formatting', () => {
     expect(formatLeadNgoInviteStatusLabel('awaiting_acceptance')).toBe('Pending')
     expect(formatLeadNgoInviteStatusLabel('assigned')).toBe('Pending')
     expect(formatLeadNgoInviteStatusLabel('accepted')).not.toBe('Pending')
+  })
+})
+
+describe('resolveCampaignLeadNgoProgress', () => {
+  it('asks to invite when nobody has been invited', () => {
+    expect(resolveCampaignLeadNgoProgress({ impact_metrics: {} })).toMatchObject({
+      stage: 'invite',
+      leadNgoLabel: 'Invite an NGO',
+    })
+  })
+
+  it('is pending while invites are outstanding', () => {
+    expect(
+      resolveCampaignLeadNgoProgress({
+        impact_metrics: { lead_ngo_invites: [{ ngo_id: 9, name: 'Hope Foundation NGO', status: 'invited' }] },
+      })
+    ).toMatchObject({
+      stage: 'pending',
+      leadNgoLabel: 'Pending',
+    })
+  })
+
+  it('shows the selected NGO name after acceptance', () => {
+    expect(
+      resolveCampaignLeadNgoProgress({
+        lead_ngo_user_id: 9,
+        selected_lead_ngo_name: 'Hope Foundation NGO',
+        impact_metrics: { lead_ngo_accepted: true },
+      })
+    ).toMatchObject({
+      stage: 'selected',
+      leadNgoLabel: 'Hope Foundation NGO',
+    })
   })
 })

@@ -87,7 +87,7 @@ export default function EditProjectPage({ params }: { params: Promise<{ id: stri
     }
 
     void load()
-  }, [id, router, toast, user])
+  }, [id, router, toast, user?.id])
 
   const handleProjectSave = async () => {
     if (!project) return

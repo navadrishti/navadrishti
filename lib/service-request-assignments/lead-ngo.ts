@@ -6,8 +6,10 @@ import { parseProjectMeta, withProjectMeta } from '@/lib/service-request-allocat
 import {
   EXPIRED_STATUS,
   LEAD_NGO_INVITE_CONTRIBUTION_TYPE,
+  OWNER_NGO_CANNOT_BE_LEAD_MESSAGE,
   PENDING_LEAD_INVITE_STATUSES,
   isFullyVerifiedCompany,
+  isSamePositiveId,
   parseProjectLeadInviteId,
   type AssignmentsPutContext,
 } from '@/lib/service-request-assignments/shared'
@@ -45,10 +47,13 @@ export async function respondToLeadNgoInvitation(ctx: AssignmentsPutContext) {
     const { data: inviteProject } = inviteProjectId
       ? await supabase
           .from('service_request_projects')
-          .select('valid_until, timeline')
+          .select('ngo_id, valid_until, timeline')
           .eq('id', inviteProjectId)
           .maybeSingle()
       : { data: null }
+    if (isSamePositiveId(inviteProject?.ngo_id, userId)) {
+      return NextResponse.json({ error: OWNER_NGO_CANNOT_BE_LEAD_MESSAGE }, { status: 400 })
+    }
     const inviteCoverage = await assertNgoCsr1CoversProject(userId, inviteProject)
     if (!inviteCoverage.ok) {
       return NextResponse.json({ error: inviteCoverage.error }, { status: 403 })
@@ -161,7 +166,7 @@ async function respondToMetaLeadInvitation(
     return NextResponse.json({ error: 'Invitation not found' }, { status: 404 })
   }
 
-  const projectSelect = 'id, description, lead_ngo_user_id, valid_until, timeline'
+  const projectSelect = 'id, description, lead_ngo_user_id, valid_until, timeline, ngo_id'
   const { data: directProject, error: directProjectError } = parsed
     ? await supabase
         .from('service_request_projects')
@@ -206,9 +211,8 @@ async function respondToMetaLeadInvitation(
   }
 
   if (decision === 'accepted') {
-    const coverage = await assertNgoCsr1CoversProject(userId, match)
-    if (!coverage.ok) {
-      return NextResponse.json({ error: coverage.error }, { status: 403 })
+    if (isSamePositiveId(match.ngo_id, userId)) {
+      return NextResponse.json({ error: OWNER_NGO_CANNOT_BE_LEAD_MESSAGE }, { status: 400 })
     }
     if (invites.some((item) => item.id !== inviteId && String(item.status || '').toLowerCase() === 'accepted' && Number(item.inviting_company_id) === Number(invite.inviting_company_id))) {
       invite.status = EXPIRED_STATUS
@@ -288,12 +292,11 @@ export async function selectLeadNgo(ctx: AssignmentsPutContext) {
 
   const { data: selectProjectRow } = await supabase
     .from('service_request_projects')
-    .select('valid_until, timeline')
+    .select('valid_until, timeline, ngo_id')
     .eq('id', projectId)
     .maybeSingle()
-  const selectCoverage = await assertNgoCsr1CoversProject(ngoId, selectProjectRow)
-  if (!selectCoverage.ok) {
-    return NextResponse.json({ error: selectCoverage.error }, { status: 403 })
+  if (isSamePositiveId(selectProjectRow?.ngo_id, ngoId)) {
+    return NextResponse.json({ error: OWNER_NGO_CANNOT_BE_LEAD_MESSAGE }, { status: 400 })
   }
 
   const { data: acceptedInvite, error: acceptedInviteError } = await supabase

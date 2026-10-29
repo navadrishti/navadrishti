@@ -1,10 +1,10 @@
 import { readApiError } from '@/lib/user-facing-error'
-import { getClientSessionToken } from '@/lib/client-session';
+import { clientAuthFetchInit } from '@/lib/client-session';
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
-import { getNeedRemainingQuantity, getServiceRequestTarget } from '@/lib/service-request-allocation'
+import { getNeedRemainingQuantity, getNgoNeedFulfillmentMode, getServiceRequestTarget } from '@/lib/service-request-allocation'
 import { normalizeVolunteer } from './helpers'
 import type { ServiceRequest, Volunteer } from './types'
 
@@ -40,20 +40,14 @@ export function useApplicants(requestId: string) {
       router.push('/service-requests')
       return
     }
-  }, [user, router, toast])
+  }, [user?.id, user?.user_type, router, toast])
 
   useEffect(() => {
     if (!user || user.user_type !== 'ngo' || !requestId) return
 
     const fetchData = async () => {
       try {
-        const token = getClientSessionToken()
-
-        const requestResponse = await fetch(`/api/service-requests/${requestId}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        })
+        const requestResponse = await fetch(`/api/service-requests/${requestId}`, clientAuthFetchInit())
         const requestData = await requestResponse.json()
 
         if (requestData.success) {
@@ -68,11 +62,7 @@ export function useApplicants(requestId: string) {
           return
         }
 
-        const volunteersResponse = await fetch(`/api/service-requests/${requestId}/volunteers`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        })
+        const volunteersResponse = await fetch(`/api/service-requests/${requestId}/volunteers`, clientAuthFetchInit())
         const volunteersData = await volunteersResponse.json()
 
         if (volunteersData.success) {
@@ -94,19 +84,21 @@ export function useApplicants(requestId: string) {
     }
 
     fetchData()
-  }, [user, requestId, router, toast])
+  }, [user?.id, user?.user_type, requestId, router, toast])
 
   const handleVolunteerStatusUpdate = async (volunteer: Volunteer, newStatus: string) => {
     setUpdating(volunteer.id)
     try {
-      const token = getClientSessionToken()
       const payload: Record<string, unknown> = { status: newStatus }
 
       // Accepting allocates the applicant's offer, capped at what the need still requires.
       if (newStatus === 'accepted') {
         const target = getServiceRequestTarget(request)
         const remaining = getNeedRemainingQuantity(request)
-        if (target.isFinancial) {
+        const mode = getNgoNeedFulfillmentMode(request)
+        if (mode === 'skill_service' || mode === 'infrastructure') {
+          payload.allocationQuantity = 1
+        } else if (target.isFinancial) {
           const offer = Number(volunteer.fulfillment_amount ?? volunteer.assigned_amount ?? 0)
           payload.allocationAmount = Math.min(offer > 0 ? offer : remaining, remaining)
         } else {
@@ -115,25 +107,21 @@ export function useApplicants(requestId: string) {
         }
       }
 
-      const response = await fetch(`/api/service-requests/${requestId}/volunteers/${volunteer.id}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      })
+      const response = await fetch(
+        `/api/service-requests/${requestId}/volunteers/${volunteer.id}`,
+        clientAuthFetchInit({
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+      )
 
-      const data = await response.json()
+      const data = await response.json().catch(() => ({}))
 
-      if (data.success) {
+      if (response.ok && data.success) {
         const [requestResponse, volunteersResponse] = await Promise.all([
-          fetch(`/api/service-requests/${requestId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch(`/api/service-requests/${requestId}/volunteers`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
+          fetch(`/api/service-requests/${requestId}`, clientAuthFetchInit()),
+          fetch(`/api/service-requests/${requestId}/volunteers`, clientAuthFetchInit()),
         ])
 
         const requestData = await requestResponse.json()

@@ -142,7 +142,7 @@ export function CapabilityOffersTab({
                 <p className="text-sm">Rejected, completed, or cancelled requests will appear here.</p>
               </div>
             ) : historyOfferRequests.map((request) => (
-              <OfferRequestSummaryCard key={request.id} request={request} />
+              <OfferRequestSummaryCard key={request.id} request={request} showOverview />
             ))}
           </TabsContent>
         </Tabs>
