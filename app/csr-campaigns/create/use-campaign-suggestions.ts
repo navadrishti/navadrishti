@@ -134,7 +134,7 @@ export function useCampaignSuggestions({
         if (!response.ok || !payload?.success) {
           throw new Error(readApiError(payload, 'Failed to load NGO projects'))
         }
-        return Array.isArray(payload.data) ? payload.data : []
+        return Array.isArray(payload.data) ? (payload.data as unknown[]) : []
       })
       .then((rows) => {
         if (!cancelled) setProjectSuggestions(rows.map(mapProjectRow).filter((row): row is ProjectSuggestion => Boolean(row)))
@@ -161,7 +161,7 @@ export function useCampaignSuggestions({
         if (!response.ok || !payload?.success) {
           throw new Error(readApiError(payload, 'Failed to load capability offers'))
         }
-        return Array.isArray(payload.data) ? payload.data : []
+        return Array.isArray(payload.data) ? (payload.data as unknown[]) : []
       })
       .then((rows) => {
         if (!cancelled) setServiceSuggestions(rows.map(mapOfferRow).filter((row): row is ServiceSuggestion => Boolean(row)))
@@ -199,7 +199,7 @@ export function useCampaignSuggestions({
         if (!response.ok || !payload?.success) {
           throw new Error(readApiError(payload, 'Failed to load NGOs'))
         }
-        return Array.isArray(payload.data) ? payload.data : []
+        return Array.isArray(payload.data) ? (payload.data as unknown[]) : []
       })
       .then((rows) => {
         if (!cancelled) setNgoDirectory(rows.map(mapNgoRow).filter((row): row is NgoDirectoryItem => Boolean(row)))

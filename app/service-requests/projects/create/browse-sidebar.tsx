@@ -104,7 +104,7 @@ export function ProjectCreateBrowseSidebar() {
     void fetch('/api/service-request-projects?includeEmpty=true', clientAuthFetchInit())
       .then(async (response) => {
         const payload = await response.json().catch(() => null)
-        return Array.isArray(payload?.data) ? payload.data : []
+        return Array.isArray(payload?.data) ? (payload.data as unknown[]) : []
       })
       .then((rows) => {
         if (!cancelled) setProjects(rows.map(mapProject).filter((row): row is ListedProject => Boolean(row)))
@@ -125,7 +125,7 @@ export function ProjectCreateBrowseSidebar() {
     void fetch('/api/service-offers?view=all', clientAuthFetchInit())
       .then(async (response) => {
         const payload = await response.json().catch(() => null)
-        return Array.isArray(payload?.data) ? payload.data : []
+        return Array.isArray(payload?.data) ? (payload.data as unknown[]) : []
       })
       .then((rows) => {
         if (!cancelled) setOffers(rows.map(mapOffer).filter((row): row is ListedOffer => Boolean(row)))

@@ -368,7 +368,7 @@ describe('apply-project', () => {
   })
 
   it('returns the existing application instead of writing a second one', async () => {
-    setup(withProjectMeta('', { pending_company_applications: [{ company_id: 10, status: 'pending', company_name: 'Acme' }] }))
+    setup(withProjectMeta('', { pending_company_applications: [{ company_id: 10, status: 'pending', company_name: 'Acme', applied_at: '2026-01-02' }] }))
     const response = await apply()
     expect(response.status).toBe(409)
     expect(await response.json()).toMatchObject({
