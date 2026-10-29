@@ -73,7 +73,12 @@ export function ProjectOpportunitiesSection({
         <p className="text-sm text-slate-600">No project opportunities currently available.</p>
       ) : (
         <div className="space-y-3">
-          {opportunities.map((opportunity) => (
+          {opportunities.map((opportunity) => {
+            const status = String(opportunity.company_application_status || '').toLowerCase()
+            const waitingOnNgo = status === 'pending' || status === 'accepted'
+            const showIneligibleHint =
+              !waitingOnNgo && (!allVerified || opportunity.company_application_eligible === false)
+            return (
             <div key={opportunity.project_id} className="rounded-md border bg-white p-3 space-y-2">
               <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                 <div>
@@ -128,15 +133,16 @@ export function ProjectOpportunitiesSection({
                 </Button>
               </div>
 
-              {(!allVerified || opportunity.company_application_eligible === false) && (
+              {showIneligibleHint ? (
                 <p className="text-xs text-red-600">
                   {!allVerified
                     ? 'Complete email, phone, and document verification before applying for takeover.'
                     : opportunity.company_application_reason || 'Not eligible for takeover.'}
                 </p>
-              )}
+              ) : null}
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
