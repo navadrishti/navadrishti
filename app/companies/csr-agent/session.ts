@@ -28,6 +28,11 @@ export interface ProjectSuggestion {
   timeline?: string
   expected_beneficiaries?: number | null
   valid_until?: string | null
+  category?: string | null
+  ngo_name?: string | null
+  city?: string
+  state?: string
+  budget_inr?: number | null
 }
 
 export interface NgoDirectoryItem {
@@ -37,6 +42,9 @@ export interface NgoDirectoryItem {
   score: number
   verification_status?: string | null
   verified?: boolean
+  city?: string
+  state?: string
+  focus_areas?: string
 }
 
 export type LeadNgoInvite = {

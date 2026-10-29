@@ -117,10 +117,20 @@ describe('reviewProjectApplication', () => {
     expect(fake.queries[0].filters).toContainEqual(['eq', 'ngo_id', NGO_ID])
   })
 
-  it('requires CSR-1 coverage before accepting', async () => {
-    useDb({ 'service_request_projects.select': [{ data: projectRow() }] })
+  it('does not require owner CSR-1 coverage before accepting a company', async () => {
+    const row = projectRow()
+    const fake = useDb({
+      'service_request_projects.select': [{ data: row }],
+      'service_requests.select': [{ data: [] }],
+      'users.select': [{ data: { id: NGO_ID, ngo_volunteer_capacity: 10 } }],
+    })
     mocks.assertCoverage.mockResolvedValue({ ok: false, error: 'CSR-1 expires before project end' })
-    await expect(review(accept)).resolves.toMatchObject({ status: 403, json: { error: 'CSR-1 expires before project end' } })
+    await expect(review(accept)).resolves.toEqual({
+      status: 200,
+      json: { success: true, data: { projectId: 'p1', companyId: COMPANY_ID, decision: 'accepted', affectedNeeds: 0 } },
+    })
+    expect(mocks.assertCoverage).not.toHaveBeenCalled()
+    expect(fake.writes('service_request_projects')).toHaveLength(1)
   })
 
   it('refuses a second company once one is accepted on the project', async () => {

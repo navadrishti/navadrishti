@@ -62,14 +62,14 @@ export async function POST(request: NextRequest) {
 
     if (!action || action === 'create') {
       if (userType !== 'ngo') {
-        return NextResponse.json({
+        return NextResponse.json({ 
           error: 'Only verified NGOs can create service requests'
         }, { status: 403 });
       }
-
+      
       const effectiveVerificationStatus = await resolveEffectiveVerificationStatus(userId, userType);
       if (effectiveVerificationStatus !== 'verified') {
-        return NextResponse.json({
+        return NextResponse.json({ 
           error: 'You need to complete verification before creating service requests.',
           requiresVerification: true
         }, { status: 403 });

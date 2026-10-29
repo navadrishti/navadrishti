@@ -67,7 +67,7 @@ export default function ServiceOfferDetailPage() {
   return (
     <div className="min-h-screen overflow-x-hidden bg-background">
       <Header />
-
+      
       <div className="mx-auto max-w-7xl px-4 py-8">
         <div className="mb-6">
           <Button variant="ghost" onClick={() => router.back()} className="w-full justify-start px-0 text-udaan-blue hover:text-gram-ink hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0 sm:w-auto">
@@ -96,7 +96,7 @@ export default function ServiceOfferDetailPage() {
                   </TabsContent>
 
                   {canShowRespondTab ? (
-                    <TabsContent value="respond" className="mt-4">
+                  <TabsContent value="respond" className="mt-4">
                       <ApplyOfferCard
                         isAuthenticated={isAuthenticated}
                         canApplyToOffer={canApplyToOffer}
@@ -126,7 +126,7 @@ export default function ServiceOfferDetailPage() {
                           />
                         }
                       />
-                    </TabsContent>
+                  </TabsContent>
                   ) : null}
                 </Tabs>
               </CardContent>

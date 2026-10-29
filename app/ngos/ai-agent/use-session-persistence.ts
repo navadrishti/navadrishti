@@ -124,15 +124,6 @@ export function useSessionPersistence({ intake, offers, sync, mounted, userId, t
     saveActiveSession()
   }, [mounted, userId, activeSessionId, messages, projectData, needsData, needCount, projectStep, activeNeedIndex, activeNeedQuestionIndex, conversationStage, generatedDraft, selectedOfferIdsByNeed, publishedProjectId])
 
-  const persistSessionList = useEffectEvent(() => {
-    if (!mounted || !userId || sessions.length === 0) return
-    persistSessions(sessions, activeSessionId)
-  })
-
-  useEffect(() => {
-    persistSessionList()
-  }, [mounted, userId, sessions])
-
   const createNewSession = () => {
     const next = buildEmptySession()
     const nextSessions = [next, ...sessions.filter(hasMeaningfulNGOSessionContent)]

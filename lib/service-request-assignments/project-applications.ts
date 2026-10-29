@@ -5,7 +5,6 @@ import {
   assertCsr1CoversProject,
   CSR_ELIGIBILITY_REQUIRED_MESSAGE,
 } from '@/lib/auth'
-import { assertNgoCsr1CoversProject } from '@/lib/server-auth'
 import {
   enrichProjectRecord,
   parseProjectMeta,
@@ -86,11 +85,6 @@ export async function submitProjectApplication(request: NextRequest) {
     const needIds = activeNeeds.map((item) => item.id)
 
     if (action === 'apply-project') {
-      const ownerCoverage = await assertNgoCsr1CoversProject(ownerNgoId, projectRow)
-      if (!ownerCoverage.ok) {
-        return NextResponse.json({ error: ownerCoverage.error }, { status: 403 })
-      }
-
       if (projectRow?.csr_project_available_for_csr === false) {
         return NextResponse.json({
           error: 'This project is locked for CSR and cannot accept new company applications.'
@@ -210,7 +204,8 @@ export async function submitProjectApplication(request: NextRequest) {
           }))
 
         if (rowsToInsert.length > 0) {
-          await supabase.from('service_request_contributions').insert(rowsToInsert)
+          const { error: insertError } = await supabase.from('service_request_contributions').insert(rowsToInsert)
+          if (insertError) throw insertError
         }
       }
 

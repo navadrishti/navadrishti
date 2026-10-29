@@ -2,7 +2,7 @@ import { readApiError } from '@/lib/user-facing-error'
 import { useEffect, useEffectEvent, useState } from "react"
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/auth-context'
-import { isFullyVerifiedAccount } from '@/lib/auth'
+import { isCaVerifiedAccount } from '@/lib/auth'
 import { isCampaignStarted, isVolunteerRegistrationPastDeadline } from "@/lib/format-date"
 import { getVolunteerButtonState, sumVolunteerApplicationCount } from "@/lib/campaign-schema"
 import { isCampaignLeadNgo, parseLeadNgoInvites } from '@/lib/campaign-volunteer-attendance'
@@ -20,7 +20,7 @@ export function useCampaignDetail(campaignId: string) {
   const [applying, setApplying] = useState(false)
 
   const currentUserId = Number(user?.id || 0)
-  const allVerified = isFullyVerifiedAccount(user)
+  const allVerified = isCaVerifiedAccount(user?.verification_status)
 
   const loadCampaign = async () => {
     setLoading(true)

@@ -13,6 +13,7 @@ type ApplicationSectionProps = {
   eligibleForApply: boolean;
   ineligibleReason?: string;
   applyLoading: boolean;
+  applyError?: string | null;
   onApply: () => void;
 };
 

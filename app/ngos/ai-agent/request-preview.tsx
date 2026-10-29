@@ -1,10 +1,11 @@
 "use client"
 
 import Link from "next/link"
-import { CheckCircle2, Loader2 } from "lucide-react"
+import { CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { VerifiedAccountName } from "@/components/verification-badge"
+import { MatchHeading, MATCH_CARD_CLASS, MATCH_PANEL_CLASS, MATCH_SCORE_CLASS } from "@/components/agent-shell"
 import { AGENT_NAMES } from "@/lib/ai-agent-sessions"
 import {
   type NeedIntakeData,
@@ -54,16 +55,15 @@ function GeneratedNeedCard({
       <p className="text-sm font-semibold text-slate-900 break-words">Need {index + 1}: {need.title || 'Untitled need'}</p>
       {summary && <p className="text-xs text-slate-600 break-words">{summary}</p>}
 
-      <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">Related offers</p>
-          <span className="text-xs text-slate-500">
-            {selectedIds.length} selected
-          </span>
-        </div>
-        <p className="mt-1 text-xs text-slate-500">Applications are sent to the selected offers when you publish.</p>
+      <div className={`mt-3 ${MATCH_PANEL_CLASS}`}>
+        <MatchHeading
+          title={`${AGENT_NAMES.atlas} matches`}
+          description="Applications are sent to the selected offers when you publish."
+          loading={offersLoading}
+          extra={<span className="text-xs font-medium text-slate-500">{selectedIds.length} selected</span>}
+        />
 
-        <div className="mt-2 flex items-center gap-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <Button
             type="button"
             size="sm"
@@ -87,23 +87,22 @@ function GeneratedNeedCard({
 
         <div className="mt-2 space-y-2">
           {offersLoading ? (
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Loading related offers...
-            </div>
+            <p className="text-xs text-slate-500">Finding matching offers...</p>
           ) : relatedOffers.length === 0 ? (
-            <p className="text-xs text-slate-500">No active offers found for this need type yet.</p>
+            <p className="text-xs text-slate-500">No matching offers yet for this need type.</p>
           ) : (
             relatedOffers.map((entry) => {
               const selected = selectedIds.includes(entry.offer.id)
               return (
-                <div key={`need-${index}-offer-${entry.offer.id}`} className="rounded-md border border-slate-200 bg-white px-3 py-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <Link href={`/service-offers/${entry.offer.id}`} className="text-xs font-semibold text-slate-900 hover:underline">
+                <div key={`need-${index}-offer-${entry.offer.id}`} className={MATCH_CARD_CLASS}>
+                  <div className="flex items-start gap-2">
+                    <Link href={`/service-offers/${entry.offer.id}`} className="min-w-0 flex-1 text-xs font-semibold leading-5 text-slate-900 [overflow-wrap:anywhere] hover:underline">
                       {entry.offer.title || `Offer #${entry.offer.id}`}
                     </Link>
-                    {selected && (
-                      <span className="whitespace-nowrap rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">Selected</span>
+                    {selected ? (
+                      <span className="shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold leading-4 text-blue-700">Selected</span>
+                    ) : (
+                      <span className={MATCH_SCORE_CLASS}>Score {entry.score}</span>
                     )}
                   </div>
                   <p className="mt-1 flex flex-wrap items-center gap-1 text-[11px] text-slate-600">
@@ -114,19 +113,17 @@ function GeneratedNeedCard({
                       size="xs"
                       nameClassName="font-medium text-slate-700"
                     />
-                    <span>• Score {entry.score}</span>
+                    {selected ? <span>• Score {entry.score}</span> : null}
                   </p>
-                  <div className="mt-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className={selected ? REMOVE_BUTTON_CLASS : undefined}
-                      onClick={() => onToggleOffer(index, entry.offer.id)}
-                    >
-                      {selected ? 'Remove' : 'Apply'}
-                    </Button>
-                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className={selected ? `mt-3 w-full ${REMOVE_BUTTON_CLASS}` : 'mt-3 w-full'}
+                    onClick={() => onToggleOffer(index, entry.offer.id)}
+                  >
+                    {selected ? 'Remove' : 'Apply'}
+                  </Button>
                 </div>
               )
             })
@@ -208,7 +205,7 @@ export function RequestPreview({
   ).filter((field) => String(field.value ?? '').trim())
 
   return (
-    <Card className="flex h-auto min-h-0 flex-col overflow-hidden border-slate-200/70 bg-white/90 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur max-md:[overflow-anchor:none] md:h-full">
+    <Card className="flex h-full min-h-0 w-full flex-col overflow-hidden border-slate-200/70 bg-white/90 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur max-md:[overflow-anchor:none]">
       <CardHeader className="border-b border-slate-100">
         <CardTitle className="text-slate-950">Request Preview</CardTitle>
         <CardDescription className="text-slate-600">

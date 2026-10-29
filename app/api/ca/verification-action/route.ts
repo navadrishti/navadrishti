@@ -50,7 +50,12 @@ export async function POST(request: NextRequest) {
     if (handled) return handled;
     console.error('Verification action error:', error);
     return NextResponse.json(
-      { error: getErrorMessage(error) || 'Failed to process verification' },
+      {
+        error:
+          error instanceof Error
+            ? getErrorMessage(error) || 'Failed to process verification'
+            : 'Failed to process verification',
+      },
       { status: 500 }
     );
   }

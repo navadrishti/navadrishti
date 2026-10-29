@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { keepActiveAndMeaningfulSessions, resolveHydratedActiveSession } from "@/lib/ai-agent-sessions"
+import { areSameSessionList, keepActiveAndMeaningfulSessions, resolveHydratedActiveSession } from "@/lib/ai-agent-sessions"
 import { type CloudSaveStatus, describeCloudSaveStatus } from "@/lib/cloud-save-status"
 import { type CSRAgentSession, hasMeaningfulSessionContent, normalizeSessionPayload } from "./session"
 
@@ -125,8 +125,10 @@ export function useSessionCloudSync({ mounted, userId, token, activeSessionId, s
   const persistSessions = (nextSessions: CSRAgentSession[], nextActiveId?: string) => {
     const activeCandidate = nextActiveId || activeSessionId
     const visible = keepActiveAndMeaningfulSessions(nextSessions, activeCandidate, hasMeaningfulSessionContent)
-    visibleSessionsRef.current = visible
-    setSessions(visible)
+    if (!areSameSessionList(visible, visibleSessionsRef.current)) {
+      visibleSessionsRef.current = visible
+      setSessions(visible)
+    }
     const storageUserId = userId
     if (!storageUserId) return
     const storageKey = `nd_csr_ai_agent_sessions_${storageUserId}`

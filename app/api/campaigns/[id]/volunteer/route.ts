@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase, ensureCampaignVolunteerAssignment } from '@/lib/db'
-import { getTokenClaims, isFullyVerifiedAccount } from '@/lib/auth'
+import { getTokenClaims, isCaVerifiedAccount } from '@/lib/auth'
 import { isCampaignStarted, isVolunteerRegistrationPastDeadline } from '@/lib/format-date'
 import {
   getVolunteerApplicationCapacity,
@@ -126,12 +126,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const { data: actingUser } = await supabase
       .from('users')
-      .select('id, name, user_type, ngo_volunteer_capacity, profile_data, email_verified, phone_verified, verification_status')
+      .select('id, name, user_type, ngo_volunteer_capacity, profile_data, verification_status')
       .eq('id', decoded.id)
       .maybeSingle()
 
-    if (!isFullyVerifiedAccount(actingUser)) {
-      return NextResponse.json({ error: 'Complete email and document verification to volunteer' }, { status: 403 })
+    if (!isCaVerifiedAccount(actingUser?.verification_status)) {
+      return NextResponse.json(
+        { error: 'Complete identity verification before you can volunteer on this campaign.' },
+        { status: 403 }
+      )
     }
 
     const { isVolunteeringBanned } = await import('@/lib/campaign-volunteer-attendance')

@@ -30,6 +30,7 @@ export default function ServiceRequestProjectDetailPage() {
     loading,
     payload,
     applyLoading,
+    applyError,
     currentCompanyApplication,
     applyForFullProject,
   } = useProjectDetail(projectId);
@@ -162,6 +163,7 @@ export default function ServiceRequestProjectDetailPage() {
                         eligibleForApply={payload.csr_project_eligible_for_company_apply}
                         ineligibleReason={payload.csr_project_ineligible_reason}
                         applyLoading={applyLoading}
+                        applyError={applyError}
                         onApply={applyForFullProject}
                       />
                     </TabsContent>

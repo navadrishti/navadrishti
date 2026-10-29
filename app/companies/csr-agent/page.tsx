@@ -29,6 +29,7 @@ import { useSessionActions } from "./use-session-actions"
 import { useCampaignDrafts } from "./use-campaign-drafts"
 import { usePreviewEdits } from "./use-preview-edits"
 import { useIntakeHandlers } from "./use-intake-handlers"
+import { AgentWorkspace } from "@/components/agent-workspace"
 import { AgentNoticeCard, AgentShell, ProgressHeader } from "./agent-shell"
 import { SessionSidebar } from "./session-sidebar"
 import { ChatPanel } from "./chat-panel"
@@ -382,61 +383,34 @@ function CSRAgentPage() {
 
   return (
     <AgentShell>
-      <ProgressHeader
-        title={promptTitle}
-        progressLabel={generatedCampaigns.length > 0 ? "100%" : `${Math.min(answeredQuestions, totalQuestions)} / ${totalQuestions || 1}`}
-        progressPercent={progressPercent}
-        cloudSaveText={cloudSaveText}
-      />
-
-          <div className="grid flex-1 gap-4 min-h-0 lg:grid-cols-[280px_1.1fr_0.9fr] lg:items-stretch lg:gap-6">
-        <SessionSidebar
-          sessions={orderedSessions}
-          activeSessionId={activeSessionId}
-          onNewSession={createNewSession}
-          onSelectSession={(session) => applySession(session)}
-          onDeleteSession={deleteSession}
-        />
-
-        <ChatPanel
-          statusLabel={generatedCampaigns.length > 0 ? "Draft complete" : activeQuestionLabel}
-          badgeLabel={conversationStage === "complete" ? "Draft ready" : activeQuestionLabel}
-        >
-          <ChatMessageList
-            containerRef={messagesContainerRef}
-            messages={messages}
-            isTyping={isTyping}
-            milestoneCount={milestoneCount}
-            userAvatar={userAvatar}
-            userName={user?.name}
-            userInitials={userInitials}
-            onEditSave={handleEditSave}
+      <AgentWorkspace
+        toolbarLabel={promptTitle}
+        renderProgress={() => (
+          <ProgressHeader
+            title={promptTitle}
+            progressLabel={generatedCampaigns.length > 0 ? "100%" : `${Math.min(answeredQuestions, totalQuestions)} / ${totalQuestions || 1}`}
+            progressPercent={progressPercent}
+            cloudSaveText={cloudSaveText}
+            className="mb-0"
           />
-
-          <ChatComposer
-            conversationStage={conversationStage}
-            fixedChoiceOptions={fixedChoiceOptions}
-            milestoneMode={campaign.milestoneMode}
-            showMilestoneSuggestions={campaign.showMilestoneSuggestions}
-            suggestedMilestoneSets={campaign.suggestedMilestoneSets}
-            input={input}
-            placeholder={
-              isQuestionnaireComplete
-                ? "All campaign details are captured. Use the preview panel to publish."
-                : (activeQuestion?.question || "Type your response...")
-            }
-            disabled={isTyping || (isQuestionnaireComplete && !generationError)}
-            onInputChange={setInput}
-            onInputFocus={lockMobileChatScroll}
-            onSend={handleSend}
-            onQuickPick={handleQuickPick}
-            onChooseMilestoneMode={handleChooseEnterOrSuggest}
-            onRefreshSuggestions={refreshMilestoneSuggestions}
-            onCloseSuggestions={closeMilestoneSuggestions}
-            onSelectSuggestedSet={handleSelectSuggestedSet}
+        )}
+        renderSessions={({ close }) => (
+          <SessionSidebar
+            className="h-full"
+            sessions={orderedSessions}
+            activeSessionId={activeSessionId}
+            onNewSession={() => {
+              createNewSession()
+              close()
+            }}
+            onSelectSession={(session) => {
+              applySession(session)
+              close()
+            }}
+            onDeleteSession={deleteSession}
           />
-        </ChatPanel>
-
+        )}
+        renderPreview={() => (
         <PreviewPanel>
           <CampaignDetailsCard
             projectData={projectData}
@@ -486,7 +460,7 @@ function CSRAgentPage() {
               actionsEnabled={canUseCampaignActions}
               onToggleInvite={handleInviteLeadNgoToggle}
             />
-                                ) : null}
+          ) : null}
 
           <MilestonesCard
             milestoneCount={milestoneCount}
@@ -509,7 +483,47 @@ function CSRAgentPage() {
             onRetry={() => finalizeConversation()}
           />
         </PreviewPanel>
-                            </div>
+        )}
+      >
+        <ChatPanel
+          statusLabel={generatedCampaigns.length > 0 ? "Draft complete" : activeQuestionLabel}
+          badgeLabel={conversationStage === "complete" ? "Draft ready" : activeQuestionLabel}
+        >
+          <ChatMessageList
+            containerRef={messagesContainerRef}
+            messages={messages}
+            isTyping={isTyping}
+            milestoneCount={milestoneCount}
+            userAvatar={userAvatar}
+            userName={user?.name}
+            userInitials={userInitials}
+            onEditSave={handleEditSave}
+          />
+
+          <ChatComposer
+            conversationStage={conversationStage}
+            fixedChoiceOptions={fixedChoiceOptions}
+            milestoneMode={campaign.milestoneMode}
+            showMilestoneSuggestions={campaign.showMilestoneSuggestions}
+            suggestedMilestoneSets={campaign.suggestedMilestoneSets}
+            input={input}
+            placeholder={
+              isQuestionnaireComplete
+                ? "All campaign details are captured. Use the preview panel to publish."
+                : (activeQuestion?.question || "Type your response...")
+            }
+            disabled={isTyping || (isQuestionnaireComplete && !generationError)}
+            onInputChange={setInput}
+            onInputFocus={lockMobileChatScroll}
+            onSend={handleSend}
+            onQuickPick={handleQuickPick}
+            onChooseMilestoneMode={handleChooseEnterOrSuggest}
+            onRefreshSuggestions={refreshMilestoneSuggestions}
+            onCloseSuggestions={closeMilestoneSuggestions}
+            onSelectSuggestedSet={handleSelectSuggestedSet}
+          />
+        </ChatPanel>
+      </AgentWorkspace>
     </AgentShell>
   )
 }

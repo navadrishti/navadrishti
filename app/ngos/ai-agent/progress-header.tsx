@@ -7,15 +7,16 @@ type ProgressHeaderProps = {
   promptCount: number
   progressPercent: number
   cloudSaveText: string
+  className?: string
 }
 
-export function ProgressHeader({ title, isDraftComplete, promptNumber, promptCount, progressPercent, cloudSaveText }: ProgressHeaderProps) {
+export function ProgressHeader({ title, isDraftComplete, promptNumber, promptCount, progressPercent, cloudSaveText, className }: ProgressHeaderProps) {
   return (
-    <section className="mb-3 overflow-hidden rounded-2xl border border-slate-200/70 bg-white/92 shadow-[0_12px_30px_rgba(15,23,42,0.08)] backdrop-blur md:mb-4">
-      <div className="flex items-center gap-3 px-4 py-3 sm:px-5">
+    <section className={`overflow-hidden rounded-2xl border border-slate-200/70 bg-white/92 shadow-[0_12px_30px_rgba(15,23,42,0.08)] backdrop-blur ${className ?? "mb-3 md:mb-4"}`}>
+      <div className="flex items-center gap-3 px-3.5 py-2.5">
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-3">
-            <p className="truncate text-sm font-semibold text-slate-950 sm:text-base">
+            <p className="truncate text-sm font-semibold text-slate-950">
               {isDraftComplete ? 'Draft complete' : title}
             </p>
             <span className="shrink-0 text-xs font-medium text-slate-500">

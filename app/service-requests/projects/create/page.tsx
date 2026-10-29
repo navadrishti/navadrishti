@@ -31,6 +31,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { StyledSelect } from '@/components/ui/styled-select'
 import { Textarea } from '@/components/ui/textarea'
+import { ProjectCreateBrowseSidebar } from './browse-sidebar'
 
 const budgetRanges = [
   'Under INR 25,000',
@@ -254,6 +255,8 @@ export default function CreateServiceRequestProjectPage() {
                 <form onSubmit={handleSubmit} className="space-y-6">
                   {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
+                  <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
+                    <div className="space-y-6">
                   <div>
                     <Label htmlFor="title">Project Title *</Label>
                     <Input id="title" name="title" value={formData.title} onChange={handleInput} required />
@@ -364,6 +367,10 @@ export default function CreateServiceRequestProjectPage() {
                   <div>
                     <Label htmlFor="contact_info">Contact Information *</Label>
                     <Textarea id="contact_info" name="contact_info" value={formData.contact_info} onChange={handleInput} rows={3} required />
+                  </div>
+                    </div>
+
+                    <ProjectCreateBrowseSidebar />
                   </div>
 
                   <Button type="submit" disabled={loading || !canCreateProject} className="w-full">

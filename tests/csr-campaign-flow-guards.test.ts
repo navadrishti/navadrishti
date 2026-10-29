@@ -177,6 +177,20 @@ describe('POST /api/campaigns/[id]/volunteer', () => {
     })
   }
 
+  it('blocks volunteers who are not CA-verified', async () => {
+    respondWith((query) => {
+      if (query.table === 'users') return { data: { ...verifiedUser, verification_status: 'pending' } }
+      if (query.table === 'campaigns') return { data: baseCampaign }
+      return {}
+    })
+    const response = await apply()
+    expect(response.status).toBe(403)
+    expect(await response.json()).toEqual({
+      error: 'Complete identity verification before you can volunteer on this campaign.',
+    })
+    expect(supabaseFake.find('campaigns', 'update')).toHaveLength(0)
+  })
+
   it('writes with an updated_at guard and redacts the response', async () => {
     useCampaigns([baseCampaign], [{ data: [{ ...baseCampaign, updated_at: 'T2' }] }])
     const response = await apply()

@@ -4,6 +4,7 @@ import type React from "react"
 import { Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { cn } from "@/lib/utils"
 import { deriveSessionTitle, type NGOAIAgentSession } from "./intake"
 
 type SessionSidebarProps = {
@@ -12,11 +13,12 @@ type SessionSidebarProps = {
   onNewSession: () => void
   onSelectSession: (sessionId: string) => void
   onDeleteSession: (sessionId: string, event?: React.MouseEvent) => void | Promise<void>
+  className?: string
 }
 
-export function SessionSidebar({ sessions, activeSessionId, onNewSession, onSelectSession, onDeleteSession }: SessionSidebarProps) {
+export function SessionSidebar({ sessions, activeSessionId, onNewSession, onSelectSession, onDeleteSession, className }: SessionSidebarProps) {
   return (
-    <Card className="flex h-36 min-h-0 flex-col overflow-hidden border-slate-200/70 bg-white/90 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur lg:h-full">
+    <Card className={cn("flex h-full min-h-0 flex-col overflow-hidden border-slate-200/70 bg-white/90 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur", className)}>
       <CardHeader className="border-b border-slate-100">
         <div className="flex items-center justify-between gap-2">
           <div>

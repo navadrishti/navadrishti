@@ -7,6 +7,7 @@ import { InlineCsrCapabilityDelhivery } from "@/components/service-card"
 import { VerificationRequiredNotice } from "@/components/verification-required-notice"
 import { VerifiedAccountName } from "@/components/verification-badge"
 import { CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE } from "@/lib/auth"
+import { MatchHeading, MATCH_CARD_CLASS, MATCH_PANEL_CLASS, MATCH_SCORE_CLASS } from "@/components/agent-shell"
 import { AGENT_NAMES } from "@/lib/ai-agent-sessions"
 import { formatStatusLabel } from "@/lib/format-date"
 import type { CsrCapabilityRentalRecord } from "@/lib/service-engagement"
@@ -43,16 +44,12 @@ export function ProjectSuggestionsSection({
         {suggestions.length > 0 ? (
           suggestions.map((project) => (
             <div key={project.id} className={`rounded-xl border bg-white p-3 ${selectedId === project.id ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200'}`}>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-slate-950 [overflow-wrap:anywhere]">{project.title}</p>
-                  <p className="mt-1 text-xs text-slate-600 break-words">{project.description || 'No description available.'}</p>
-                  <p className="mt-1 text-xs text-slate-500">{project.location || 'Location unavailable'}{project.timeline ? ` • ${project.timeline}` : ''}</p>
-                </div>
-                <Button type="button" size="sm" className="shrink-0 whitespace-nowrap self-start" variant={selectedId === project.id ? 'secondary' : 'outline'} onClick={() => onSelect(project)}>
-                  {selectedId === project.id ? 'Selected' : 'Use project'}
-                </Button>
-              </div>
+              <p className="text-sm font-semibold leading-5 text-slate-950 [overflow-wrap:anywhere]">{project.title}</p>
+              <p className="mt-1 text-xs leading-5 text-slate-600 [overflow-wrap:anywhere]">{project.description || 'No description available.'}</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500 [overflow-wrap:anywhere]">{project.location || 'Location unavailable'}{project.timeline ? ` • ${project.timeline}` : ''}</p>
+              <Button type="button" size="sm" className="mt-3 w-full" variant={selectedId === project.id ? 'secondary' : 'outline'} onClick={() => onSelect(project)}>
+                {selectedId === project.id ? 'Selected' : 'Use project'}
+              </Button>
             </div>
           ))
         ) : (
@@ -125,62 +122,57 @@ export function ServiceMatchesSection({
   payerVerified?: boolean
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-semibold text-slate-950">{AGENT_NAMES.pulse} matches</p>
-        {loading && <Loader2 className="h-4 w-4 animate-spin text-slate-500" />}
-      </div>
+    <div className={MATCH_PANEL_CLASS}>
+      <MatchHeading
+        title={`${AGENT_NAMES.pulse} matches`}
+        description={!payerVerified || leadAccepted || suggestions.length === 0 ? undefined : 'You can pay and reserve these offers once a lead NGO accepts the campaign.'}
+        loading={loading}
+      />
       {!payerVerified && suggestions.length > 0 ? (
         <div className="mt-3">
           <VerificationRequiredNotice description={CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE} />
         </div>
-      ) : !leadAccepted && suggestions.length > 0 ? (
-        <p className="mt-1 text-xs text-slate-500">You can pay and reserve these offers once a lead NGO accepts the campaign.</p>
       ) : null}
       <div className="mt-3 space-y-3">
         {error ? (
           <div className="rounded-xl border border-red-200 bg-white p-3 text-sm text-red-700">{error}</div>
         ) : suggestions.length > 0 ? (
           suggestions.slice(0, 3).map((service) => (
-            <div key={service.service_offer_id} className="rounded-xl border border-slate-200 bg-white p-3">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-slate-950">{service.capability_name}</p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Offer #{service.service_offer_id}
-                    {service.offer_type && service.offer_type !== "unknown" ? ` • ${formatStatusLabel(service.offer_type)}` : ""}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-2 self-start">
-                  <span className="whitespace-nowrap rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">Score {service.score}</span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="whitespace-nowrap"
-                    disabled={
-                      paidOfferIds.includes(service.service_offer_id) ||
-                      !actionsEnabled ||
-                      !leadAccepted ||
-                      !payerVerified ||
-                      payingOfferId === service.service_offer_id
-                    }
-                    variant={paidOfferIds.includes(service.service_offer_id) ? 'secondary' : 'default'}
-                    onClick={() => void onPayAndReserve(service.service_offer_id, service.offer_type)}
-                  >
-                    {payingOfferId === service.service_offer_id ? (
-                      <>
-                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                        Paying...
-                      </>
-                    ) : paidOfferIds.includes(service.service_offer_id) ? (
-                      'Reserved'
-                    ) : (
-                      'Pay & reserve'
-                    )}
-                  </Button>
-                </div>
+            <div key={service.service_offer_id} className={MATCH_CARD_CLASS}>
+              <div className="flex items-start gap-2">
+                <p className="min-w-0 flex-1 text-sm font-semibold leading-5 text-slate-950 [overflow-wrap:anywhere]">{service.capability_name}</p>
+                <span className={MATCH_SCORE_CLASS}>Score {service.score}</span>
               </div>
-              <p className="mt-2 text-xs text-slate-600 break-words">{service.city || "Any city"} • {service.state_province || "Any state"}</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500 [overflow-wrap:anywhere]">
+                Offer #{service.service_offer_id}
+                {service.offer_type && service.offer_type !== "unknown" ? ` • ${formatStatusLabel(service.offer_type)}` : ""}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-slate-600 [overflow-wrap:anywhere]">{service.city || "Any city"} • {service.state_province || "Any state"}</p>
+              <Button
+                type="button"
+                size="sm"
+                className="mt-3 w-full"
+                disabled={
+                  paidOfferIds.includes(service.service_offer_id) ||
+                  !actionsEnabled ||
+                  !leadAccepted ||
+                  !payerVerified ||
+                  payingOfferId === service.service_offer_id
+                }
+                variant={paidOfferIds.includes(service.service_offer_id) ? 'secondary' : 'default'}
+                onClick={() => void onPayAndReserve(service.service_offer_id, service.offer_type)}
+              >
+                {payingOfferId === service.service_offer_id ? (
+                  <>
+                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                    Paying...
+                  </>
+                ) : paidOfferIds.includes(service.service_offer_id) ? (
+                  'Reserved'
+                ) : (
+                  'Pay & reserve'
+                )}
+              </Button>
               {paidOfferIds.includes(service.service_offer_id) && paidRentals[service.service_offer_id] ? (
                 <div className="mt-3">
                   <InlineCsrCapabilityDelhivery
@@ -233,8 +225,8 @@ export function LeadNgoSection({
           const isInvited = invites.some((item) => item.ngoId === ngo.id && isPendingLeadInvite(item))
           return (
             <div key={ngo.id} className="rounded-xl border border-slate-200 bg-white p-3">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
+              <div className="flex items-start gap-2">
+                <div className="min-w-0 flex-1">
                   <VerifiedAccountName
                     name={ngo.name}
                     status={ngo.verification_status}
@@ -243,25 +235,23 @@ export function LeadNgoSection({
                     nameClassName="text-sm font-semibold text-slate-950"
                     className="max-w-full"
                   />
-                  <p className="mt-1 text-xs text-slate-500 break-words">{ngo.email || 'No email provided'}</p>
-                  <p className="mt-1 text-[11px] font-medium text-blue-700">Match score {ngo.score}</p>
                 </div>
-                <div className="flex shrink-0 items-center gap-2 self-start">
-                  {isInvited && (
-                    <span className="whitespace-nowrap rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">Invited</span>
-                  )}
-                  <Button
-                    type="button"
-                    size="sm"
-                    className={isInvited ? 'whitespace-nowrap border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700' : 'whitespace-nowrap'}
-                    disabled={!actionsEnabled}
-                    variant="outline"
-                    onClick={() => onToggleInvite(ngo)}
-                  >
-                    {isInvited ? 'Remove' : 'Invite'}
-                  </Button>
-                </div>
+                {isInvited ? (
+                  <span className="shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold leading-4 text-blue-700">Invited</span>
+                ) : null}
               </div>
+              <p className="mt-1 text-xs leading-5 text-slate-500 [overflow-wrap:anywhere]">{ngo.email || 'No email provided'}</p>
+              <p className="mt-1 text-[11px] font-medium text-blue-700">Match score {ngo.score}</p>
+              <Button
+                type="button"
+                size="sm"
+                className={isInvited ? 'mt-3 w-full border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700' : 'mt-3 w-full'}
+                disabled={!actionsEnabled}
+                variant="outline"
+                onClick={() => onToggleInvite(ngo)}
+              >
+                {isInvited ? 'Remove' : 'Invite'}
+              </Button>
             </div>
           )
         }) : (
