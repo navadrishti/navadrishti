@@ -408,7 +408,7 @@ Fetch a public profile summary for a user.
 ## Admin Endpoints
 
 ### GET /api/admin/service-offers
-Get all service offers for admin review.
+List capability offers for catalog moderation. Offers post live; this is not an approval queue.
 
 **Headers:** Admin authentication required
 
@@ -424,7 +424,9 @@ Get all service offers for admin review.
         "name": "Tech NGO",
         "email": "info@techngo.org"
       },
-      "admin_status": "pending",
+      "admin_status": "approved",
+      "is_listed": true,
+      "status": "active",
       "created_at": "2024-01-01T00:00:00Z"
     }
   ]
@@ -432,15 +434,15 @@ Get all service offers for admin review.
 ```
 
 ### POST /api/admin/service-offers/{offerId}/review
-Review and approve/reject service offer.
+Remove an offer from the public catalog (`reject`) or restore it (`approve`). Comments are required. There is no pending-approval gate and no auto-reject for unreviewed offers.
 
 **Headers:** Admin authentication required
 
 **Request Body:**
 ```json
 {
-  "action": "approve", // "approve" or "reject"
-  "comments": "Looks good, approved for publication"
+  "action": "reject",
+  "comments": "Removed from catalog — incomplete payout setup"
 }
 ```
 

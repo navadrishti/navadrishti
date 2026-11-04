@@ -19,21 +19,24 @@ import type {
 
 export function OfferFullDetails({ offer }: { offer: ServiceOffer }) {
   if (!offer) return null;
+  const catalogStatus =
+    String(offer.admin_status || '').toLowerCase() === 'rejected' || offer.is_listed === false
+      ? 'Removed from catalog'
+      : 'Live';
   return (
     <AdminDetailSection title="Full offer record">
       <AdminDetailItems
         items={[
           { label: 'Offer ID', value: formatAdminDetailValue(offer.id) },
-          { label: 'Admin status', value: formatAdminDetailValue(offer.admin_status) },
+          { label: 'Catalog status', value: catalogStatus },
           { label: 'Platform status', value: formatAdminDetailValue(offer.status) },
           { label: 'Category', value: formatAdminDetailValue(offer.category) },
           { label: 'Location', value: formatAdminDetailValue(offer.location) },
           { label: 'Organization', value: formatAdminDetailValue(offer.organization?.name) },
           { label: 'Org email', value: formatAdminDetailValue(offer.organization?.email) },
           { label: 'Org ID', value: formatAdminDetailValue(offer.organization?.id || offer.creator_id) },
-          { label: 'Submitted for review', value: formatAdminDetailValue(offer.submitted_for_review_at) },
-          { label: 'Admin reviewed at', value: formatAdminDetailValue(offer.admin_reviewed_at) },
-          { label: 'Admin comments', value: formatAdminDetailValue(offer.admin_comments) },
+          { label: 'Last moderated at', value: formatAdminDetailValue(offer.admin_reviewed_at) },
+          { label: 'Moderation notes', value: formatAdminDetailValue(offer.admin_comments) },
           { label: 'Created', value: formatAdminDetailValue(offer.created_at) },
           { label: 'Updated', value: formatAdminDetailValue(offer.updated_at) },
           { label: 'Description', value: formatAdminDetailValue(offer.description) },

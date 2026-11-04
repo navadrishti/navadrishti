@@ -9,58 +9,57 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { formatStatusLabel } from '@/lib/format-date';
 import { cn, getErrorMessage } from '@/lib/utils';
 import { OfferFullDetails } from './detail-panels';
-import { adminListButtonClass, statusTone, textMatch } from './helpers';
+import { adminListButtonClass, offerCatalogLabel, offerCatalogTone, textMatch } from './helpers';
 import type { ServiceOffer } from './types';
 
 export function useOffersPanelState({ onReviewed }: { onReviewed: () => Promise<void> }) {
   const [selectedOffer, setSelectedOffer] = useState<ServiceOffer | null>(null);
-  const [reviewComments, setReviewComments] = useState('');
-  const [isReviewing, setIsReviewing] = useState(false);
+  const [moderationNote, setModerationNote] = useState('');
+  const [isModerating, setIsModerating] = useState(false);
   const [offerQuery, setOfferQuery] = useState('');
 
-  const handleReview = async (offerId: number, action: 'approve' | 'reject') => {
-    if (!reviewComments.trim()) {
-      sonnerToast.error('Please add review comments');
+  const handleModeration = async (offerId: number, action: 'approve' | 'reject') => {
+    if (!moderationNote.trim()) {
+      sonnerToast.error(action === 'reject' ? 'Please add a removal reason' : 'Please add a restore note');
       return;
     }
 
     try {
-      setIsReviewing(true);
+      setIsModerating(true);
       const response = await fetch(`/api/admin/service-offers/${offerId}/review`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ action, comments: reviewComments }),
+        body: JSON.stringify({ action, comments: moderationNote }),
       });
 
       const data = await response.json();
       if (!response.ok || !data?.success) {
-        throw new Error(readApiError(data, `Failed to ${action} service offer`));
+        throw new Error(readApiError(data, action === 'reject' ? 'Failed to remove service offer' : 'Failed to restore service offer'));
       }
 
-      sonnerToast.success(`Service offer ${action}d successfully`);
-      setReviewComments('');
+      sonnerToast.success(action === 'reject' ? 'Offer removed from the catalog' : 'Offer restored to the catalog');
+      setModerationNote('');
       setSelectedOffer(null);
       await onReviewed();
     } catch (error) {
-      sonnerToast.error(getErrorMessage(error) || `Failed to ${action} service offer`);
+      sonnerToast.error(getErrorMessage(error) || (action === 'reject' ? 'Failed to remove service offer' : 'Failed to restore service offer'));
     } finally {
-      setIsReviewing(false);
+      setIsModerating(false);
     }
   };
 
   return {
     selectedOffer,
     setSelectedOffer,
-    reviewComments,
-    setReviewComments,
-    isReviewing,
+    moderationNote,
+    setModerationNote,
+    isModerating,
     offerQuery,
     setOfferQuery,
-    handleReview,
+    handleModeration,
   };
 }
 
@@ -71,12 +70,12 @@ export function OffersPanel({ offers, state }: { offers: ServiceOffer[]; state: 
   const {
     selectedOffer,
     setSelectedOffer,
-    reviewComments,
-    setReviewComments,
-    isReviewing,
+    moderationNote,
+    setModerationNote,
+    isModerating,
     offerQuery,
     setOfferQuery,
-    handleReview,
+    handleModeration,
   } = state;
 
   const filteredOffers = useMemo(() => {
@@ -91,11 +90,16 @@ export function OffersPanel({ offers, state }: { offers: ServiceOffer[]; state: 
     ));
   }, [offers, offerQuery]);
 
+  const selectedIsRemoved = selectedOffer
+    ? offerCatalogLabel(selectedOffer) === 'Removed'
+    : false;
+
   return (
     <div className="h-full min-h-0 space-y-6 overflow-y-auto overflow-x-hidden pr-1">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900">Service Offers</h2>
+          <h2 className="text-2xl font-bold text-slate-900">Capability offers</h2>
+          <p className="mt-1 text-sm text-slate-600">Offers post live. Remove a listing from the catalog if needed, or restore one that was removed.</p>
         </div>
         <div className="w-full md:w-80">
           <Input
@@ -110,7 +114,7 @@ export function OffersPanel({ offers, state }: { offers: ServiceOffer[]; state: 
       <div className="grid gap-6 overflow-x-hidden xl:grid-cols-[0.9fr_1.1fr]">
         <Card className="border-blue-100 bg-white text-slate-900 min-w-0">
           <CardHeader>
-            <CardTitle className="text-slate-900">Review queue</CardTitle>
+            <CardTitle className="text-slate-900">All offers</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {filteredOffers.length === 0 ? (
@@ -122,7 +126,7 @@ export function OffersPanel({ offers, state }: { offers: ServiceOffer[]; state: 
                     <p className="font-semibold text-slate-900 break-words line-clamp-2">{offer.title}</p>
                     <p className="text-xs text-slate-500 truncate">{offer.organization?.name || 'Unknown organization'}</p>
                   </div>
-                  <Badge className={cn('shrink-0', statusTone(offer.admin_status))}>{formatStatusLabel(offer.admin_status)}</Badge>
+                  <Badge className={cn('shrink-0', offerCatalogTone(offer))}>{offerCatalogLabel(offer)}</Badge>
                 </div>
                 <p className="mt-2 line-clamp-2 break-all text-sm text-slate-600">{offer.description}</p>
               </button>
@@ -136,14 +140,27 @@ export function OffersPanel({ offers, state }: { offers: ServiceOffer[]; state: 
           </CardHeader>
           <CardContent className="space-y-4">
             {!selectedOffer ? (
-              <p className="text-sm text-slate-500">Select an offer to review it.</p>
+              <p className="text-sm text-slate-500">Select an offer to manage its catalog listing.</p>
             ) : (
               <>
                 <OfferFullDetails offer={selectedOffer} />
-                <Textarea value={reviewComments} onChange={(e) => setReviewComments(e.target.value)} rows={5} placeholder="Write admin review notes" className="border-blue-200 bg-white text-slate-900 placeholder:text-slate-400" />
+                <Textarea
+                  value={moderationNote}
+                  onChange={(e) => setModerationNote(e.target.value)}
+                  rows={5}
+                  placeholder={selectedIsRemoved ? 'Note for restoring this offer to the catalog' : 'Reason for removing this offer from the catalog'}
+                  className="border-blue-200 bg-white text-slate-900 placeholder:text-slate-400"
+                />
                 <div className="flex flex-wrap gap-3">
-                  <Button onClick={() => handleReview(selectedOffer.id, 'approve')} disabled={isReviewing} className="bg-emerald-600 hover:bg-emerald-500">Approve</Button>
-                  <Button onClick={() => handleReview(selectedOffer.id, 'reject')} disabled={isReviewing} variant="destructive">Reject</Button>
+                  {selectedIsRemoved ? (
+                    <Button onClick={() => handleModeration(selectedOffer.id, 'approve')} disabled={isModerating} className="bg-emerald-600 hover:bg-emerald-500">
+                      Restore to catalog
+                    </Button>
+                  ) : (
+                    <Button onClick={() => handleModeration(selectedOffer.id, 'reject')} disabled={isModerating} variant="destructive">
+                      Remove from catalog
+                    </Button>
+                  )}
                   <Button variant="outline" className="border-gram-border bg-white text-udaan-blue hover:bg-gram-sage" onClick={() => router.push(`/service-offers/${selectedOffer.id}`)}>Open live page</Button>
                 </div>
               </>
