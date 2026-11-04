@@ -27,6 +27,7 @@ export type ServiceOffer = {
   category?: string | null;
   location?: string | null;
   status?: string | null;
+  is_listed?: boolean | null;
 };
 
 export type AdminUserItem = {

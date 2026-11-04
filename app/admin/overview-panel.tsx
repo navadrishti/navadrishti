@@ -76,7 +76,8 @@ export function OverviewPanel({
 }) {
   const stats = overview?.summary || {};
   const counts = overview?.counts || {};
-  const pendingOffers = counts.offers_by_status?.pending || 0;
+  const liveOffers = counts.offers_by_status?.approved || 0;
+  const removedOffers = counts.offers_by_status?.rejected || 0;
   const openTickets = count(counts.tickets_by_status, ['open', 'in_progress']);
   const pendingVerification = count(counts.users_by_verification, ['pending', 'unverified']);
   const activeRequests = count(counts.requests_by_status, ['open', 'active', 'in_progress', 'pending']);
@@ -129,7 +130,7 @@ export function OverviewPanel({
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Users" value={stats.total_users ?? userCount} detail={`${counts.users_by_verification?.verified || 0} verified`} />
-        <KpiCard label="Offers" value={stats.total_offers ?? offerCount} detail={`${pendingOffers} awaiting review`} />
+        <KpiCard label="Offers" value={stats.total_offers ?? offerCount} detail={`${liveOffers} live in catalog`} />
         <KpiCard label="Requests" value={stats.total_requests ?? requestCount} detail={`${activeRequests} active`} />
         <KpiCard label="Projects" value={stats.total_projects ?? projectCount} detail={`${activeProjects} active`} />
       </div>
@@ -138,10 +139,10 @@ export function OverviewPanel({
         <Card className="min-w-0 border-slate-200 bg-white text-slate-900 shadow-sm">
           <CardHeader className="pb-3">
             <CardTitle className="text-slate-900">Action queue</CardTitle>
-            <p className="text-sm text-slate-600">Items that may require an administrator’s review.</p>
+            <p className="text-sm text-slate-600">Items that may need an administrator’s attention.</p>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4"><p className="text-2xl font-bold text-slate-900">{pendingOffers}</p><p className="mt-1 text-sm font-medium text-slate-900">Offers awaiting review</p><p className="mt-1 text-xs text-slate-600">Approve or reject submitted capabilities.</p></div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4"><p className="text-2xl font-bold text-slate-900">{removedOffers}</p><p className="mt-1 text-sm font-medium text-slate-900">Offers removed from catalog</p><p className="mt-1 text-xs text-slate-600">Capabilities pulled from the marketplace by admin.</p></div>
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-4"><p className="text-2xl font-bold text-slate-900">{pendingVerification}</p><p className="mt-1 text-sm font-medium text-slate-900">Verification follow-ups</p><p className="mt-1 text-xs text-slate-600">Users not yet fully verified.</p></div>
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-4"><p className="text-2xl font-bold text-slate-900">{openTickets}</p><p className="mt-1 text-sm font-medium text-slate-900">Support tickets open</p><p className="mt-1 text-xs text-slate-600">Open and in-progress conversations.</p></div>
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-4"><p className="text-2xl font-bold text-slate-900">{counts.users_by_verification?.verified || 0}</p><p className="mt-1 text-sm font-medium text-slate-900">Verified users</p><p className="mt-1 text-xs text-slate-600">Accounts ready to participate.</p></div>
@@ -166,7 +167,7 @@ export function OverviewPanel({
           <CardHeader className="pb-3"><CardTitle className="text-slate-900">Status distribution</CardTitle></CardHeader>
           <CardContent className="space-y-3 text-sm">
             {[
-              ['Offers approved', counts.offers_by_status?.approved || 0, 'approved'],
+              ['Offers live', liveOffers, 'live'],
               ['Requests active', activeRequests, 'in_progress'],
               ['Projects active', activeProjects, 'in_progress'],
               ['Tickets resolved or closed', count(counts.tickets_by_status, ['resolved', 'closed']), 'healthy'],
