@@ -11,7 +11,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { AuthCardBackRow } from '@/components/header';
-import { Skeleton } from '@/components/ui/skeleton';
 import { ProductCopyright } from '@/components/product-brand';
 
 export default function CALoginPage() {
@@ -20,7 +19,6 @@ export default function CALoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [checkingAuth, setCheckingAuth] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -30,20 +28,14 @@ export default function CALoginPage() {
         const hasTab =
           typeof window !== 'undefined' && Boolean(sessionStorage.getItem('ca_tab_session'));
 
-        if (!hasTab) {
-          if (!cancelled) setCheckingAuth(false);
-          return;
-        }
+        if (!hasTab) return;
 
         const response = await fetch('/api/ca/auth/verify', {
           method: 'GET',
           credentials: 'include',
         });
 
-        if (!response.ok) {
-          if (!cancelled) setCheckingAuth(false);
-          return;
-        }
+        if (!response.ok) return;
 
         const data = await response.json().catch(() => ({}));
 
@@ -55,11 +47,11 @@ export default function CALoginPage() {
           }
         }
       } catch {
-        if (!cancelled) setCheckingAuth(false);
+        // ignore — user can sign in manually
       }
     };
 
-    checkExistingSession();
+    void checkExistingSession();
 
     return () => {
       cancelled = true;
@@ -106,36 +98,6 @@ export default function CALoginPage() {
       setLoading(false);
     }
   };
-
-  if (checkingAuth) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#F6F5F1] to-[#FFF6ED] p-4">
-        <div className="w-full max-w-md space-y-8">
-          <div className="space-y-3 text-center">
-            <Skeleton className="mx-auto h-8 w-40" />
-            <Skeleton className="mx-auto h-4 w-64 max-w-full" />
-          </div>
-          <Card className="border-2 border-slate-200 shadow-none">
-            <CardHeader className="space-y-3">
-              <Skeleton className="mx-auto h-7 w-24" />
-              <Skeleton className="mx-auto h-4 w-56 max-w-full" />
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-20" />
-                <Skeleton className="h-10 w-full" />
-              </div>
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-20" />
-                <Skeleton className="h-10 w-full" />
-              </div>
-              <Skeleton className="h-10 w-full" />
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#F6F5F1] to-[#FFF6ED] p-4">
