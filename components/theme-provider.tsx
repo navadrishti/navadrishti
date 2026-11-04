@@ -149,12 +149,17 @@ function useConsoleBackForwardSessionGuard() {
         } catch {
           // ignore
         }
+        // Hide cached console chrome so forward/back restore cannot flash sidebar before login.
+        document.documentElement.setAttribute('data-nd-console-pending-auth', '1');
       }
     };
 
     const onPageShow = (event: PageTransitionEvent) => {
       const currentRoute = findProtectedConsoleRoute(window.location.pathname || '/');
-      if (!currentRoute || currentRoute.tabSessionKey !== tabSessionKey) return;
+      if (!currentRoute || currentRoute.tabSessionKey !== tabSessionKey) {
+        document.documentElement.removeAttribute('data-nd-console-pending-auth');
+        return;
+      }
 
       let shouldInvalidate = event.persisted;
       try {
@@ -165,7 +170,10 @@ function useConsoleBackForwardSessionGuard() {
         // ignore
       }
 
-      if (!shouldInvalidate) return;
+      if (!shouldInvalidate) {
+        document.documentElement.removeAttribute('data-nd-console-pending-auth');
+        return;
+      }
 
       clearConsoleTabSession(tabSessionKey);
       window.location.replace(loginPath);

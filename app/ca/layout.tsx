@@ -32,8 +32,12 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(isPublicRoute);
 
   useEffect(() => {
-    if (isPublicRoute) return;
+    if (isPublicRoute) {
+      setReady(true);
+      return;
+    }
 
+    setReady(false);
     let cancelled = false;
 
     const checkAccess = async () => {
@@ -66,7 +70,7 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [isPublicRoute, router]);
+  }, [isPublicRoute, pathname, router]);
 
   const handleLogout = async () => {
     await finalizeConsoleLogout({
@@ -100,6 +104,11 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
 
   if (isPublicRoute) {
     return <>{children}</>;
+  }
+
+  // Never paint console chrome (sidebar/header/footer) before auth — login only.
+  if (!ready) {
+    return <div className="min-h-screen bg-background" aria-hidden="true" />;
   }
 
   return (
@@ -193,7 +202,7 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
       </header>
 
       <main className="udaan-container w-full flex-1 px-4 py-8 sm:px-6 lg:px-8">
-        {ready ? children : <div className="h-40" aria-hidden="true" />}
+        {children}
       </main>
 
       <ConsoleFooter />

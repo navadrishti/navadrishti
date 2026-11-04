@@ -6,6 +6,11 @@ body {
   font-family: ui-sans-serif, system-ui, sans-serif;
 }
 
+/* Console back/forward restore: hide chrome until login redirect runs */
+html[data-nd-console-pending-auth='1'] body {
+  visibility: hidden;
+}
+
 :root {
   --platform-sidebar-width: 15rem;
 }

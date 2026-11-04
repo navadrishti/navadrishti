@@ -13,8 +13,12 @@ export default function EvidenceVerificationLayout({ children }: { children: Rea
   const [ready, setReady] = useState(isPublicRoute);
 
   useEffect(() => {
-    if (isPublicRoute) return;
+    if (isPublicRoute) {
+      setReady(true);
+      return;
+    }
 
+    setReady(false);
     let cancelled = false;
 
     const checkAccess = async () => {
@@ -47,7 +51,7 @@ export default function EvidenceVerificationLayout({ children }: { children: Rea
     return () => {
       cancelled = true;
     };
-  }, [isPublicRoute, router]);
+  }, [isPublicRoute, pathname, router]);
 
   if (isPublicRoute) {
     return (
