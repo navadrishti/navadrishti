@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { v2 as cloudinary, type UploadApiOptions, type UploadApiResponse } from 'cloudinary'
 import { authErrorResponse, getAuthUserFromRequest } from '@/lib/server-auth'
-import { kycAuthenticatedUploadEnabled } from '@/lib/kyc/flags'
 import {
   actorTypeFromUploadCategory,
   encodeKycDocumentRef,
@@ -66,8 +65,6 @@ export async function POST(request: NextRequest) {
     }
     const safeCategory = toPathSegment(category, 'general')
     const safeDocumentKey = toPathSegment(documentKey, 'document')
-    const authenticatedUpload = kycAuthenticatedUploadEnabled()
-
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
 
@@ -78,7 +75,7 @@ export async function POST(request: NextRequest) {
       folder: `verification/${safeCategory}/${user.id}`,
       public_id: `${safeDocumentKey}_${Date.now()}_${crypto.randomUUID()}`,
       overwrite: false,
-      ...(authenticatedUpload ? { type: 'authenticated' } : {}),
+      type: 'authenticated',
     }
 
     if (isImage) {
@@ -100,20 +97,7 @@ export async function POST(request: NextRequest) {
     })
 
     const publicId = String(uploadResult.public_id || '')
-    const deliveryType = authenticatedUpload ? 'authenticated' : 'upload'
-
-    if (!authenticatedUpload) {
-      return NextResponse.json({
-        success: true,
-        data: {
-          url: uploadResult.secure_url,
-          publicId,
-          resourceType: uploadResult.resource_type || resourceType,
-          documentKey: safeDocumentKey,
-          deliveryType,
-        },
-      })
-    }
+    const deliveryType = 'authenticated'
 
     // Persist a verification_documents row so content is addressable by id only.
     const { verificationDocuments } = await import('@/lib/db/verification')

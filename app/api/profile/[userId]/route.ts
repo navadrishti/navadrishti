@@ -261,7 +261,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       const complianceDocuments: Array<{
         key: ComplianceDocumentKey | 'fcra';
         label: string;
-        url: string;
         registration_number: string | null;
       }> = (['twelve_a', 'eighty_g', 'csr1'] as ComplianceDocumentKey[])
         .map((key) => {
@@ -269,8 +268,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             profileData.compliance_documents && typeof profileData.compliance_documents === 'object'
               ? (profileData.compliance_documents as Record<string, unknown>)
               : {};
-          const url = getComplianceDocumentUrl(documents[key]);
-          if (!url) return null;
+          if (!getComplianceDocumentUrl(documents[key])) return null;
 
           const numberKey =
             key === 'twelve_a'
@@ -282,18 +280,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           return {
             key,
             label: COMPLIANCE_DOCUMENT_LABELS[key],
-            url,
             registration_number: String(profileData[numberKey] || '').trim() || null,
           };
         })
         .filter((item): item is NonNullable<typeof item> => item != null);
 
-      const fcraUrl = getNgoFcraDocumentUrl(profileData);
-      if (fcraUrl) {
+      if (getNgoFcraDocumentUrl(profileData)) {
         complianceDocuments.push({
           key: 'fcra',
           label: 'FCRA Registration',
-          url: fcraUrl,
           registration_number:
             String(ngoVerification?.fcra_number || profileData.fcra_number || '').trim() || null,
         });

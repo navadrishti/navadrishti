@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef } from 'react';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -332,9 +333,11 @@ export function CsrProjectCard({
                     className="block overflow-hidden rounded-md border bg-slate-100"
                     title={media.file_name || 'Evidence photo'}
                   >
-                    <img
+                    <Image
                       src={media.media_url}
                       alt={media.file_name || 'Evidence'}
+                      width={64}
+                      height={64}
                       className="h-16 w-16 object-cover"
                     />
                   </a>

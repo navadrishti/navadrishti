@@ -293,8 +293,6 @@ function ProjectOpsReviewDetails({ project, onChanged }: { project: CsrProjectSu
 
   useEffect(() => {
     void loadReview(projectId)
-  // The detail component is keyed by project and loads on mount.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
 
   async function loadReview(targetId: string) {
