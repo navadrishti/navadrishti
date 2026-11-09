@@ -180,7 +180,15 @@ describe('POST /api/verification/upload authenticated mode', () => {
     expect(parseKycDocumentRef(body.data.documentRef)?.documentId).toBe(documentId)
   })
 
-  it('keeps legacy public URL responses when the authenticated-upload flag is off', async () => {
+  it('keeps verification uploads private regardless of the feature flag', async () => {
+    vi.stubEnv('KYC_AUTHENTICATED_UPLOAD', '0')
+    const documentId = '55555555-5555-4555-8555-555555555555'
+    mocks.upsert
+      .mockResolvedValueOnce({
+        ok: true,
+        row: { id: documentId, user_id: 7, actor_type: 'individual', doc_key: 'panCard' },
+      })
+      .mockResolvedValueOnce({ ok: true, row: { id: documentId } })
     const { POST } = await import('@/app/api/verification/upload/route')
     const res = await POST(
       formRequest(
@@ -191,10 +199,10 @@ describe('POST /api/verification/upload authenticated mode', () => {
     )
     const body = await res.json()
     expect(res.status).toBe(200)
-    expect(mocks.uploads[0].options.type).toBeUndefined()
-    expect(typeof body.data.url).toBe('string')
-    expect(body.data.url).toContain('res.cloudinary.com')
-    expect(mocks.upsert).not.toHaveBeenCalled()
+    expect(mocks.uploads[0].options.type).toBe('authenticated')
+    expect(body.data.url).toBeUndefined()
+    expect(body.data.documentId).toBe(documentId)
+    expect(parseKycDocumentRef(body.data.documentRef)?.documentId).toBe(documentId)
   })
 })
 

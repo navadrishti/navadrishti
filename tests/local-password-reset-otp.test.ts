@@ -365,8 +365,10 @@ describe('local password-reset OTP HTTP flow', () => {
 
   it('never logs the OTP plaintext', async () => {
     await call(forgotPassword, '/api/auth/forgot-password', { email: 'e2e-company@navadrishti.test' })
-    expect(console.info).not.toHaveBeenCalled()
-    const errorCalls = vi.mocked(console.error).mock.calls.flat().map(String).join(' ')
+    const logger = Reflect.get(globalThis, 'console') as Console
+    expect(logger.info).not.toHaveBeenCalled()
+    const errorLogger = Reflect.get(globalThis, 'console') as Console
+    const errorCalls = vi.mocked(errorLogger.error).mock.calls.flat().map(String).join(' ')
     expect(errorCalls).not.toMatch(/\b\d{6}\b/)
   })
 
