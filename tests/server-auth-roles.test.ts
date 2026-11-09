@@ -24,7 +24,7 @@ import {
 } from '@/lib/server-auth'
 import { generateCompanyCAToken } from '@/lib/auth'
 import { requireCA } from '@/lib/ca-review'
-import { supabaseFake } from './support/supabase-fake'
+import { eqValue, supabaseFake } from './support/supabase-fake'
 
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db', async () => {
@@ -54,12 +54,22 @@ beforeEach(() => {
 })
 
 describe('getAuthUserFromRequest', () => {
+  beforeEach(() => {
+    supabaseFake.respondWith((query) => {
+      if (query.table === 'users' && query.columns?.includes('account_status')) {
+        const id = Number(eqValue(query, 'id'))
+        return { data: { id, user_type: id === 12 ? 'ngo' : 'individual', account_status: 'active', verification_status: 'unverified', profile_data: {} } }
+      }
+      return { data: null }
+    })
+  })
   it('returns the user for a valid bearer token', async () => {
     await expect(getAuthUserFromRequest(buildRequest({ header: `Bearer ${userToken}` }))).resolves.toEqual({
       id: 12,
       email: 'ngo@example.org',
       name: '',
       user_type: 'ngo',
+      verification_status: 'unverified',
     })
   })
 
@@ -233,7 +243,7 @@ describe('getCompanyCAFromRequest', () => {
   })
 
   it('requires a token', async () => {
-    await expect(getCompanyCAFromRequest(buildRequest())).rejects.toThrow('Company CA authentication required')
+    await expect(getCompanyCAFromRequest(buildRequest())).rejects.toThrow('Evidence Verifier authentication required')
   })
 
   it.each([
@@ -249,14 +259,14 @@ describe('getCompanyCAFromRequest', () => {
   it('rejects users without a company CA identity', async () => {
     supabaseFake.queue('company_ca_identities', { data: null, error: { message: 'no rows' } })
     await expect(getCompanyCAFromRequest(buildRequest({ header: `Bearer ${userToken}` }))).rejects.toThrow(
-      'Company CA identity not found'
+      'Evidence Verifier identity not found'
     )
   })
 
   it('rejects inactive identities', async () => {
     supabaseFake.queue('company_ca_identities', { data: { ...identity, status: 'revoked' } })
     await expect(getCompanyCAFromRequest(buildRequest({ header: `Bearer ${userToken}` }))).rejects.toThrow(
-      'Company CA identity is not active'
+      'Evidence Verifier identity is not active'
     )
   })
 })

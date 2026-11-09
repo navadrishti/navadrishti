@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 import { db, supabase } from '@/lib/db';
 import { getTokenClaims } from '@/lib/auth';
-import { requireCaVerifiedPayer } from '@/lib/server-auth';
+import { authErrorResponse, requireCaVerifiedPayer } from '@/lib/server-auth';
 import { parseAmountToInr, getErrorMessage, parseJsonObject } from '@/lib/utils';
 import {
   buildPricingResponse,
@@ -162,6 +162,8 @@ export async function POST(
       }
     });
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     if (error instanceof PayeeNotConnectedError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
     }

@@ -3,12 +3,25 @@ import path from 'node:path'
 import jwt from 'jsonwebtoken'
 import { NextRequest } from 'next/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { setLiveUserTypeOverlay } from '@/lib/auth/session'
+import { overlayLiveUserType } from '@/lib/server-auth'
 
 const dbCalls = vi.hoisted(() => [] as string[])
 
 vi.mock('server-only', () => ({}))
 
-vi.mock('@/lib/db', () => {
+vi.mock('@/lib/db', async () => {
+  const { createSupabaseFake, eqValue } = await import('./support/supabase-fake')
+  const fake = createSupabaseFake((query) => {
+    if (query.table === 'users' && query.columns === 'account_status, locked_until, profile_data, user_type, verification_status') {
+      const id = Number(eqValue(query, 'id'))
+      const userType = id === 12 ? 'ngo' : id === 13 ? 'company' : 'individual'
+      return { data: { id, user_type: userType, account_status: 'active', verification_status: 'verified', profile_data: {} } }
+    }
+    if (['company_ca_identities', 'ngo_field_officer_identities', 'company_employee_identities'].includes(query.table) && eqValue(query, 'user_id') !== undefined) return { data: null }
+    dbCalls.push('unexpected query')
+    throw new Error('business database query should not be called')
+  })
   const blocked: object = new Proxy(
     {},
     {
@@ -19,7 +32,7 @@ vi.mock('@/lib/db', () => {
       },
     }
   )
-  return { supabase: blocked, db: blocked }
+  return { supabase: { from: fake.from, rpc: () => { dbCalls.push('rpc'); throw new Error('db should not be called') } }, db: blocked }
 })
 
 const root = path.resolve(import.meta.dirname, '..')
@@ -70,6 +83,7 @@ async function call(route: string, method: Method, request: NextRequest) {
 }
 
 beforeEach(() => {
+  setLiveUserTypeOverlay((claims, pathname) => overlayLiveUserType(claims, pathname))
   dbCalls.length = 0
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
@@ -111,8 +125,6 @@ const adminRoutes: Array<[string, Method]> = [
   ['admin/payments/refund', 'POST'],
   ['admin/reverifications', 'GET'],
   ['admin/service-offers', 'GET'],
-  ['admin/service-offers/auto-reject', 'POST'],
-  ['admin/service-offers/[offerId]/review', 'POST'],
   ['admin/service-request-projects', 'GET'],
   ['admin/service-requests', 'GET'],
   ['admin/settings', 'GET'],
@@ -178,6 +190,7 @@ const loginRoutes: Array<[string, Method]> = [
   ['campaigns/lead-invitations', 'GET'],
   ['campaigns/volunteer-assignments', 'GET'],
   ['csr-agent/generate-campaigns', 'POST'],
+  ['csr-agent/suggest-milestones', 'POST'],
   ['csr-agent/get-recommendations', 'POST'],
   ['csr-agent/lead-ngo-invites', 'GET'],
   ['csr-agent/lead-ngo-invites', 'POST'],
@@ -193,6 +206,19 @@ const loginRoutes: Array<[string, Method]> = [
   ['evidence-verification/accounts', 'POST'],
   ['evidence-verification/accounts/[identityId]', 'PATCH'],
   ['evidence-verification/accounts/[identityId]', 'DELETE'],
+  ['ngo/field-officers', 'GET'],
+  ['ngo/field-officers', 'POST'],
+  ['ngo/field-officers/eligible-projects', 'GET'],
+  ['ngo/field-officers/assignments', 'GET'],
+  ['ngo/field-officers/[identityId]', 'GET'],
+  ['ngo/field-officers/[identityId]', 'PATCH'],
+  ['ngo/field-officers/[identityId]/assignments', 'GET'],
+  ['ngo/field-officers/[identityId]/assignments', 'POST'],
+  ['ngo/field-officers/[identityId]/assignments/[assignmentId]', 'PATCH'],
+  ['ngo/field-devices', 'GET'],
+  ['ngo/field-devices', 'POST'],
+  ['ngo/field-devices/[deviceRowId]', 'GET'],
+  ['ngo/field-devices/[deviceRowId]', 'PATCH'],
   ['help-support/tickets', 'GET'],
   ['help-support/tickets/[ticketId]', 'GET'],
   ['help-support/tickets/[ticketId]', 'POST'],
@@ -269,6 +295,8 @@ const wrongRole: Array<[string, Method, string, string]> = [
   ['campaigns/volunteer-assignments', 'GET', 'company', company],
   ['csr-agent/generate-campaigns', 'POST', 'ngo', ngo],
   ['csr-agent/generate-campaigns', 'POST', 'individual', individual],
+  ['csr-agent/suggest-milestones', 'POST', 'ngo', ngo],
+  ['csr-agent/suggest-milestones', 'POST', 'individual', individual],
   ['csr-agent/lead-ngo-invites', 'GET', 'ngo', ngo],
   ['csr-agent/lead-ngo-invites', 'POST', 'ngo', ngo],
   ['csr-agent/publish-campaign', 'POST', 'ngo', ngo],
@@ -282,8 +310,17 @@ const wrongRole: Array<[string, Method, string, string]> = [
   ['evidence-verification/accounts/[identityId]', 'DELETE', 'ngo', ngo],
   ['milestones/[id]/evidence', 'POST', 'company', company],
   ['ngos/network', 'POST', 'ngo', ngo],
-  ['service-offers/[id]/clients', 'POST', 'company', company],
-  ['service-offers/[id]/clients', 'POST', 'individual', individual],
+  ['ngo/field-officers/eligible-projects', 'GET', 'company', company],
+  ['ngo/field-officers/assignments', 'GET', 'company', company],
+  ['ngo/field-officers/[identityId]', 'GET', 'company', company],
+  ['ngo/field-officers/[identityId]', 'PATCH', 'company', company],
+  ['ngo/field-officers/[identityId]/assignments', 'GET', 'company', company],
+  ['ngo/field-officers/[identityId]/assignments', 'POST', 'company', company],
+  ['ngo/field-officers/[identityId]/assignments/[assignmentId]', 'PATCH', 'company', company],
+  ['ngo/field-devices', 'GET', 'company', company],
+  ['ngo/field-devices', 'POST', 'company', company],
+  ['ngo/field-devices/[deviceRowId]', 'GET', 'company', company],
+  ['ngo/field-devices/[deviceRowId]', 'PATCH', 'company', company],
   ['service-offers/[id]/clients/[clientId]/payments/create-order', 'POST', 'ngo', ngo],
   ['service-offers/[id]/clients/[clientId]/payments/verify', 'POST', 'ngo', ngo],
   ['service-request-assignments', 'GET', 'company', company],
@@ -322,7 +359,6 @@ describe('role checks', () => {
   })
 
   it.each<[string, Method]>([
-    ['csr-agent/generate-campaigns', 'POST'],
     ['csr-agent/update-campaign', 'POST'],
     ['csr-agent/update-campaign', 'PUT'],
     ['csr-agent/publish-campaign', 'POST'],
@@ -331,6 +367,12 @@ describe('role checks', () => {
     const res = await call(route, method, buildRequest(method, { token: company }))
     expect(res.status).toBe(400)
     expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
+  })
+
+  it('lets a company token past auth on generate-campaigns (may hit abuse-limit RPC)', async () => {
+    const res = await call('csr-agent/generate-campaigns', 'POST', buildRequest('POST', { token: company }))
+    expect(res.status).toBe(400)
+    expect(dbCalls.filter((call) => call !== 'from' && call !== 'rpc')).toEqual([])
   })
 
   it('accepts the company session cookie on generate-campaigns', async () => {

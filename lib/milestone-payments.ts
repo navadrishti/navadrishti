@@ -1,5 +1,7 @@
 import type Razorpay from 'razorpay'
 import { supabase } from '@/lib/db'
+import { releaseCsrMilestonePaymentIntentAfterSettlement } from '@/lib/csr-milestone-payment-intents'
+import type { CsrMilestonePaymentIntentStore } from '@/lib/csr-milestone-payment-intent-core'
 import { refundDuplicatePayment } from '@/lib/razorpay/duplicate-payment'
 import { getErrorMessage, parseAmountToInr, parseJsonObject, validateCapturedPaymentAmounts } from '@/lib/utils'
 
@@ -21,7 +23,7 @@ export type MilestonePaymentResult =
   | { ok: true; alreadyRecorded: boolean; paymentConfirmationId: string | null; baseAmountInr: number; paidInr: number }
   | { ok: false; status: number; error: string }
 
-/** Marks the milestone completed and recomputes project progress/funds from confirmed payments; safe to re-run. */
+/** Marks the milestone completed and recomputes project progress from completed milestones; safe to re-run. */
 export async function finalizeMilestonePayment(milestoneId: string, projectId: string) {
   const nowIso = new Date().toISOString()
 
@@ -35,7 +37,11 @@ export async function finalizeMilestonePayment(milestoneId: string, projectId: s
   await recomputeCsrProjectProgress(projectId)
 }
 
-/** Progress and funds utilised come from completed milestones and confirmed payments. */
+/**
+ * Updates milestone completion progress only.
+ * Confirmed disbursements must not be written to csr_projects.funds_utilized —
+ * that column is not an expenditure ledger, and existing values are left untouched.
+ */
 export async function recomputeCsrProjectProgress(projectId: string) {
   const nowIso = new Date().toISOString()
   const { data: allMilestones, error: milestonesError } = await supabase
@@ -48,19 +54,9 @@ export async function recomputeCsrProjectProgress(projectId: string) {
   const completedMilestones = (allMilestones ?? []).filter((m) => m.status === 'completed').length
   const progressPercentage = totalMilestones > 0 ? Math.round((completedMilestones / totalMilestones) * 100) : 0
 
-  const { data: allPayments, error: paymentsError } = await supabase
-    .from('csr_payment_confirmations')
-    .select('amount, payment_status')
-    .eq('project_id', projectId)
-  if (paymentsError) throw paymentsError
-
-  const fundsUtilized = (allPayments ?? [])
-    .filter((payment) => payment.payment_status === 'confirmed')
-    .reduce((sum: number, payment) => sum + Number(payment.amount || 0), 0)
-
   const { error: projectError } = await supabase
     .from('csr_projects')
-    .update({ funds_utilized: fundsUtilized, progress_percentage: progressPercentage, updated_at: nowIso })
+    .update({ progress_percentage: progressPercentage, updated_at: nowIso })
     .eq('id', projectId)
   if (projectError) throw projectError
 }
@@ -83,7 +79,16 @@ export async function confirmMilestonePayment(input: {
   orderAmountPaise: unknown
   receipt?: string | null
   actor: MilestonePaymentActor
+  /** Test seam; production uses Postgres release RPC when available. */
+  intentStore?: CsrMilestonePaymentIntentStore
 }): Promise<MilestonePaymentResult> {
+  const releaseMatchingIntent = async () => {
+    await releaseCsrMilestonePaymentIntentAfterSettlement({
+      milestoneId: input.milestoneId,
+      razorpayOrderId: input.razorpayOrderId,
+      store: input.intentStore,
+    })
+  }
   const notes = parseJsonObject(input.orderNotes)
   if (!input.milestoneId || String(notes.milestone_id || '') !== String(input.milestoneId)) {
     return { ok: false, status: 403, error: 'Payment is linked to a different milestone' }
@@ -193,6 +198,7 @@ export async function confirmMilestonePayment(input: {
       }
     }
     if (milestone.status !== 'completed') await finalizeMilestonePayment(input.milestoneId, project.id)
+    await releaseMatchingIntent()
     return { ok: true, alreadyRecorded: true, paymentConfirmationId: existing.id, baseAmountInr, paidInr }
   }
 
@@ -257,5 +263,6 @@ export async function confirmMilestonePayment(input: {
   })
   if (auditError) console.error('Failed to write milestone payment audit log:', auditError)
 
+  await releaseMatchingIntent()
   return { ok: true, alreadyRecorded: false, paymentConfirmationId: paymentConfirmation.id, baseAmountInr, paidInr }
 }

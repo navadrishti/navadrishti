@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db, supabase } from '@/lib/db';
 import { comparePassword, hashPassword } from '@/lib/auth';
-import { clearAuthTokenCookie, findAuthUser } from '@/lib/server-auth';
+import { authErrorResponse, clearAuthTokenCookie, getAuthUserFromRequest } from '@/lib/server-auth';
 import { zodIssuesToUserMessage } from '@/lib/user-facing-error';
 
 // Validation schema
@@ -57,10 +57,7 @@ async function closeAccount(userId: number) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const payload = findAuthUser(req);
-    if (!payload) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
+    const payload = await getAuthUserFromRequest(req);
 
     const userId = payload.id;
     
@@ -110,6 +107,8 @@ export async function DELETE(req: NextRequest) {
     return response;
     
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Delete account error:', error);
     return NextResponse.json({ 
       error: 'An error occurred while deleting your account' 

@@ -95,7 +95,7 @@ async function processNgoDocumentExpiryJobs(now = new Date()) {
  * Runs once daily (see vercel.json)
  * 
  * Performs:
- * 1. Auto-rejection of expired service offers (pending > 5 days)
+ * 1. Deactivate capability offers past valid_until (operational expiry — not admin review)
  * 2. Expire projects and their needs
  * 3. Delhivery sync for material needs and CSR capability rentals, plus rental compliance
  * 4. Drop expired optional CA compliance tags (12A / 80G / CSR-1 / FCRA). Never unverify.
@@ -116,9 +116,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const autoRejectExpired = { rejectedCount: 0, rejectedOffers: [] };
-
-    // Expire capability offers past valid_until.
+    // Kept for response shape compatibility with older cleanup clients.
+    const autoRejectExpired = { rejectedCount: 0, rejectedOffers: [] as unknown[] };
 
     const nowIso = new Date().toISOString();
     const { data: validityExpiredOffers, error: validityExpiredError } = await supabase

@@ -32,6 +32,10 @@ describe('wrapDocumentHtml', () => {
     expect(html).toContain('Generated: 27 September 2026')
     expect(html).toContain(escapeHtml(DOCUMENT_DISCLAIMER))
     expect(html).toContain('<p>body</p>')
+    expect(html).toContain('brand-logo')
+    expect(html).toContain('data:image/svg+xml;base64,')
+    expect(html).toContain('Powered by Navadrishti LLP')
+    expect(html).toContain('not a statutory approval')
   })
 })
 
@@ -188,10 +192,14 @@ describe('utilizationCertificateTemplate', () => {
     [100000, 150000, 500000, '₹0', '30.0%'],
     [100000, 50000, 0, '₹50,000', '—'],
     [undefined, 1000, 4000, '—', '25.0%'],
+    [null, 1000, 4000, '—', '25.0%'],
   ])('confirmed %s, utilized %s, budget %s -> balance %s, %s', (confirmed, utilized, budget, balance, pct) => {
     const html = utilizationCertificateTemplate({ ...base, fundsConfirmed: confirmed, fundsUtilized: utilized, budgetInr: budget })
     expect(fieldValue(html, 'Unutilized Balance (Received − Utilized)')).toBe(balance)
     expect(fieldValue(html, 'Utilization vs Budget')).toBe(pct)
+    expect(fieldValue(html, 'Amount Received (Net Confirmed)')).toBe(
+      confirmed == null ? '—' : `₹${Number(confirmed).toLocaleString('en-IN')}`
+    )
     expectCleanOutput(html)
   })
 
@@ -273,7 +281,7 @@ describe('implementingAgencyReportTemplate', () => {
       milestones: [{ title: 'Survey', dueDate: '2026-10-15', budgetAllocated: 5000 }],
     })
     expect(fieldValue(html, 'Budget')).toBe('₹5,00,000')
-    expect(fieldValue(html, 'Received')).toBe('—')
+    expect(fieldValue(html, 'Received (Net Confirmed)')).toBe('—')
     expect(fieldValue(html, 'Utilized')).toBe('₹1,000')
     expect(fieldValue(html, 'Beneficiaries')).toBe('1,500')
     expect(fieldValue(html, 'Funding Company')).toBe('—')

@@ -74,6 +74,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       documentType,
+      format: 'html',
       filename: result.filename,
       label: result.label,
       entityTitle: 'entityTitle' in result ? result.entityTitle : undefined,

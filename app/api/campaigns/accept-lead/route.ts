@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 import { CSR_ELIGIBILITY_REQUIRED_MESSAGE, CSR_TIMELINE_COVERAGE_REQUIRED_MESSAGE, CSR_WORK_END_DATE_REQUIRED_MESSAGE } from '@/lib/auth'
-import { findAuthUser, ngoUserIsCsrEligible, assertNgoCsr1CoversWork } from '@/lib/server-auth'
+import { getAuthUserFromRequest, authErrorResponse, ngoUserIsCsrEligible, assertNgoCsr1CoversWork } from '@/lib/server-auth'
 import { getCampaignLeadNgoId, parseLeadNgoInvites } from '@/lib/campaign-volunteer-attendance'
 import { parseJsonObject } from '@/lib/utils'
 import { redactCampaignForViewer } from '@/lib/campaign-public-view'
@@ -10,8 +10,7 @@ const CLOSED_OR_LIVE_STATUSES = new Set(['active', 'completed', 'cancelled', 'cl
 
 export async function POST(request: NextRequest) {
   try {
-    const user = findAuthUser(request)
-    if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+    const user = await getAuthUserFromRequest(request)
     if (user.user_type !== 'ngo') {
       return NextResponse.json({ error: 'Only NGOs can accept the lead role' }, { status: 403 })
     }
@@ -160,6 +159,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: redactCampaignForViewer(updated, user.id) })
   } catch (e) {
+    const authResponse = authErrorResponse(e)
+    if (authResponse) return authResponse
     console.error('Campaign accept error:', e)
     return NextResponse.json({ error: 'Failed to accept lead role' }, { status: 500 })
   }

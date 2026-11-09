@@ -165,6 +165,8 @@ describe('skill service helpers', () => {
       daysPresent: 2,
       totalDue: 1000,
       paidTotal: 0,
+      waivedTotal: 0,
+      outstanding: 1000,
       lastAttendanceAt: null,
     })
   })

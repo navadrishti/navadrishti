@@ -84,11 +84,20 @@ export function useCampaignDraft({
     }
   }
 
-  const publishDraft = async (campaignId: string) => {
+  const publishDraft = async (
+    campaignId: string,
+    options?: { evidenceVerifierIdentityId?: string | null }
+  ) => {
     if (!token) throw new Error('Please sign in again.')
     setPublishing(true)
     try {
       const body = campaignBody()
+      const evidenceVerifierIdentityId = String(options?.evidenceVerifierIdentityId || '').trim()
+      if (!evidenceVerifierIdentityId) {
+        throw new Error(
+          'Select an active Evidence Verifier after the Lead NGO is finalized before publishing.'
+        )
+      }
       const published = await publishCampaignDraft(token, campaignId, {
         ...body,
         budget_breakdown: body.budget_breakdown,
@@ -101,6 +110,7 @@ export function useCampaignDraft({
           csr_agent_session_id: '',
           lead_ngo_accepted: false,
           lead_ngo_invites: [],
+          evidence_verifier_identity_id: evidenceVerifierIdentityId,
         },
       })
       return String(published.id || campaignId)

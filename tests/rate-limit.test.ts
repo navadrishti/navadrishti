@@ -142,6 +142,26 @@ describe('rateLimit', () => {
     expect(await rateLimit('k', WINDOW)).toEqual({ allowed: false, remaining: 0, retryAfterSeconds: 30 })
     vi.unstubAllEnvs()
   })
+
+  it('fails closed in non-production when failClosed is requested and the RPC errors', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    mocks.rpc.mockReset().mockResolvedValue({ data: null, error: { code: '57014', message: 'statement timeout' } })
+
+    expect(await rateLimit('k', { ...WINDOW, failClosed: true })).toEqual({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 30,
+    })
+  })
+
+  it('fails closed when RATE_LIMIT_FAIL_CLOSED=1 even if the store is missing', async () => {
+    vi.stubEnv('RATE_LIMIT_FAIL_CLOSED', '1')
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    mocks.rpc.mockReset().mockImplementation(missingAuthStoreRpc)
+
+    expect(await rateLimit('k', WINDOW)).toEqual({ allowed: false, remaining: 0, retryAfterSeconds: 30 })
+    vi.unstubAllEnvs()
+  })
 })
 
 describe('getClientIp', () => {

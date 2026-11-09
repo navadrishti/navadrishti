@@ -20,6 +20,10 @@ export function isCapabilityOfferInUse(
   return Array.isArray(offer.usage_records) && offer.usage_records.length > 0
 }
 
+/**
+ * Public catalog eligibility. Depends on operational lifecycle (active, expiry,
+ * in-use, CSR lock) — not admin_status or is_listed moderation/listing flags.
+ */
 export function isCapabilityOfferAvailableForListing(
   offer: {
     valid_until?: unknown
@@ -37,8 +41,6 @@ export function isCapabilityOfferAvailableForListing(
 
   const status = String(offer.status || '').toLowerCase()
   if (['inactive', 'completed', 'cancelled', 'paused'].includes(status)) return false
-  if (offer.is_listed === false) return false
-  if (String(offer.admin_status || '').toLowerCase() === 'rejected') return false
   if (offer.is_expired ?? isOfferExpired(offer)) return false
   if (isCapabilityOfferInUse(offer)) return false
   const details = parseJsonObject(offer.offer_details)
@@ -59,6 +61,7 @@ export function isCapabilityOfferOpenForApplications(
   return isCapabilityOfferPubliclyVisible(offer)
 }
 
+/** Detail/apply visibility: active + not expired is enforced by callers where needed. */
 export function isCapabilityOfferPubliclyVisible(
   offer: {
     status?: string | null
@@ -67,9 +70,7 @@ export function isCapabilityOfferPubliclyVisible(
   } | null | undefined
 ): boolean {
   if (!offer) return false
-  if (String(offer.status || '').toLowerCase() !== 'active') return false
-  if (offer.is_listed === false) return false
-  return String(offer.admin_status || '').toLowerCase() !== 'rejected'
+  return String(offer.status || '').toLowerCase() === 'active'
 }
 
 const OPEN_USAGE_STATUSES = new Set(['accepted', 'active', 'in_progress'])
@@ -94,7 +95,6 @@ export function classifyCapabilityOffer(offer: CapabilityOfferListItem) {
     else if (expired && used) pastReason = 'expired_and_used'
     else if (used) pastReason = 'used'
     else if (expired) pastReason = 'expired'
-    else if (offer.is_listed === false) pastReason = 'unlisted'
     else pastReason = 'inactive'
   }
 

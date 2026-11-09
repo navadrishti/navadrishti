@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useRef } from "react"
+import { useEffect, useEffectEvent, useLayoutEffect, useRef } from "react"
 import { openAgentSessionList } from "@/lib/ai-agent-sessions"
 import { readStoredSessionPayload, sessionPayloadScore } from "./helpers"
 import { type CSRAgentSession, buildEmptySession, hasMeaningfulSessionContent, normalizeSessionPayload } from "./session"
@@ -30,9 +30,11 @@ export function useSessionHydration({
   const tokenRef = useRef(token)
   const sessionsRef = useRef(sessions)
   const activeSessionIdRef = useRef(activeSessionId)
-  tokenRef.current = token
-  sessionsRef.current = sessions
-  activeSessionIdRef.current = activeSessionId
+  useLayoutEffect(() => {
+    tokenRef.current = token
+    sessionsRef.current = sessions
+    activeSessionIdRef.current = activeSessionId
+  }, [token, sessions, activeSessionId])
 
   const showSessions = useEffectEvent((nextSessions: CSRAgentSession[], nextActiveId: string) => {
     setSessions(nextSessions)

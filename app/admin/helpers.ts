@@ -4,31 +4,27 @@ export const statusTone = (value?: string | null) => {
   const normalized = String(value || '').toLowerCase();
   if (normalized === 'healthy' || normalized === 'approved' || normalized === 'verified' || normalized === 'live') return 'bg-emerald-100 text-emerald-800 border-emerald-200';
   if (normalized === 'degraded' || normalized === 'pending' || normalized === 'in_progress') return 'bg-amber-100 text-amber-800 border-amber-200';
-  if (normalized === 'unhealthy' || normalized === 'rejected' || normalized === 'closed' || normalized === 'removed') return 'bg-rose-100 text-rose-800 border-rose-200';
+  if (normalized === 'unhealthy' || normalized === 'rejected' || normalized === 'closed' || normalized === 'removed' || normalized === 'inactive') return 'bg-rose-100 text-rose-800 border-rose-200';
   return 'bg-slate-100 text-slate-700 border-slate-200';
 };
 
-/** Capability offers post live; admin only removes or restores catalog visibility. */
+/** Offers are live when operationally active — no listing/approval flags. */
 export function isOfferRemovedFromCatalog(offer: {
-  admin_status?: string | null;
-  is_listed?: boolean | null;
+  status?: string | null;
 }) {
-  if (String(offer.admin_status || '').toLowerCase() === 'rejected') return true;
-  return offer.is_listed === false;
+  return ['inactive', 'completed', 'cancelled', 'paused'].includes(String(offer.status || '').toLowerCase());
 }
 
 export function offerCatalogLabel(offer: {
-  admin_status?: string | null;
-  is_listed?: boolean | null;
+  status?: string | null;
 }) {
-  return isOfferRemovedFromCatalog(offer) ? 'Removed' : 'Live';
+  return isOfferRemovedFromCatalog(offer) ? 'Inactive' : 'Live';
 }
 
 export function offerCatalogTone(offer: {
-  admin_status?: string | null;
-  is_listed?: boolean | null;
+  status?: string | null;
 }) {
-  return statusTone(isOfferRemovedFromCatalog(offer) ? 'removed' : 'live');
+  return statusTone(isOfferRemovedFromCatalog(offer) ? 'inactive' : 'live');
 }
 
 export const adminListButtonClass = (selected: boolean) =>

@@ -8,12 +8,28 @@ import {
   loadProjectsForCampaign,
   resolvePartnerName,
 } from './loaders'
-import { pickLatestImpact, sumLatestImpact } from './project-data'
+import { pickLatestImpact, sumLatestImpact, sumScopedImpactField } from './project-data'
 import { buildImpactFromCampaign, buildImpactFromProject } from './report-builders'
 import type { PeriodDocumentContext } from './types'
 import { asNumber } from './values'
 
 async function assembleCompanyImpactReport({ user, request, organizationName, period }: PeriodDocumentContext) {
+  // Project-scoped path: used by Company Employees and any company request that names a project.
+  // Must not pull sibling campaign projects into the report.
+  if (request.projectId) {
+    const project = await loadProjectForActor(request.projectId, user)
+    const partnerName = await resolvePartnerName(project.ngo_user_id)
+    return buildImpactFromProject({
+      project,
+      organizationName,
+      audienceLabel: 'Company CSR monitoring',
+      partnerName,
+      period,
+      periodStart: request.periodStart,
+      periodEnd: request.periodEnd,
+    })
+  }
+
   if (!request.campaignId) throw new Error('Select a campaign for the impact report')
   const campaign = await loadCampaignForCompany(request.campaignId, user.id)
   const projects = await loadProjectsForCampaign(campaign.id)
@@ -61,6 +77,19 @@ async function assembleNgoImpactReport({ user, request, organizationName, period
   if (request.campaignId) {
     const campaign = await loadCampaignForLeadNgo(request.campaignId, user.id)
     const companyName = await resolvePartnerName(campaign.company_id)
+    const projects = await loadProjectsForCampaign(campaign.id)
+    const ngoProjects = projects.filter((project) => Number(project.ngo_user_id) === user.id)
+    // Scope metrics to this NGO's projects only — never use campaign-wide impact_metrics
+    // (those may include sibling implementers on the same campaign).
+    const fundsUtilized = sumScopedImpactField(ngoProjects, 'funds_utilized') ?? 0
+    const beneficiaries = sumScopedImpactField(ngoProjects, 'beneficiaries') ?? 0
+    const progressRows = ngoProjects
+      .map((project) => asNumber(pickLatestImpact(project)?.progress_percentage))
+      .filter((value) => value > 0)
+    const progressPercentage = progressRows.length
+      ? Math.round(progressRows.reduce((a, b) => a + b, 0) / progressRows.length)
+      : 0
+
     return buildImpactFromCampaign({
       campaign,
       organizationName,
@@ -69,6 +98,12 @@ async function assembleNgoImpactReport({ user, request, organizationName, period
       period,
       periodStart: request.periodStart,
       periodEnd: request.periodEnd,
+      fundsUtilized,
+      beneficiaries,
+      progressPercentage,
+      gaps: ngoProjects.length
+        ? []
+        : ['No projects assigned to this NGO under the lead campaign — metrics may be incomplete'],
     })
   }
   throw new Error('Select a project or lead campaign for the impact report')

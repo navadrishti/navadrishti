@@ -44,7 +44,7 @@ export function AgentWorkspace({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex h-12 shrink-0 items-center gap-1 border-b border-slate-200 bg-white px-1 lg:hidden">
         <Button
           type="button"
@@ -79,15 +79,15 @@ export function AgentWorkspace({
         </Button>
       </div>
 
-      <div className="grid min-h-0 flex-1 lg:grid-cols-[16.75rem_minmax(0,1.7fr)_minmax(20rem,0.9fr)] lg:items-stretch lg:gap-4">
-        <aside className="hidden min-h-0 flex-col gap-3 lg:flex">
-          <div className="shrink-0">{renderProgress(workspace)}</div>
-          <div className="flex min-h-0 flex-1 flex-col [&>*]:h-full [&>*]:min-h-0">
+      <div className="grid min-h-0 flex-1 overflow-hidden lg:grid-cols-[19rem_minmax(0,1.75fr)_minmax(20rem,0.95fr)] lg:items-stretch lg:gap-3">
+        <aside className="hidden min-h-0 flex-col gap-2 overflow-hidden lg:flex">
+          <div className="shrink-0 space-y-2">{renderProgress(workspace)}</div>
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden [&>*]:h-full [&>*]:min-h-0">
             {renderSessions(workspace)}
           </div>
         </aside>
-        <div className="flex min-h-0 min-w-0 flex-col">{children}</div>
-        <div className="hidden min-h-0 min-w-0 lg:flex">{renderPreview(workspace)}</div>
+        <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">{children}</div>
+        <div className="hidden min-h-0 min-w-0 overflow-hidden lg:flex">{renderPreview(workspace)}</div>
       </div>
 
       <Sheet open={leftOpen} onOpenChange={setLeftOpen}>
@@ -96,7 +96,7 @@ export function AgentWorkspace({
             <SheetTitle>Conversations</SheetTitle>
             <SheetDescription>Saved chat history.</SheetDescription>
           </SheetHeader>
-          <div className="flex min-h-0 flex-1 flex-col [&>*]:h-full [&>*]:min-h-0">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden [&>*]:h-full [&>*]:min-h-0">
             {renderSessions(workspace)}
           </div>
         </SheetContent>
@@ -109,7 +109,9 @@ export function AgentWorkspace({
             <SheetDescription>Progress, captured details, and matching panels.</SheetDescription>
           </SheetHeader>
           <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
-            <div className="shrink-0">{renderProgress(workspace)}</div>
+            <div className="max-h-[42%] shrink-0 space-y-2 overflow-y-auto overscroll-contain">
+              {renderProgress(workspace)}
+            </div>
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden [&>*]:h-full [&>*]:min-h-0">
               {renderPreview(workspace)}
             </div>

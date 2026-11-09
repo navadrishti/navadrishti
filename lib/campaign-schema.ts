@@ -60,6 +60,11 @@ export const CLIENT_CAMPAIGN_IMPACT_KEYS = [
   'pincode',
   'custom_metrics',
   'selected_existing_project_id',
+  // Company owner selects Evidence Verifier after Lead NGO is finalized (publish gate).
+  'evidence_verifier_identity_id',
+  'evidence_verifier_user_id',
+  'evidence_verifier_name',
+  'evidence_verifier_email',
 ] as const
 
 export function pickClientImpactMetrics(value: unknown): Record<string, Json> {

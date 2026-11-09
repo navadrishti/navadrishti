@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
 import { withAuth, type AuthenticatedRequest, backfillNgoComplianceProfileData, backfillNgoDocumentExpiries, summarizeDocumentExpiries, ngoIsCsrEligible, getCaComplianceTags, getAccountAccessBlockReason, generateToken, type UserData } from '@/lib/auth';
+import { evaluateCompanyEmployeeAuthentication } from '@/lib/company-employee';
 import { applyCaBadgeToProfile } from '@/lib/platform-ca-auth';
 import { parseJsonObject, type JsonRecord } from '@/lib/utils';
 
@@ -22,6 +23,16 @@ async function handler(req: AuthenticatedRequest) {
     });
     if (accessBlock) {
       return NextResponse.json({ error: accessBlock }, { status: 403 });
+    }
+
+    const employeeEval = await evaluateCompanyEmployeeAuthentication(user.id, {
+      allowPasswordChangePending: true,
+    });
+    if (employeeEval.isEmployee && !employeeEval.allowed) {
+      return NextResponse.json(
+        { error: employeeEval.reason || 'This account cannot sign in.' },
+        { status: 403 }
+      );
     }
 
     // users.verification_status is the admin's authoritative override:
@@ -155,7 +166,13 @@ async function handler(req: AuthenticatedRequest) {
         ngo_volunteer_capacity: freshUserData.ngo_volunteer_capacity ?? null,
         created_at: freshUserData.created_at,
         profile_data: profileData,
-        profile: profileData
+        profile: profileData,
+        ...(employeeEval.isEmployee
+          ? {
+              is_company_employee: true,
+              must_change_password: employeeEval.mustChangePassword,
+            }
+          : {}),
       }
     });
     

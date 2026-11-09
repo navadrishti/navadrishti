@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { areSameSessionList, keepActiveAndMeaningfulSessions, resolveHydratedActiveSession } from "@/lib/ai-agent-sessions"
 import { type CloudSaveStatus, describeCloudSaveStatus } from "@/lib/cloud-save-status"
 import { type CSRAgentSession, hasMeaningfulSessionContent, normalizeSessionPayload } from "./session"
@@ -22,7 +22,9 @@ export function useSessionCloudSync({ mounted, userId, token, activeSessionId, s
   const isServerSyncInFlightRef = useRef(false)
   const visibleSessionsRef = useRef<CSRAgentSession[]>([])
   const activeSessionIdRef = useRef(activeSessionId)
-  activeSessionIdRef.current = activeSessionId
+  useLayoutEffect(() => {
+    activeSessionIdRef.current = activeSessionId
+  }, [activeSessionId])
   const syncPendingServerProgressRef = useRef<() => Promise<void>>(async () => {})
 
   const scheduleServerRetry = useCallback((delayMs: number) => {

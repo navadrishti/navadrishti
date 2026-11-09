@@ -18,9 +18,9 @@ export interface UserData {
 export type ScopedTokenKind = 'platform_ca' | 'company_ca';
 
 export class AuthError extends Error {
-  readonly status: 401 | 403;
+  readonly status: 401 | 403 | 503;
 
-  constructor(message: string, status: 401 | 403 = 401) {
+  constructor(message: string, status: 401 | 403 | 503 = 401) {
     super(message);
     this.name = 'AuthError';
     this.status = status;
@@ -213,21 +213,23 @@ function readTokenClaims(request: NextRequest): TokenClaims | null {
   return decoded as TokenClaims;
 }
 
-type LiveUserTypeOverlay = <T extends { id: number; user_type: string }>(claims: T) => Promise<T>
+type LiveUserTypeOverlay = <T extends { id: number; user_type: string }>(claims: T, pathname: string) => Promise<T>
 
 let liveUserTypeOverlay: LiveUserTypeOverlay | null = null
 
 /** Server modules register this so `lib/auth` can stay safe to import from client components. */
-export function setLiveUserTypeOverlay(overlay: LiveUserTypeOverlay) {
+export function setLiveUserTypeOverlay(overlay: LiveUserTypeOverlay | null) {
   liveUserTypeOverlay = overlay
 }
 
-async function withLiveUserType<T extends { id: number; user_type: string }>(claims: T): Promise<T> {
-  if (!liveUserTypeOverlay) return claims
+async function withLiveUserType<T extends { id: number; user_type: string }>(claims: T, pathname: string): Promise<T> {
+  if (!liveUserTypeOverlay) throw new AuthError('Authorization service temporarily unavailable', 503)
   try {
-    return await liveUserTypeOverlay(claims)
-  } catch {
-    return claims
+    return await liveUserTypeOverlay(claims, pathname)
+  } catch (error) {
+    if (error instanceof AuthError) throw error
+    console.error('Authorization overlay failed')
+    throw new AuthError('Authorization service temporarily unavailable', 503)
   }
 }
 
@@ -239,7 +241,7 @@ async function withLiveUserType<T extends { id: number; user_type: string }>(cla
 export async function getTokenClaims(request: NextRequest): Promise<TokenClaims | null> {
   const claims = readTokenClaims(request);
   if (!claims) return null;
-  return withLiveUserType(claims);
+  return withLiveUserType(claims, request.nextUrl.pathname);
 }
 
 /** Platform end-user sessions only — never treat console admin JWTs as users. */
@@ -276,14 +278,17 @@ export function withAuth<Args extends unknown[]>(
         return NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 });
       }
 
-      const user = await withLiveUserType(verified);
+      const user = await withLiveUserType(verified, req.nextUrl.pathname);
 
       const authedRequest = req as AuthenticatedRequest;
       authedRequest.user = user;
       return handler(authedRequest, ...args);
     } catch (error) {
-      console.error('Authentication error:', error);
-      return NextResponse.json({ error: 'Authentication failed' }, { status: 401 });
+      if (error instanceof AuthError) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
+      }
+      console.error('Authentication service failed');
+      return NextResponse.json({ error: 'Authorization service temporarily unavailable' }, { status: 503 });
     }
   };
 }

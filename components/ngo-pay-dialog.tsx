@@ -1,4 +1,5 @@
 "use client"
+import { toast } from 'sonner'
 import { readApiError } from '@/lib/user-facing-error'
 import { getClientSessionToken } from '@/lib/client-session';
 
@@ -18,7 +19,6 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useToast } from '@/hooks/use-toast'
 import { openRazorpayCheckout } from '@/lib/razorpay-checkout'
 import { PlatformPaymentSummary, getTotalChargeLabel } from '@/components/platform-payment-summary'
 
@@ -44,7 +44,6 @@ export function NgoPayDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const { user } = useAuth()
-  const { toast: notify } = useToast()
   const [paymentAmount, setPaymentAmount] = useState('')
   const [paying, setPaying] = useState(false)
   const payerVerified = isCaVerifiedAccount(user?.verification_status)
@@ -59,30 +58,18 @@ export function NgoPayDialog({
 
     const token = getClientSessionToken()
     if (!token) {
-      notify({
-        title: 'Sign in required',
-        description: 'Log in as a company or individual to pay NGOs.',
-        variant: 'destructive',
-      })
+      toast.error('Sign in required', { description: 'Log in as a company or individual to pay NGOs.' })
       return
     }
 
     if (!payerVerified) {
-      notify({
-        title: 'Verification required',
-        description: CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE,
-        variant: 'destructive',
-      })
+      toast.error('Verification required', { description: CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE })
       return
     }
 
     const requestedInr = parseNgoPayAmountToInr(paymentAmount)
     if (requestedInr <= 0) {
-      notify({
-        title: 'Invalid amount',
-        description: 'Enter a valid contribution amount in INR.',
-        variant: 'destructive',
-      })
+      toast.error('Invalid amount', { description: 'Enter a valid contribution amount in INR.' })
       return
     }
 
@@ -99,11 +86,7 @@ export function NgoPayDialog({
 
       const orderPayload = await orderRes.json()
       if (!orderRes.ok || !orderPayload?.success) {
-        notify({
-          title: 'Unable to start payment',
-          description: readApiError(orderPayload, 'Failed to create payment order'),
-          variant: 'destructive',
-        })
+        toast.error('Unable to start payment', { description: readApiError(orderPayload, 'Failed to create payment order') })
         return
       }
 
@@ -142,34 +125,19 @@ export function NgoPayDialog({
 
           const verifyPayload = await verifyRes.json()
           if (!verifyRes.ok || !verifyPayload?.success) {
-            notify({
-              title: 'Payment verification failed',
-              description: readApiError(verifyPayload, 'Please contact support with your payment reference.'),
-              variant: 'destructive',
-            })
+            toast.error('Payment verification failed', { description: readApiError(verifyPayload, 'Please contact support with your payment reference.') })
             return
           }
 
-          notify({
-            title: 'Payment successful',
-            description: verifyPayload?.data?.message || `Your support for ${activeNgo.name} was recorded.`,
-          })
+          toast.success('Payment successful', { description: verifyPayload?.data?.message || `Your support for ${activeNgo.name} was recorded.` })
           close()
         },
         onFailure: (error) => {
-          notify({
-            title: 'Payment failed',
-            description: error.description || error.reason || 'Payment could not be completed.',
-            variant: 'destructive',
-          })
+          toast.error('Payment failed', { description: error.description || error.reason || 'Payment could not be completed.' })
         },
       })
     } catch (error) {
-      notify({
-        title: 'Payment failed',
-        description: readApiError(error, 'Could not open checkout.'),
-        variant: 'destructive',
-      })
+      toast.error('Payment failed', { description: readApiError(error, 'Could not open checkout.') })
     } finally {
       setPaying(false)
     }

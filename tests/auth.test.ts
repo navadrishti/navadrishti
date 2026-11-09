@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken'
 import { NextRequest } from 'next/server'
 import { describe, expect, it } from 'vitest'
 import { getTokenClaims, normalizeExpiryDate, normalizePincode } from '@/lib/auth'
+import { setLiveUserTypeOverlay } from '@/lib/auth/session'
 
 function requestWithAuth(header?: string) {
   return new NextRequest('http://localhost/api/test', {
@@ -11,6 +12,7 @@ function requestWithAuth(header?: string) {
 
 describe('getTokenClaims', () => {
   it('returns the claims from a valid bearer token', async () => {
+    setLiveUserTypeOverlay(async (claims) => claims)
     const token = jwt.sign({ id: 7, user_type: 'ngo' }, 'test-secret')
     expect(await getTokenClaims(requestWithAuth(`Bearer ${token}`))).toMatchObject({ id: 7, user_type: 'ngo' })
   })

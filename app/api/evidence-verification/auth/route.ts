@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (error) {
-    console.error('Company CA login error:', error);
+    console.error('Evidence Verifier login error:', error);
     return NextResponse.json({ error: 'Failed to login company CA' }, { status: 500 });
   }
 }

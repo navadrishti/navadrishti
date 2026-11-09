@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 import { embedText } from '@/lib/embeddings'
 import { getErrorMessage, parseJsonObject } from '@/lib/utils'
-import { findAuthUser } from '@/lib/server-auth'
+import { authErrorResponse, getAuthUserFromRequest } from '@/lib/server-auth'
 
 function toNumber(value: unknown): number | null {
   if (value === null || value === undefined) return null
@@ -35,11 +35,8 @@ function extractKeywords(text: string): string[] {
 }
 
 export async function POST(req: NextRequest) {
-  if (!findAuthUser(req, { allowCookie: true })) {
-    return NextResponse.json({ success: false, error: 'Login required' }, { status: 401 })
-  }
-
   try {
+    await getAuthUserFromRequest(req)
     const body = await req.json()
 
     const requestType = String(body.request_type || body.requestType || '').trim()
@@ -299,6 +296,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, data: { recommendations, suggested_set } })
   } catch (err) {
+    const auth = authErrorResponse(err)
+    if (auth) return auth
     console.error('[api/service-requests/recommend]', err)
     return NextResponse.json({ success: false, error: getErrorMessage(err) || 'Failed to compute recommendations' }, { status: 500 })
   }

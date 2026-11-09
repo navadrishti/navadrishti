@@ -6,7 +6,7 @@ import {
   resolveFundingTargetInr,
 } from '@/lib/service-request-allocation';
 import { getTokenClaims, CSR_ELIGIBILITY_REQUIRED_MESSAGE, CSR_OWN_PROJECT_TIMELINE_MESSAGE } from '@/lib/auth';
-import { findAuthUser, ngoUserIsCsrEligible, ngoUserIsCsrEligibleForProject } from '@/lib/server-auth';
+import { authErrorResponse, findAuthUser, getAuthUserFromRequest, ngoUserIsCsrEligible, ngoUserIsCsrEligibleForProject } from '@/lib/server-auth';
 import { redactNeedForViewer } from '@/lib/service-requests/list-shape';
 import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_TYPES } from '@/lib/categories';
 import { isHiddenNgoNetworkPaymentChannel } from '@/lib/razorpay-route';
@@ -36,6 +36,17 @@ function parseAmount(value: unknown): number | null {
   if (!text) return null;
   const parsed = Number(text.replace(/[^\d.-]/g, ''));
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+/** First parseable amount; blank strings and non-numeric values are skipped (not treated as nullish short-circuits). */
+function firstDefinedAmount(...values: unknown[]): number | null {
+  for (const value of values) {
+    if (value === undefined || value === null) continue;
+    if (typeof value === 'string' && !value.trim()) continue;
+    const parsed = parseAmount(value);
+    if (parsed != null) return parsed;
+  }
+  return null;
 }
 
 function parseTimelineToDeadlineMs(timeline: unknown, baseMs: number): number | null {
@@ -86,8 +97,24 @@ function deriveAutoUrgency(timeline: unknown, createdAtMs: number): 'low' | 'med
 }
 
 function buildProgressFields(body: Record<string, unknown>, existing?: Record<string, unknown> | null) {
-  const targetAmount = parseAmount(body.target_amount ?? body.estimated_budget ?? body.budget ?? existing?.target_amount ?? existing?.estimated_budget ?? existing?.budget);
-  const targetQuantity = parseAmount(body.target_quantity ?? body.quantity ?? body.volunteers_needed ?? body.beneficiary_count ?? existing?.target_quantity ?? existing?.quantity ?? existing?.volunteers_needed ?? existing?.beneficiary_count);
+  const targetAmount = firstDefinedAmount(
+    body.target_amount,
+    body.estimated_budget,
+    body.budget,
+    existing?.target_amount,
+    existing?.estimated_budget,
+    existing?.budget
+  );
+  // Capacity aliases only. Never let body.beneficiary_count overwrite an existing target_quantity.
+  const targetQuantity = firstDefinedAmount(
+    body.target_quantity,
+    body.quantity,
+    body.volunteers_needed,
+    existing?.target_quantity,
+    existing?.quantity,
+    existing?.volunteers_needed,
+    existing?.beneficiary_count
+  );
   const currentAmount = parseAmount(existing?.current_amount) ?? 0;
   const currentQuantity = parseAmount(existing?.current_quantity) ?? 0;
 
@@ -114,6 +141,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    const viewer = findAuthUser(request) ? await getAuthUserFromRequest(request) : null;
     const requestId = parseInt(id);
 
     const found = await db.serviceRequests.getById(requestId);
@@ -159,13 +187,14 @@ export async function GET(
       serviceRequest.funding_progress = funding.progress;
     }
 
-    const viewer = findAuthUser(request, { allowCookie: true });
     return NextResponse.json({
       success: true,
       data: redactNeedForViewer(serviceRequest, viewer?.id)
     });
 
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Error fetching service request:', error);
     return NextResponse.json(
       { 
@@ -414,7 +443,7 @@ export async function PUT(
     const requirementsData = {
       request_type: normalizedRequestType,
       estimated_budget: estimated_budget || budget || 'Not specified',
-      beneficiary_count: Number(beneficiary_count ?? (projectRecord?.expected_beneficiaries ?? 0)),
+      beneficiary_count: Number(beneficiary_count),
       impact_description: String(impact_description || '').trim(),
       budget: budget || estimated_budget || 'Not specified',
       contactInfo: contactInfo || 'Not specified',
@@ -436,7 +465,7 @@ export async function PUT(
       // Direct schema columns
       request_type: normalizedRequestType,
       estimated_budget: parseFloat(String(estimated_budget || budget || '')) || null,
-      beneficiary_count: Number(beneficiary_count ?? (projectRecord?.expected_beneficiaries ?? 0)),
+      beneficiary_count: Number(beneficiary_count),
       impact_description: String(impact_description || '').trim(),
       timeline: storedTimeline,
       contact_info: contactInfo || null,
@@ -453,6 +482,8 @@ export async function PUT(
     });
 
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Error updating service request:', error);
     return NextResponse.json(
       { error: 'Failed to update service request' },
@@ -522,6 +553,8 @@ export async function DELETE(
     });
 
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     if (error instanceof ServiceRequestDeleteBlockedError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
     }

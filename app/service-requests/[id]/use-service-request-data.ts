@@ -1,16 +1,14 @@
 'use client'
+import { toast } from 'sonner'
 
 import { useEffect, useEffectEvent, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
-import { useToast } from '@/hooks/use-toast'
 import type { ServiceRequest, VolunteerApplication } from './types'
 
 export function useServiceRequestData(requestId: string) {
   const router = useRouter()
-  const { user, token } = useAuth()
-  const { toast } = useToast()
-  const [request, setRequest] = useState<ServiceRequest | null>(null)
+  const { user, token } = useAuth()  const [request, setRequest] = useState<ServiceRequest | null>(null)
   const [userApplication, setUserApplication] = useState<VolunteerApplication | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -24,20 +22,12 @@ export function useServiceRequestData(requestId: string) {
         // Older API responses return the request itself instead of { success, data }.
         setRequest(data.success ? data.data : data)
       } else {
-        toast({
-          title: 'Error',
-          description: 'Failed to load need details',
-          variant: 'destructive'
-        })
+        toast.error('Error', { description: 'Failed to load need details' })
         router.push('/service-requests')
       }
     } catch (error) {
       console.error('Error fetching request:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to load need details',
-        variant: 'destructive'
-      })
+      toast.error('Error', { description: 'Failed to load need details' })
     } finally {
       setLoading(false)
     }

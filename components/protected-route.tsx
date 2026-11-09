@@ -51,7 +51,7 @@ export default function ProtectedRoute({
     if (userTypes && userTypes.length > 0) {
       if (!userTypes.includes(user.user_type)) {
         // Redirect to appropriate dashboard for user type
-        const redirectPath = getRedirectPathForUserType(user.user_type);
+        const redirectPath = getRedirectPathForUserType(user.user_type, user);
         smoothNavigate(router, redirectPath, { delay: 150 });
         return;
       }
@@ -68,8 +68,8 @@ export default function ProtectedRoute({
     }
 
     const currentPath = window.location.pathname;
-    if (!canAccessRoute(user.user_type, currentPath)) {
-      const redirectPath = getRedirectPathForUserType(user.user_type);
+    if (!canAccessRoute(user.user_type, currentPath, user)) {
+      const redirectPath = getRedirectPathForUserType(user.user_type, user);
       smoothNavigate(router, redirectPath, { delay: 150 });
       return;
     }

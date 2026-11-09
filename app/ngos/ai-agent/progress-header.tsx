@@ -27,9 +27,17 @@ export function ProgressHeader({ title, isDraftComplete, promptNumber, promptCou
             <div
               className="h-full rounded-full bg-gradient-to-r from-[#f97316] via-[#fb923c] to-[#60a5fa] transition-all duration-500"
               style={{ width: `${progressPercent}%` }}
+              role="progressbar"
+              aria-valuenow={progressPercent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label="Questionnaire progress"
             />
           </div>
-          {cloudSaveText ? <p className="mt-2 text-[11px] text-slate-500">{cloudSaveText}</p> : null}
+          <p className="mt-2 text-[11px] text-slate-500">
+            Intake progress only — not generative-model processing.
+            {cloudSaveText ? ` · ${cloudSaveText}` : ''}
+          </p>
         </div>
       </div>
     </section>

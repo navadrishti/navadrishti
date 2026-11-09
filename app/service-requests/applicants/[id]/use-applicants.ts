@@ -1,9 +1,9 @@
+import { toast } from 'sonner'
 import { readApiError } from '@/lib/user-facing-error'
 import { clientAuthFetchInit } from '@/lib/client-session';
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
-import { useToast } from '@/hooks/use-toast'
 import { getNeedRemainingQuantity, getNgoNeedFulfillmentMode, getServiceRequestTarget } from '@/lib/service-request-allocation'
 import { normalizeVolunteer } from './helpers'
 import type { ServiceRequest, Volunteer } from './types'
@@ -20,30 +20,27 @@ function describeStatusChange(newStatus: string) {
 export function useApplicants(requestId: string) {
   const router = useRouter()
   const { user } = useAuth()
-  const { toast } = useToast()
+  const userId = user?.id
+  const userType = user?.user_type
   const [loading, setLoading] = useState(true)
   const [request, setRequest] = useState<ServiceRequest | null>(null)
   const [volunteers, setVolunteers] = useState<Volunteer[]>([])
   const [updating, setUpdating] = useState<number | null>(null)
 
   useEffect(() => {
-    if (!user) {
+    if (!userId) {
       router.push('/login')
       return
     }
-    if (user.user_type !== 'ngo') {
-      toast({
-        title: "Access Denied",
-        description: "Only NGOs can view applicants",
-        variant: "destructive",
-      })
+    if (userType !== 'ngo') {
+      toast.error("Access Denied", { description: "Only NGOs can view applicants" })
       router.push('/service-requests')
       return
     }
-  }, [user?.id, user?.user_type, router, toast])
+  }, [userId, userType, router])
 
   useEffect(() => {
-    if (!user || user.user_type !== 'ngo' || !requestId) return
+    if (!userId || userType !== 'ngo' || !requestId) return
 
     const fetchData = async () => {
       try {
@@ -53,11 +50,7 @@ export function useApplicants(requestId: string) {
         if (requestData.success) {
           setRequest(requestData.data)
         } else {
-          toast({
-            title: "Error",
-            description: readApiError(requestData, "Failed to fetch need details"),
-            variant: "destructive",
-          })
+          toast.error("Error", { description: readApiError(requestData, "Failed to fetch need details") })
           router.push('/service-requests')
           return
         }
@@ -72,11 +65,7 @@ export function useApplicants(requestId: string) {
         }
       } catch (error) {
         console.error('Error fetching data:', error)
-        toast({
-          title: "Error",
-          description: "Failed to fetch data",
-          variant: "destructive",
-        })
+        toast.error("Error", { description: "Failed to fetch data" })
         router.push('/service-requests')
       } finally {
         setLoading(false)
@@ -84,7 +73,7 @@ export function useApplicants(requestId: string) {
     }
 
     fetchData()
-  }, [user?.id, user?.user_type, requestId, router, toast])
+  }, [userId, userType, requestId, router])
 
   const handleVolunteerStatusUpdate = async (volunteer: Volunteer, newStatus: string) => {
     setUpdating(volunteer.id)
@@ -134,24 +123,13 @@ export function useApplicants(requestId: string) {
           setVolunteers((volunteersData.data || []).map(normalizeVolunteer))
         }
 
-        toast({
-          title: "Success",
-          description: `Volunteer ${describeStatusChange(newStatus)} successfully`,
-        })
+        toast.success("Success", { description: `Volunteer ${describeStatusChange(newStatus)} successfully` })
       } else {
-        toast({
-          title: "Error",
-          description: readApiError(data, "Failed to update volunteer status"),
-          variant: "destructive",
-        })
+        toast.error("Error", { description: readApiError(data, "Failed to update volunteer status") })
       }
     } catch (error) {
       console.error('Error updating volunteer status:', error)
-      toast({
-        title: "Error",
-        description: "Failed to update volunteer status",
-        variant: "destructive",
-      })
+      toast.error("Error", { description: "Failed to update volunteer status" })
     } finally {
       setUpdating(null)
     }

@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getTokenClaims, requireBankStatementDocument } from '@/lib/auth';
+import { authErrorResponse } from '@/lib/server-auth';
 import { getErrorMessage, parseJsonObject } from '@/lib/utils';
 import type { TablesUpdate } from '@/lib/database.types';
 import { untrustedDocumentResponse } from '@/lib/ca-review/document-urls';
@@ -55,6 +56,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Individual verification error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
@@ -272,6 +275,8 @@ export async function GET(req: NextRequest) {
       level: user.verification_level || 'basic'
     });
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Get verification status error:', error);
     return NextResponse.json(
       { error: 'Failed to fetch verification status' },

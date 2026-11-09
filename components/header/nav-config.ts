@@ -1,5 +1,12 @@
 import type { User } from "@/lib/auth-context"
-import { getLaunchHeaderNavItems } from "@/lib/access-control"
+import {
+  getLaunchHeaderNavItems,
+  isCompanyEmployeeUserClient,
+} from "@/lib/access-control"
+import {
+  COMPANY_EMPLOYEE_CHANGE_PASSWORD,
+  COMPANY_EMPLOYEE_HOME,
+} from "@/lib/company-employee-access"
 
 export function getInitials(name: string) {
   if (!name) return "U"
@@ -10,6 +17,10 @@ export function getInitials(name: string) {
 
 export function getDashboardLink(user: User | null) {
   if (!user) return '/'
+
+  if (isCompanyEmployeeUserClient(user)) {
+    return user.must_change_password ? COMPANY_EMPLOYEE_CHANGE_PASSWORD : COMPANY_EMPLOYEE_HOME
+  }
 
   switch (user.user_type) {
     case 'ngo':
@@ -24,8 +35,11 @@ export function getDashboardLink(user: User | null) {
 }
 
 export function getAccountLinks(user: User | null) {
+  if (isCompanyEmployeeUserClient(user)) {
+    return [{ label: 'Change Password', href: COMPANY_EMPLOYEE_CHANGE_PASSWORD }]
+  }
+  // Dashboard stays in the primary navbar only — avoid duplicating it here.
   return [
-    { label: 'Dashboard', href: getDashboardLink(user) },
     { label: 'Help & Support', href: '/help-support' },
     { label: 'Settings', href: '/settings' },
   ]
@@ -45,9 +59,42 @@ function serviceOfferDescription(user: User | null, mounted: boolean) {
   return 'Browse & post capability offers'
 }
 
+function csrCampaignDescription(user: User | null, mounted: boolean) {
+  if (!mounted || !user) return 'Browse active initiatives'
+  if (user.user_type === 'company') return 'Browse and create CSR campaigns'
+  if (user.user_type === 'individual') return 'Find volunteer CSR campaigns'
+  if (user.user_type === 'ngo') return 'Track CSR campaign participation'
+  return 'Browse active initiatives'
+}
+
 /** Descriptions stay generic until mount so server and first client render match. */
 export function getHeaderNavItems(user: User | null, mounted: boolean) {
-  return getLaunchHeaderNavItems([
+  // Company Employees: dedicated monitoring nav only (server role flags on the user object).
+  if (mounted && user && isCompanyEmployeeUserClient(user)) {
+    if (user.must_change_password) {
+      return getLaunchHeaderNavItems([
+        {
+          label: 'Change Password',
+          href: COMPANY_EMPLOYEE_CHANGE_PASSWORD,
+          description: 'Required before monitoring access',
+        },
+      ])
+    }
+    return getLaunchHeaderNavItems([
+      {
+        label: 'Overview',
+        href: COMPANY_EMPLOYEE_HOME,
+        description: 'Assigned CSR project monitoring',
+      },
+      {
+        label: 'Change Password',
+        href: COMPANY_EMPLOYEE_CHANGE_PASSWORD,
+        description: 'Update your account password',
+      },
+    ])
+  }
+
+  const marketplace = [
     {
       label: 'NGO Network',
       href: '/ngo-network',
@@ -66,7 +113,21 @@ export function getHeaderNavItems(user: User | null, mounted: boolean) {
     {
       label: 'CSR Campaigns',
       href: '/csr-campaigns',
-      description: 'Browse active initiatives'
+      description: csrCampaignDescription(user, mounted)
     }
-  ])
+  ]
+
+  // Logged-in users need a direct path into their role dashboard from the primary nav.
+  if (mounted && user) {
+    return getLaunchHeaderNavItems([
+      {
+        label: 'Dashboard',
+        href: getDashboardLink(user),
+        description: 'Your role workspace'
+      },
+      ...marketplace
+    ])
+  }
+
+  return getLaunchHeaderNavItems(marketplace)
 }

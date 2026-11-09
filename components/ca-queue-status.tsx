@@ -27,7 +27,7 @@ export function CaQueueStatusBadge({
         : normalized
 
   return (
-    <Badge variant="outline" className={cn('text-xs', styles)}>
+    <Badge variant="outline" className={cn('inline-flex shrink-0 leading-none text-xs', styles)}>
       {label}
     </Badge>
   )

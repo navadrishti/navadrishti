@@ -14,7 +14,7 @@ interface OfferRequestsPanelProps {
   tab: OfferRequestsSubTab;
   onTabChange: (tab: OfferRequestsSubTab) => void;
   updatingRequestId: number | null;
-  onStatusUpdate: (requestId: number, status: 'accepted' | 'rejected') => void;
+  onStatusUpdate: (requestId: number, status: 'accepted' | 'rejected' | 'completed') => void;
   onRequestsUpdated: () => void | Promise<void>;
 }
 
@@ -129,7 +129,13 @@ export function OfferRequestsPanel({
           emptyTitle="No active requests"
           emptyDescription="Accepted requests that are now in progress will appear here."
           renderItem={(request) => (
-            <InProgressOfferRequestCard key={request.id} request={request} onUpdated={onRequestsUpdated} />
+            <InProgressOfferRequestCard
+              key={request.id}
+              request={request}
+              onUpdated={onRequestsUpdated}
+              updating={updatingRequestId === request.id}
+              onComplete={(requestId) => onStatusUpdate(requestId, 'completed')}
+            />
           )}
         />
       </TabsContent>

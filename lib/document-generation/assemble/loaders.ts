@@ -1,7 +1,42 @@
 import 'server-only'
 import { supabase } from '@/lib/db'
 import { getCampaignLeadNgoId } from '@/lib/campaign-volunteer-attendance'
-import type { UserData } from '@/lib/auth'
+import {
+  loadPaymentRefundTotalsByReferences,
+  withConfirmedRefunds,
+} from '@/lib/csr-agent/milestone-refund-accounting'
+import { AuthError, type UserData } from '@/lib/auth'
+import { isProjectFinancialLead } from '@/lib/csr-agent/project-financial-access'
+
+async function attachPaymentRefunds<T extends { csr_payment_confirmations?: Array<{ payment_reference?: string | null }> | null }>(
+  project: T
+): Promise<T> {
+  const payments = Array.isArray(project.csr_payment_confirmations) ? project.csr_payment_confirmations : []
+  if (payments.length === 0) return project
+  const totals = await loadPaymentRefundTotalsByReferences(payments.map((p) => p.payment_reference))
+  return {
+    ...project,
+    csr_payment_confirmations: withConfirmedRefunds(payments, totals.processedByPaymentRef),
+  }
+}
+
+async function attachPaymentRefundsMany<T extends { csr_payment_confirmations?: Array<{ payment_reference?: string | null }> | null }>(
+  projects: T[]
+): Promise<T[]> {
+  const refs = projects.flatMap((project) =>
+    (Array.isArray(project.csr_payment_confirmations) ? project.csr_payment_confirmations : []).map(
+      (payment) => payment.payment_reference
+    )
+  )
+  const totals = await loadPaymentRefundTotalsByReferences(refs)
+  return projects.map((project) => ({
+    ...project,
+    csr_payment_confirmations: withConfirmedRefunds(
+      Array.isArray(project.csr_payment_confirmations) ? project.csr_payment_confirmations : [],
+      totals.processedByPaymentRef
+    ),
+  }))
+}
 
 export async function loadUserRow(userId: number) {
   const { data, error } = await supabase
@@ -68,8 +103,11 @@ export async function loadProjectForActor(
   if (user.user_type === 'ngo' && Number(data.ngo_user_id) !== user.id) {
     throw new Error('Project not assigned to this NGO')
   }
+  if (user.user_type === 'ngo' && !isProjectFinancialLead(data, user.id)) {
+    throw new AuthError('Insufficient permissions', 403)
+  }
 
-  return data
+  return attachPaymentRefunds(data)
 }
 
 export async function loadProjectsForCampaign(campaignId: string) {
@@ -78,7 +116,7 @@ export async function loadProjectsForCampaign(campaignId: string) {
     .select('*, csr_impact_metrics(*), csr_project_milestones(*), csr_payment_confirmations(*)')
     .eq('campaign_id', campaignId)
 
-  return Array.isArray(data) ? data : []
+  return attachPaymentRefundsMany(Array.isArray(data) ? data : [])
 }
 
 export async function loadCompanyCampaigns(companyId: number) {
@@ -91,7 +129,7 @@ export async function loadCompanyProjects(companyId: number) {
     .from('csr_projects')
     .select('*, campaigns(*), csr_impact_metrics(*), csr_payment_confirmations(*)')
     .eq('company_user_id', companyId)
-  return Array.isArray(data) ? data : []
+  return attachPaymentRefundsMany(Array.isArray(data) ? data : [])
 }
 
 export async function resolvePartnerName(userId: number | null | undefined): Promise<string | null> {

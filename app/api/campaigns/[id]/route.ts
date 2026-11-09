@@ -36,8 +36,8 @@ function canViewDraft(campaign: Awaited<ReturnType<typeof loadCampaign>>, viewer
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
+    const viewer = findAuthUser(request) ? await getAuthUserFromRequest(request) : null
     const campaign = await loadCampaign(id)
-    const viewer = findAuthUser(request, { allowCookie: true })
 
     if (campaign.status === 'draft') {
       if (!viewer || !canViewDraft(campaign, Number(viewer.id))) {
@@ -88,6 +88,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
     })
   } catch (error) {
+    const auth = authErrorResponse(error)
+    if (auth) return auth
     console.error('Campaign fetch error:', error)
     return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
   }

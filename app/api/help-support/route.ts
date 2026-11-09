@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
+import { authErrorResponse } from '@/lib/server-auth';
 import type { UploadApiOptions, UploadApiResponse } from 'cloudinary';
 import { cloudinary } from '@/lib/cloudinary';
 import { escapeHtml, sendEmail } from '@/lib/email';
@@ -160,6 +161,8 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Support ticket submission error:', error);
     return NextResponse.json({ error: 'Failed to submit support ticket' }, { status: 500 });
   }

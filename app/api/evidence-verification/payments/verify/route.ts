@@ -18,11 +18,11 @@ export async function POST(request: NextRequest) {
     try {
       const companyCA = await getCompanyCAFromRequest(request)
       if (!hasCompanyCaPermission(companyCA.identity, 'can_confirm_payments')) {
-        return NextResponse.json({ error: 'Company CA does not have permission to confirm payments' }, { status: 403 })
+        return NextResponse.json({ error: 'Evidence Verifier does not have permission to confirm payments' }, { status: 403 })
       }
       companyUserId = companyCA.identity.company_user_id
     } catch {
-      return NextResponse.json({ error: 'Company CA authentication required' }, { status: 401 })
+      return NextResponse.json({ error: 'Evidence Verifier authentication required' }, { status: 401 })
     }
     const keySecret = process.env.RAZORPAY_KEY_SECRET
     const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID

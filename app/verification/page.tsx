@@ -11,7 +11,8 @@ import { smoothNavigate, smoothScrollToElement, getErrorMessage } from '@/lib/ut
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ArrowLeft, AlertTriangle, CheckCircle } from 'lucide-react';
+import { ArrowLeft, AlertTriangle } from 'lucide-react';
+import { toast } from 'sonner';
 import { ContactVerificationSection } from './contact-verification-section';
 import { DetailsStep } from './details-step';
 import { DocumentsStep } from './documents-step';
@@ -146,6 +147,7 @@ export default function VerificationPage() {
       contactNumber: user?.phone || '',
     });
     setSuccess(message);
+    toast.success(message);
   };
 
   const submitVerification = async () => {
@@ -334,13 +336,6 @@ export default function VerificationPage() {
             : 'Complete both pages to submit your verification request.'}
         </p>
       </div>
-
-      {success && (
-        <Alert className="border-green-200 bg-green-50">
-          <CheckCircle className="h-4 w-4 text-green-600" />
-          <AlertDescription className="text-green-700">{success}</AlertDescription>
-        </Alert>
-      )}
 
       {error && (
         <Alert variant="destructive">

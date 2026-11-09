@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
-import { findAuthUser } from '@/lib/server-auth'
+import { getAuthUserFromRequest, authErrorResponse } from '@/lib/server-auth'
 import { getCampaignLeadNgoId, parseLeadNgoInvites } from '@/lib/campaign-volunteer-attendance'
 import { parseJsonObject } from '@/lib/utils'
 import { redactCampaignForViewer } from '@/lib/campaign-public-view'
@@ -16,8 +16,7 @@ const ACTIONABLE_INVITE_STATUSES = new Set([
 
 export async function POST(request: NextRequest) {
   try {
-    const user = findAuthUser(request)
-    if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+    const user = await getAuthUserFromRequest(request)
     if (user.user_type !== 'ngo') {
       return NextResponse.json({ error: 'Only NGOs can decline the lead role' }, { status: 403 })
     }
@@ -88,6 +87,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: redactCampaignForViewer(updated, user.id) })
   } catch (error) {
+    const authResponse = authErrorResponse(error)
+    if (authResponse) return authResponse
     console.error('Decline campaign lead error:', error)
     return NextResponse.json({ error: 'Failed to decline lead role' }, { status: 500 })
   }

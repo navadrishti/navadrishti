@@ -13,7 +13,9 @@ import { partitionByWorkBucket } from '@/lib/work-item-bucket';
 import { buildPendingEvidenceItems, buildPendingPaymentItems, csrProjectWorkStatuses } from './verification-panel/helpers';
 import { MilestonePaymentsSection } from './verification-panel/milestone-payments-section';
 import { OfferPaymentsSection } from './verification-panel/offer-payments-section';
+import { CaActionCentre } from './verification-panel/action-centre';
 import { PanelStats } from './verification-panel/panel-stats';
+import { ProjectOpsReviewSection } from './verification-panel/project-ops-review-section';
 import { ProjectQueueSection } from './verification-panel/project-queue-section';
 import { usePanelPayments } from './verification-panel/use-panel-payments';
 import { useVerificationPanel } from './verification-panel/use-verification-panel';
@@ -66,12 +68,19 @@ export default function VerificationPanelClient() {
         ) : (
           <>
             <EvidencePageHeader
-              title="CA Portal"
-              description="Review milestone evidence and confirm payments for your company scope."
+              title="Evidence Verification Portal"
+              description="Financial and evidence-review workspace for your company scope. Pending work is listed first."
               scopeLabels={scopeLabels || undefined}
             />
 
             {panelMessage ? <EvidenceMessageCard>{panelMessage}</EvidenceMessageCard> : null}
+
+            <CaActionCentre
+              projectCount={activeProjectCount}
+              pendingEvidenceItems={pendingEvidenceItems}
+              pendingMilestonePayments={pendingPaymentItems}
+              pendingOfferPayments={caPendingPayments}
+            />
 
             <PanelStats
               projectCount={activeProjectCount}
@@ -79,13 +88,12 @@ export default function VerificationPanelClient() {
               volunteerAttendance={volunteerAttendance}
             />
 
-            <VolunteerAttendanceSection volunteerAttendance={volunteerAttendance} />
-
             <div className="grid gap-4 md:grid-cols-2">
               <MilestonePaymentsSection
                 items={pendingPaymentItems}
                 actionLoadingKey={actionLoadingKey}
                 onPay={handleMilestonePayment}
+                paymentMessage={panelMessage}
               />
               <OfferPaymentsSection
                 items={caPendingPayments}
@@ -93,6 +101,10 @@ export default function VerificationPanelClient() {
                 onPayGroup={handlePayGroup}
               />
             </div>
+
+            <ProjectOpsReviewSection projects={projects} />
+
+            <VolunteerAttendanceSection volunteerAttendance={volunteerAttendance} />
 
             <ProjectQueueSection projects={projects} />
           </>

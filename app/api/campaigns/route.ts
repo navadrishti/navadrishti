@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
       query = query.ilike('location', `%${region}%`);
     }
 
-    const viewer = findAuthUser(request, { allowCookie: true });
+    const viewer = findAuthUser(request) ? await getAuthUserFromRequest(request) : null;
     const ownCampaigns =
       Boolean(companyId) && viewer?.user_type === 'company' && Number(viewer.id) === Number(companyId);
 
@@ -100,6 +100,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: enriched });
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Campaign list error:', error);
     return NextResponse.json({ error: 'Failed to fetch campaigns' }, { status: 500 });
   }

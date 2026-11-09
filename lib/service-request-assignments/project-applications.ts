@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { authErrorResponse } from '@/lib/server-auth'
 import { supabase, getProjectLeadNgoId, buildProjectLeadNgoPatch } from '@/lib/db'
 import {
   getTokenClaims,
@@ -486,6 +487,8 @@ export async function submitProjectApplication(request: NextRequest) {
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
   } catch (error) {
+    const auth = authErrorResponse(error)
+    if (auth) return auth
     console.error('Error creating project-level company application:', error)
     return NextResponse.json({ error: 'Failed to submit project-level application' }, { status: 500 })
   }

@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { ProductBrand } from '@/components/product-brand';
 import { useNow } from '@/hooks/use-now';
 import { appendNewsletterItems, mergeNewsletterItems } from '@/lib/platform-newsletter/merge';
+import { getCalendarYearIst } from '@/lib/utils';
 
 type NewsletterItem = {
   id: string;
@@ -360,7 +361,7 @@ export default function LandingPage() {
       <footer className="border-t border-platform-sidebar bg-platform-sidebar">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-center gap-3 text-sm text-white">
-            <span className="text-white text-sm">© {new Date().getFullYear()}</span>
+            <span className="text-white text-sm">© {getCalendarYearIst()}</span>
             <ProductBrand size="xs" className="text-white" />
           </div>
         </div>

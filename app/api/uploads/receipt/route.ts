@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { uploadToCloudinary } from '@/lib/cloudinary'
 import { getTokenClaims } from '@/lib/auth'
+import { authErrorResponse } from '@/lib/server-auth'
 
 const ALLOWED_RECEIPT_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp'])
 const MAX_RECEIPT_SIZE = 10 * 1024 * 1024
@@ -44,6 +45,8 @@ export async function POST(request: NextRequest) {
       }
     })
   } catch (error) {
+    const auth = authErrorResponse(error)
+    if (auth) return auth
     console.error('Error uploading receipt:', error)
     return NextResponse.json({ error: 'Failed to upload receipt' }, { status: 500 })
   }

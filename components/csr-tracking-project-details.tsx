@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { VerifiedAccountName } from '@/components/verification-badge';
 import { NeedDetailLink, StaticStatusBadge, getStatusBadgeClass } from '@/components/dashboard-status';
+import { InfoMeter, InfoMeterGrid, meterPercent } from '@/components/info-meter';
 import { formatDisplayDate, formatStatusLabel } from '@/lib/format-date';
 
 export interface CSRTrackingAssignment {
@@ -75,7 +76,7 @@ export function takenInShowsWorkTracking(assignment: Pick<CSRTrackingAssignment,
   )
 }
 
-function summarizeNeedProgress(needs: CSRTrackingAssignment['needs']) {
+export function summarizeNeedProgress(needs: CSRTrackingAssignment['needs']) {
   const summary = { total: needs.length, open: 0, in_progress: 0, completed: 0 }
   for (const need of needs) {
     const status = String(need.status || '').toLowerCase()
@@ -189,42 +190,51 @@ export function CsrTrackingProjectDetails({
       ) : null}
 
       {showWorkTracking ? (
-        <div className="grid grid-cols-1 gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2 lg:grid-cols-3">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Currently</p>
-            <p className="text-sm font-medium text-slate-800">
-              {formatStatusLabel(assignment.project_status || assignment.assignment_status || 'in_progress')}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Location</p>
-            <p className="text-sm font-medium text-slate-800">{assignment.project_location || 'Not set'}</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Timeline</p>
-            <p className="text-sm font-medium text-slate-800">{assignment.project_timeline || 'Not set'}</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Needs</p>
-            <p className="text-sm font-medium text-slate-800">
-              {progress.total > 0
-                ? `${progress.in_progress} in progress · ${progress.completed} completed · ${progress.open} open`
-                : 'None linked yet'}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Last update</p>
-            <p className="text-sm font-medium text-slate-800">{formatDisplayDate(lastNeedUpdate) || 'Not set'}</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Implementing lead</p>
-            <p className="text-sm font-medium text-slate-800">
-              {hasDistinctLeadNgo
-                ? assignment.selected_lead_ngo_name || 'Assigned'
-                : pendingLeadInvites.length > 0
-                  ? `${pendingLeadInvites.length} invite${pendingLeadInvites.length === 1 ? '' : 's'} pending`
-                  : 'Owner NGO leading'}
-            </p>
+        <div className="space-y-3">
+          {progress.total > 0 ? (
+            <InfoMeterGrid className="xl:grid-cols-1">
+              <InfoMeter
+                title="Need fulfilment"
+                value={`${progress.completed} of ${progress.total} completed`}
+                progress={meterPercent(progress.completed, progress.total)}
+                detail={
+                  progress.in_progress > 0 || progress.open > 0
+                    ? `${progress.in_progress} in progress · ${progress.open} open`
+                    : undefined
+                }
+              />
+            </InfoMeterGrid>
+          ) : (
+            <p className="text-sm text-slate-600">No linked needs yet. Needs appear after they are linked to this project.</p>
+          )}
+          <div className="grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-500">Project status</p>
+              <p className="font-medium text-slate-900">
+                {formatStatusLabel(assignment.project_status || assignment.assignment_status || 'in_progress')}
+              </p>
+              <p className="text-xs text-slate-600">{assignment.project_location || 'Location not set'}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-500">Timeline</p>
+              <p className="font-medium text-slate-900">{assignment.project_timeline || 'Not set'}</p>
+              <p className="text-xs text-slate-600">
+                Last need update {formatDisplayDate(lastNeedUpdate) || 'not set'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-500">Implementing lead</p>
+              <p className="font-medium text-slate-900">
+                {hasDistinctLeadNgo
+                  ? assignment.selected_lead_ngo_name || 'Assigned'
+                  : pendingLeadInvites.length > 0
+                    ? `${pendingLeadInvites.length} invite${pendingLeadInvites.length === 1 ? '' : 's'} pending`
+                    : 'Owner NGO leading'}
+              </p>
+              {hasDistinctLeadNgo ? (
+                <p className="text-xs text-slate-600">Runs field delivery for this project</p>
+              ) : null}
+            </div>
           </div>
         </div>
       ) : (

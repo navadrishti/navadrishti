@@ -21,8 +21,10 @@ export async function GeminiChat(messages: ChatMessage[], retryCount = 0): Promi
   const API_KEY = process.env.GEMINI_API_KEY;
   if (!API_KEY) throw new Error("GEMINI_API_KEY is missing.");
 
-  const PRIMARY = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-  const FALLBACK = process.env.GEMINI_FALLBACK_MODEL || "gemini-2.5-flash-lite";
+  // Defaults track Google AI models available to new API keys (2026-11 probe).
+  // Override via GEMINI_MODEL / GEMINI_FALLBACK_MODEL for non-production verification.
+  const PRIMARY = process.env.GEMINI_MODEL || "gemini-3.5-flash";
+  const FALLBACK = process.env.GEMINI_FALLBACK_MODEL || "gemini-3.5-flash-lite";
   
   const currentModel = retryCount < 2 ? PRIMARY : FALLBACK;
   const URL = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${API_KEY}`;

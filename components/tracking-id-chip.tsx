@@ -1,13 +1,11 @@
 'use client';
+import { toast } from 'sonner'
 
 import { useState } from 'react';
 import { Check, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useToast } from '@/hooks/use-toast';
 
-export function TrackingIdChip({ trackingId, label = 'AWB' }: { trackingId: string; label?: string }) {
-  const { toast } = useToast();
-  const [copied, setCopied] = useState(false);
+export function TrackingIdChip({ trackingId, label = 'AWB' }: { trackingId: string; label?: string }) {  const [copied, setCopied] = useState(false);
 
   const copy = async () => {
     try {
@@ -15,7 +13,7 @@ export function TrackingIdChip({ trackingId, label = 'AWB' }: { trackingId: stri
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      toast({ title: 'Copy failed', description: 'Select the tracking number and copy it manually.', variant: 'destructive' });
+      toast.error('Copy failed', { description: 'Select the tracking number and copy it manually.' });
     }
   };
 

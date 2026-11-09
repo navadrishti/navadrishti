@@ -156,7 +156,7 @@ export default function ServiceRequestDetailPage() {
                       <>
                         {!isAuthenticated && (
                           <div className="text-center space-y-4">
-                            <p className="text-muted-foreground">Log in to volunteer (individual) or fulfill via CSR (company).</p>
+                            <p className="text-muted-foreground">Log in as an individual to volunteer for this need.</p>
                             <Button asChild className="w-full">
                               <Link href="/login">Log In</Link>
                             </Button>

@@ -219,7 +219,15 @@ export async function uploadVerificationDocument(
     throw new Error(readApiError(result, 'Failed to upload one or more documents'));
   }
 
-  return result.data?.url as string;
+  // Authenticated KYC uploads return an opaque documentRef (not a durable CDN URL).
+  const documentRef = typeof result.data?.documentRef === 'string' ? result.data.documentRef.trim() : '';
+  if (documentRef) return documentRef;
+
+  const url = typeof result.data?.url === 'string' ? result.data.url.trim() : '';
+  if (!url) {
+    throw new Error('Upload succeeded but no document reference was returned');
+  }
+  return url;
 }
 
 export function buildInitiatePayload(

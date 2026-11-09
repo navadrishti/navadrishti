@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 import { db, supabase } from '@/lib/db';
 import { getTokenClaims } from '@/lib/auth';
+import { authErrorResponse } from '@/lib/server-auth';
 import { getErrorMessage, parseJsonObject } from '@/lib/utils';
 import { settleServiceOfferPayment } from '@/lib/service-offers/payment-settlement';
 
@@ -139,6 +140,8 @@ export async function POST(
       }
     });
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Error verifying service-offer payment:', error);
     return NextResponse.json({ error: getErrorMessage(error) || 'Failed to verify payment' }, { status: 500 });
   }

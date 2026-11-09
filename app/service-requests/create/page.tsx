@@ -1,4 +1,5 @@
 'use client'
+import { toast } from 'sonner'
 import { readApiError } from '@/lib/user-facing-error'
 import { getClientSessionToken } from '@/lib/client-session';
 
@@ -12,7 +13,6 @@ import ProtectedRoute from '@/components/protected-route'
 import { useAuth } from '@/lib/auth-context'
 
 import { Button } from '@/components/ui/button'
-import { useToast } from '@/hooks/use-toast'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -43,13 +43,17 @@ function readAiDraftNeeds(): NeedDraft[] | null {
 export default function CreateServiceRequestPage() {
   const router = useRouter()
   const { user } = useAuth()
-  const { toast } = useToast()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [needs, setNeeds] = useState<NeedDraft[]>(() => readAiDraftNeeds() ?? [createEmptyNeed()])
+  // Hydration-safe: never read localStorage during useState init (SSR vs client mismatch).
+  const [needs, setNeeds] = useState<NeedDraft[]>(() => [createEmptyNeed()])
   const [selectedOffersByNeed, setSelectedOffersByNeed] = useState<Record<number, number[]>>({})
 
   useEffect(() => {
+    const drafted = readAiDraftNeeds()
+    if (drafted && drafted.length > 0) {
+      setNeeds(drafted)
+    }
     localStorage.removeItem(AI_DRAFT_STORAGE_KEY)
   }, [])
 
@@ -116,14 +120,14 @@ export default function CreateServiceRequestPage() {
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({}))
-        toast({ title: 'Apply failed', description: readApiError(err, 'Could not apply to offer'), variant: 'destructive' })
+        toast.error('Apply failed', { description: readApiError(err, 'Could not apply to offer') })
         return
       }
 
-      toast({ title: 'Applied', description: 'Application submitted to the offer owner.' })
+      toast.success('Applied', { description: 'Application submitted to the offer owner.' })
     } catch (err) {
       console.error('Error applying to offer:', err)
-      toast({ title: 'Apply failed', description: 'Could not apply to offer', variant: 'destructive' })
+      toast.error('Apply failed', { description: 'Could not apply to offer' })
     }
   }
 

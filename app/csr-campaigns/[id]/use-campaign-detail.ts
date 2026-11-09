@@ -60,7 +60,9 @@ export function useCampaignDetail(campaignId: string) {
     status: campaign?.status,
     startDate: campaign?.start_date,
     leadNgoAccepted: impact?.lead_ngo_accepted,
-    volunteerCount: sumVolunteerApplicationCount(applications),
+    volunteerCount: impact?.volunteer_count != null && Number.isFinite(Number(impact.volunteer_count))
+      ? Number(impact.volunteer_count)
+      : sumVolunteerApplicationCount(applications),
     volunteerLimit: Number(impact?.volunteer_requirement ?? impact?.volunteer_limit ?? 0) || 0,
     userType: user?.user_type,
     allVerified,

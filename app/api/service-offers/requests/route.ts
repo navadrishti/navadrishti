@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { getTokenClaims } from '@/lib/auth';
+import { authErrorResponse } from '@/lib/server-auth';
 import { hydrateOfferRequestMeta, overlayLiveAttendanceSummary } from '@/lib/offer-requests';
 import { parseJsonObject } from '@/lib/utils';
 
@@ -169,6 +170,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: normalizedRequests });
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Error fetching service offer requests:', error);
     return NextResponse.json({ error: 'Failed to fetch requests' }, { status: 500 });
   }

@@ -1,4 +1,5 @@
 'use client'
+import { toast } from 'sonner'
 import { readApiError } from '@/lib/user-facing-error'
 import { getClientSessionToken } from '@/lib/client-session';
 
@@ -8,7 +9,6 @@ import { ArrowLeft, Loader2 } from 'lucide-react'
 
 import { Header } from '@/components/header'
 import { useAuth } from '@/lib/auth-context'
-import { useToast } from '@/hooks/use-toast'
 import { SERVICE_REQUEST_CATEGORIES } from '@/lib/categories'
 import { parseJsonObject } from '@/lib/utils'
 
@@ -31,8 +31,8 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
   const resolvedParams = use(params)
   const router = useRouter()
   const { user } = useAuth()
-  const { toast } = useToast()
-
+  const userId = user?.id
+  const userType = user?.user_type
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [mainUploadProgress, setMainUploadProgress] = useState<UploadProgressState | null>(null)
@@ -69,18 +69,18 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
   })
 
   useEffect(() => {
-    if (!user) {
+    if (!userId) {
       router.push('/login')
       return
     }
-    if (user.user_type !== 'ngo') {
-      toast({ title: 'Access Denied', description: 'Only NGOs can edit needs', variant: 'destructive' })
+    if (userType !== 'ngo') {
+      toast.error('Access Denied', { description: 'Only NGOs can edit needs' })
       router.push('/service-requests')
     }
-  }, [router, toast, user?.id, user?.user_type])
+  }, [router, userId, userType])
 
   useEffect(() => {
-    if (!user || !resolvedParams.id) return
+    if (!userId || !resolvedParams.id) return
 
     const fetchRequest = async () => {
       try {
@@ -91,7 +91,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
         const data = await response.json()
 
         if (!data.success) {
-          toast({ title: 'Error', description: readApiError(data, 'Failed to fetch need details'), variant: 'destructive' })
+          toast.error('Error', { description: readApiError(data, 'Failed to fetch need details') })
           router.push('/service-requests')
           return
         }
@@ -121,7 +121,9 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
           timeline: requirements.timeline || req.timeline || requestProject?.timeline || '',
           budget: requirements.budget || 'Not specified',
           estimated_budget: requirements.estimated_budget || '',
-          beneficiary_count: String(requirements.beneficiary_count || 1),
+          beneficiary_count: String(
+            req.beneficiary_count ?? requirements.beneficiary_count ?? 1
+          ),
           impact_description: requirements.impact_description || '',
           contactInfo: requirements.contactInfo || 'email',
           target_amount: req.target_amount != null ? String(req.target_amount) : '',
@@ -134,7 +136,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
           infrastructure_scope: requirements?.category_details?.infrastructure_scope || ''
         })
       } catch {
-        toast({ title: 'Error', description: 'Failed to fetch need details', variant: 'destructive' })
+        toast.error('Error', { description: 'Failed to fetch need details' })
         router.push('/service-requests')
       } finally {
         setLoading(false)
@@ -142,7 +144,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
     }
 
     fetchRequest()
-  }, [resolvedParams.id, router, toast, user?.id])
+  }, [resolvedParams.id, router, userId])
 
   const handleInput = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -221,7 +223,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
       setFormData((prev) => ({ ...prev, images: appendImageUrls(prev.images, result.urls) }))
     }
     if (result.failures.length > 0) {
-      toast({ title: 'Partial Upload Failure', description: `${result.failures.length} image(s) could not be uploaded for the main need.`, variant: 'destructive' })
+      toast.error('Partial Upload Failure', { description: `${result.failures.length} image(s) could not be uploaded for the main need.` })
     }
   }
 
@@ -231,37 +233,37 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
     const isBlank = (value: unknown) => !String(value ?? '').trim()
 
     if ([formData.title, formData.description, formData.request_type, formData.budget, formData.impact_description, formData.contactInfo].some(isBlank)) {
-      toast({ title: 'Validation Error', description: 'Every main need field must be filled.', variant: 'destructive' })
+      toast.error('Validation Error', { description: 'Every main need field must be filled.' })
       return
     }
 
     if (String(formData.title).trim().length < 3) {
-      toast({ title: 'Validation Error', description: 'Need title must be at least 3 characters.', variant: 'destructive' })
+      toast.error('Validation Error', { description: 'Need title must be at least 3 characters.' })
       return
     }
 
     if (String(formData.description).trim().length < 20) {
-      toast({ title: 'Validation Error', description: 'Description must be at least 20 characters.', variant: 'destructive' })
+      toast.error('Validation Error', { description: 'Description must be at least 20 characters.' })
       return
     }
 
     const trimmedTimeline = String(formData.timeline || formData.project_timeline || '').trim()
     if (trimmedTimeline.toLowerCase() === 'anytime') {
-      toast({ title: 'Validation Error', description: 'Timeline cannot be "Anytime"; provide a duration or a date.', variant: 'destructive' })
+      toast.error('Validation Error', { description: 'Timeline cannot be "Anytime"; provide a duration or a date.' })
       return
     }
     if (trimmedTimeline.length < 2) {
-      toast({ title: 'Validation Error', description: 'Timeline must be at least 2 characters.', variant: 'destructive' })
+      toast.error('Validation Error', { description: 'Timeline must be at least 2 characters.' })
       return
     }
 
     if (!isValidPositiveInteger(formData.beneficiary_count)) {
-      toast({ title: 'Validation Error', description: 'Beneficiary count must be a positive whole number.', variant: 'destructive' })
+      toast.error('Validation Error', { description: 'Beneficiary count must be a positive whole number.' })
       return
     }
 
     if (!SERVICE_REQUEST_CATEGORIES.includes(formData.request_type)) {
-      toast({ title: 'Validation Error', description: 'Select a valid need type.', variant: 'destructive' })
+      toast.error('Validation Error', { description: 'Select a valid need type.' })
       return
     }
 
@@ -298,13 +300,13 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
 
       const data = await response.json()
       if (data.success) {
-        toast({ title: 'Success', description: 'Need updated successfully' })
+        toast.success('Success', { description: 'Need updated successfully' })
         router.push('/service-requests?view=my-requests')
       } else {
-        toast({ title: 'Error', description: readApiError(data, 'Failed to update need'), variant: 'destructive' })
+        toast.error('Error', { description: readApiError(data, 'Failed to update need') })
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to update need', variant: 'destructive' })
+      toast.error('Error', { description: 'Failed to update need' })
     } finally {
       setSubmitting(false)
     }
@@ -409,8 +411,17 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
                   </div>
 
                   <div>
-                    <Label>Beneficiary Count</Label>
-                    <div className="mt-1 text-sm text-muted-foreground">Inherited from project: {formData.project_expected_beneficiaries || 'Not set'}</div>
+                    <Label htmlFor="beneficiary_count">Beneficiary Count *</Label>
+                    <Input
+                      id="beneficiary_count"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={formData.beneficiary_count}
+                      onChange={(e) => handleInput('beneficiary_count', e.target.value)}
+                      placeholder="e.g., 300"
+                      required
+                    />
                   </div>
                 </div>
 
@@ -424,8 +435,6 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
                     required
                   />
                 </div>
-
-                {/* Timeline is inherited from project; do not edit per new UX */}
 
                 {formData.request_type === 'Material Need' && (
                   <div className="rounded-lg border p-4 space-y-4">

@@ -8,7 +8,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { cn, getErrorMessage } from '@/lib/utils';
 import { OfferFullDetails } from './detail-panels';
 import { adminListButtonClass, offerCatalogLabel, offerCatalogTone, textMatch } from './helpers';
@@ -16,50 +15,47 @@ import type { ServiceOffer } from './types';
 
 export function useOffersPanelState({ onReviewed }: { onReviewed: () => Promise<void> }) {
   const [selectedOffer, setSelectedOffer] = useState<ServiceOffer | null>(null);
-  const [moderationNote, setModerationNote] = useState('');
-  const [isModerating, setIsModerating] = useState(false);
+  const [isRemoving, setIsRemoving] = useState(false);
   const [offerQuery, setOfferQuery] = useState('');
 
-  const handleModeration = async (offerId: number, action: 'approve' | 'reject') => {
-    if (!moderationNote.trim()) {
-      sonnerToast.error(action === 'reject' ? 'Please add a removal reason' : 'Please add a restore note');
+  const handleRemoveOffer = async (offerId: number) => {
+    if (!window.confirm('Remove this offer from the marketplace? Offers with applications are archived so history is preserved.')) {
       return;
     }
 
     try {
-      setIsModerating(true);
-      const response = await fetch(`/api/admin/service-offers/${offerId}/review`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      setIsRemoving(true);
+      const response = await fetch(`/api/service-offers/${offerId}`, {
+        method: 'DELETE',
         credentials: 'include',
-        body: JSON.stringify({ action, comments: moderationNote }),
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
       if (!response.ok || !data?.success) {
-        throw new Error(readApiError(data, action === 'reject' ? 'Failed to remove service offer' : 'Failed to restore service offer'));
+        throw new Error(readApiError(data, 'Failed to remove service offer'));
       }
 
-      sonnerToast.success(action === 'reject' ? 'Offer removed from the catalog' : 'Offer restored to the catalog');
-      setModerationNote('');
+      sonnerToast.success(
+        data.mode === 'archived'
+          ? 'Offer archived (application history preserved)'
+          : 'Offer deleted'
+      );
       setSelectedOffer(null);
       await onReviewed();
     } catch (error) {
-      sonnerToast.error(getErrorMessage(error) || (action === 'reject' ? 'Failed to remove service offer' : 'Failed to restore service offer'));
+      sonnerToast.error(getErrorMessage(error) || 'Failed to remove service offer');
     } finally {
-      setIsModerating(false);
+      setIsRemoving(false);
     }
   };
 
   return {
     selectedOffer,
     setSelectedOffer,
-    moderationNote,
-    setModerationNote,
-    isModerating,
+    isRemoving,
     offerQuery,
     setOfferQuery,
-    handleModeration,
+    handleRemoveOffer,
   };
 }
 
@@ -70,12 +66,10 @@ export function OffersPanel({ offers, state }: { offers: ServiceOffer[]; state: 
   const {
     selectedOffer,
     setSelectedOffer,
-    moderationNote,
-    setModerationNote,
-    isModerating,
+    isRemoving,
     offerQuery,
     setOfferQuery,
-    handleModeration,
+    handleRemoveOffer,
   } = state;
 
   const filteredOffers = useMemo(() => {
@@ -90,16 +84,14 @@ export function OffersPanel({ offers, state }: { offers: ServiceOffer[]; state: 
     ));
   }, [offers, offerQuery]);
 
-  const selectedIsRemoved = selectedOffer
-    ? offerCatalogLabel(selectedOffer) === 'Removed'
-    : false;
-
   return (
     <div className="h-full min-h-0 space-y-6 overflow-y-auto overflow-x-hidden pr-1">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Capability offers</h2>
-          <p className="mt-1 text-sm text-slate-600">Offers post live. Remove a listing from the catalog if needed, or restore one that was removed.</p>
+          <p className="mt-1 text-sm text-slate-600">
+            Offers publish immediately. Moderate by editing the live page or removing the offer.
+          </p>
         </div>
         <div className="w-full md:w-80">
           <Input
@@ -140,28 +132,28 @@ export function OffersPanel({ offers, state }: { offers: ServiceOffer[]; state: 
           </CardHeader>
           <CardContent className="space-y-4">
             {!selectedOffer ? (
-              <p className="text-sm text-slate-500">Select an offer to manage its catalog listing.</p>
+              <p className="text-sm text-slate-500">Select an offer to view details or remove it.</p>
             ) : (
               <>
                 <OfferFullDetails offer={selectedOffer} />
-                <Textarea
-                  value={moderationNote}
-                  onChange={(e) => setModerationNote(e.target.value)}
-                  rows={5}
-                  placeholder={selectedIsRemoved ? 'Note for restoring this offer to the catalog' : 'Reason for removing this offer from the catalog'}
-                  className="border-blue-200 bg-white text-slate-900 placeholder:text-slate-400"
-                />
                 <div className="flex flex-wrap gap-3">
-                  {selectedIsRemoved ? (
-                    <Button onClick={() => handleModeration(selectedOffer.id, 'approve')} disabled={isModerating} className="bg-emerald-600 hover:bg-emerald-500">
-                      Restore to catalog
-                    </Button>
-                  ) : (
-                    <Button onClick={() => handleModeration(selectedOffer.id, 'reject')} disabled={isModerating} variant="destructive">
-                      Remove from catalog
-                    </Button>
-                  )}
-                  <Button variant="outline" className="border-gram-border bg-white text-udaan-blue hover:bg-gram-sage" onClick={() => router.push(`/service-offers/${selectedOffer.id}`)}>Open live page</Button>
+                  <Button
+                    variant="outline"
+                    className="border-gram-border bg-white text-udaan-blue hover:bg-gram-sage"
+                    onClick={() => router.push(`/service-offers/edit/${selectedOffer.id}`)}
+                  >
+                    Edit offer
+                  </Button>
+                  <Button variant="outline" className="border-gram-border bg-white text-udaan-blue hover:bg-gram-sage" onClick={() => router.push(`/service-offers/${selectedOffer.id}`)}>
+                    Open live page
+                  </Button>
+                  <Button
+                    onClick={() => handleRemoveOffer(selectedOffer.id)}
+                    disabled={isRemoving}
+                    variant="destructive"
+                  >
+                    Remove offer
+                  </Button>
                 </div>
               </>
             )}

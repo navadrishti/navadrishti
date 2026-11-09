@@ -22,6 +22,7 @@ import { useNavigationMenu } from '@/hooks/use-navigation-menu';
 const navItems = [
   { label: 'Dashboard', href: '/evidence-verification' },
   { label: 'History', href: '/evidence-verification/history' },
+  { label: 'Settings', href: '/evidence-verification/settings' },
 ];
 
 export function formatVerifierScopeLabels(context?: {
@@ -30,7 +31,7 @@ export function formatVerifierScopeLabels(context?: {
 }) {
   const parts: string[] = [];
   const caId = String(context?.ca_id ?? '').trim();
-  if (caId) parts.push(`CA ID: ${caId}`);
+  if (caId) parts.push(`Verifier ID: ${caId}`);
   if (context?.company_user_id) parts.push(`Company ID: ${context.company_user_id}`);
   return parts.join(' • ');
 }
@@ -97,10 +98,14 @@ export function CAConsoleHeader({
     if (href === '/evidence-verification/history') {
       return pathname.startsWith('/evidence-verification/history');
     }
+    if (href === '/evidence-verification/settings') {
+      return pathname.startsWith('/evidence-verification/settings');
+    }
     return (
       pathname === '/evidence-verification' ||
       (pathname.startsWith('/evidence-verification/') &&
         !pathname.startsWith('/evidence-verification/history') &&
+        !pathname.startsWith('/evidence-verification/settings') &&
         !pathname.startsWith('/evidence-verification/login') &&
         !pathname.startsWith('/evidence-verification/change-password'))
     );

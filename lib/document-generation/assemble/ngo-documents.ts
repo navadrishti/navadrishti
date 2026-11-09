@@ -13,10 +13,38 @@ import {
   ngoCompliancePackTemplate,
 } from '@/lib/document-generation/templates/company/csr-compliance-profile'
 import { parseJsonObject } from '@/lib/utils'
-import { loadCampaignForLeadNgo, loadProjectForActor, resolvePartnerName } from './loaders'
-import { confirmedFunds, milestonesFromCampaign, milestonesFromProject, pickLatestImpact } from './project-data'
+import {
+  loadCampaignForLeadNgo,
+  loadProjectForActor,
+  loadProjectsForCampaign,
+  resolvePartnerName,
+} from './loaders'
+import {
+  confirmedFunds,
+  milestonesFromCampaign,
+  milestonesFromProject,
+  nullableMetric,
+  pickLatestImpact,
+  sumScopedImpactField,
+} from './project-data'
 import type { CampaignRow, CsrProjectDetail, OrganizationRow, PeriodDocumentContext } from './types'
 import { asNumber, asString, defaultPeriodBounds, periodLabel, slugify } from './values'
+
+const UNRECONCILED_NET_GAP =
+  'Net disbursement unreconciled — refund ledger enrichment missing; gross is not reported as net'
+
+function sumNetConfirmed(projects: Array<Parameters<typeof confirmedFunds>[0]>): {
+  fundsConfirmed: number | null
+  unreconciled: boolean
+} {
+  let total = 0
+  for (const project of projects) {
+    const net = confirmedFunds(project)
+    if (net == null) return { fundsConfirmed: null, unreconciled: true }
+    total += net
+  }
+  return { fundsConfirmed: Number(total.toFixed(2)), unreconciled: false }
+}
 
 export function buildNgoCompliancePack(userRow: OrganizationRow) {
   const profile = parseJsonObject(userRow.profile_data)
@@ -71,6 +99,7 @@ async function buildImplementingAgencyReport(args: {
   userRow: OrganizationRow
   organizationName: string
   campaign?: CampaignRow
+  campaignProjects?: CsrProjectDetail[]
   project?: CsrProjectDetail
   period: ImpactReportPeriod
   periodStart?: string | null
@@ -93,6 +122,12 @@ async function buildImplementingAgencyReport(args: {
     const entityTitle =
       asString(project.title) || asString(campaign.title) || 'Untitled project'
     if (!impact) gaps.push('No csr_impact_metrics row found for this project')
+    const fundsReceived = confirmedFunds(project)
+    if (fundsReceived == null) {
+      gaps.push(
+        'Net disbursement unreconciled — refund ledger enrichment missing; gross is not reported as net'
+      )
+    }
 
     return {
       html: implementingAgencyReportTemplate({
@@ -106,10 +141,10 @@ async function buildImplementingAgencyReport(args: {
         scheduleVii: asString(campaign.schedule_vii) || null,
         periodLabel: periodLabel(args.period, periodStart, periodEnd),
         budgetInr: asNumber(project.budget_inr ?? campaign.budget_inr),
-        fundsReceived: confirmedFunds(project),
-        fundsUtilized: asNumber(impact?.funds_utilized),
-        beneficiaries: asNumber(impact?.beneficiaries),
-        progressPercentage: asNumber(impact?.progress_percentage),
+        fundsReceived,
+        fundsUtilized: nullableMetric(impact?.funds_utilized),
+        beneficiaries: nullableMetric(impact?.beneficiaries),
+        progressPercentage: nullableMetric(impact?.progress_percentage),
         milestones: milestonesFromProject(project),
         activitiesSummary: asString(project.description || campaign.description) || null,
         gaps,
@@ -123,8 +158,20 @@ async function buildImplementingAgencyReport(args: {
   const campaign = args.campaign
   if (!campaign) throw new Error('Select a project or lead campaign for the implementing agency report')
   const companyName = await resolvePartnerName(campaign.company_id)
-  const impact = parseJsonObject(campaign.impact_metrics)
   const entityTitle = asString(campaign.title) || 'Untitled campaign'
+  const ngoProjects = Array.isArray(args.campaignProjects) ? args.campaignProjects : []
+  const { fundsConfirmed, unreconciled } = sumNetConfirmed(ngoProjects)
+  if (!ngoProjects.length) gaps.push('No projects assigned to this NGO under the lead campaign')
+  if (unreconciled) gaps.push(UNRECONCILED_NET_GAP)
+  // Never fall back to campaign impact_metrics — those may include sibling implementers.
+  const fundsUtilized = sumScopedImpactField(ngoProjects, 'funds_utilized')
+  const beneficiaries = sumScopedImpactField(ngoProjects, 'beneficiaries')
+  const progressRows = ngoProjects
+    .map((project) => nullableMetric(pickLatestImpact(project)?.progress_percentage))
+    .filter((value): value is number => value != null && value > 0)
+  const progressPercentage = progressRows.length
+    ? Number((progressRows.reduce((sum, value) => sum + value, 0) / progressRows.length).toFixed(1))
+    : null
 
   return {
     html: implementingAgencyReportTemplate({
@@ -137,10 +184,10 @@ async function buildImplementingAgencyReport(args: {
       scheduleVii: asString(campaign.schedule_vii) || null,
       periodLabel: periodLabel(args.period, periodStart, periodEnd),
       budgetInr: asNumber(campaign.budget_inr),
-      fundsReceived: null,
-      fundsUtilized: asNumber(impact.funds_utilized),
-      beneficiaries: asNumber(impact.beneficiaries ?? impact.expected_beneficiaries),
-      progressPercentage: asNumber(impact.progress_percentage),
+      fundsReceived: fundsConfirmed,
+      fundsUtilized,
+      beneficiaries,
+      progressPercentage,
       milestones: milestonesFromCampaign(campaign),
       activitiesSummary: asString(campaign.description) || null,
       gaps,
@@ -172,10 +219,13 @@ export async function assembleImplementingAgencyReport({
   }
   if (request.campaignId) {
     const campaign = await loadCampaignForLeadNgo(request.campaignId, user.id)
+    const projects = await loadProjectsForCampaign(campaign.id)
+    const campaignProjects = projects.filter((project) => Number(project.ngo_user_id) === user.id)
     return buildImplementingAgencyReport({
       userRow,
       organizationName,
       campaign,
+      campaignProjects,
       period,
       periodStart: request.periodStart,
       periodEnd: request.periodEnd,

@@ -1,6 +1,13 @@
 import { after, NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import crypto from 'crypto';
+import {
+  canEchoLocalPasswordResetOtp,
+  deliverLocalPasswordResetOtp,
+  generateLocalPasswordResetOtp,
+  isLocalPasswordResetOtpAllowedForEmail,
+  verifyLocalPasswordResetOtp,
+} from '@/lib/auth/password-reset-otp';
 import { db } from '@/lib/db';
 import {
   normalizeEmailAddress,
@@ -18,6 +25,7 @@ const GENERIC_SEND_RESPONSE = {
   message: 'If an account with that email exists, we have sent a password reset OTP.',
   success: true,
 };
+const INVALID_OTP_RESPONSE = { error: 'Invalid OTP' };
 
 const sendOtpSchema = z.object({
   email: z.string().trim().toLowerCase().email('Invalid email address'),
@@ -39,18 +47,33 @@ const isUnknownAuthUserError = (error: { message?: string; code?: string }) => {
   );
 };
 
-async function sendPasswordResetOtp(email: string) {
+/** Real accounts only — never falls back to local OTP for arbitrary Supabase failures. */
+async function sendSupabasePasswordResetOtp(email: string) {
   try {
     const prepared = await prepareEmailOtpSession(email);
     if (!prepared.ok && prepared.status !== 429) return;
 
     const sent = await sendEmailOtpWithSupabase(email);
-    if (!sent.ok && !isUnknownAuthUserError(sent.error)) {
+    if (sent.ok) return;
+
+    if (!isUnknownAuthUserError(sent.error)) {
       console.error('Forgot password OTP send error:', sent.error);
     }
   } catch (error) {
     console.error('Forgot password OTP send error:', error);
   }
+}
+
+async function issueResetTokenForUser(email: string, userId: number) {
+  const resetToken = crypto.randomBytes(32).toString('hex');
+  await issueOneTimeCode({
+    purpose: 'password_reset',
+    subject: normalizeEmailAddress(email),
+    code: resetToken,
+    userId,
+    ttlMs: PASSWORD_RESET_TOKEN_TTL_MS,
+  });
+  return resetToken;
 }
 
 export async function POST(req: NextRequest) {
@@ -73,27 +96,38 @@ export async function POST(req: NextRequest) {
       const limited = await limitAttempts(req, 'forgot-password-otp', email);
       if (limited) return limited;
 
-      const verification = await verifyEmailOtpWithSupabase(email, otp);
+      if (isLocalPasswordResetOtpAllowedForEmail(email)) {
+        const local = await verifyLocalPasswordResetOtp(email, otp);
+        if (local.status !== 'ok') {
+          return NextResponse.json(INVALID_OTP_RESPONSE, { status: 400 });
+        }
 
+        const user = await db.users.findByEmail(email);
+        if (!user || (local.userId != null && user.id !== local.userId)) {
+          return NextResponse.json(INVALID_OTP_RESPONSE, { status: 400 });
+        }
+
+        const resetToken = await issueResetTokenForUser(email, user.id);
+        return NextResponse.json({
+          success: true,
+          message: 'OTP verified successfully',
+          resetToken,
+          accountName: user.name || user.email,
+          email,
+        });
+      }
+
+      const verification = await verifyEmailOtpWithSupabase(email, otp);
       if (!verification.ok) {
         return NextResponse.json({ error: verification.error }, { status: 400 });
       }
 
       const user = await db.users.findByEmail(email);
-
       if (!user) {
         return NextResponse.json({ error: 'Account not found' }, { status: 404 });
       }
 
-      const resetToken = crypto.randomBytes(32).toString('hex');
-      await issueOneTimeCode({
-        purpose: 'password_reset',
-        subject: normalizeEmailAddress(email),
-        code: resetToken,
-        userId: user.id,
-        ttlMs: PASSWORD_RESET_TOKEN_TTL_MS,
-      });
-
+      const resetToken = await issueResetTokenForUser(email, user.id);
       return NextResponse.json({
         success: true,
         message: 'OTP verified successfully',
@@ -126,12 +160,38 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // The lookup and send run after the response so neither its content nor its timing
-    // reveals whether the account exists; failures are only logged.
+    // Explicit E2E/dev local OTP for configured test domains only.
+    if (isLocalPasswordResetOtpAllowedForEmail(email)) {
+      const user = await db.users.findByEmail(email);
+      const echo = canEchoLocalPasswordResetOtp();
+      let devOtp: string | undefined;
+
+      if (user) {
+        const delivered = await deliverLocalPasswordResetOtp(email, user.id);
+        if (!delivered.ok && delivered.retryAfterSeconds) {
+          return rateLimitedResponse(
+            delivered.retryAfterSeconds,
+            `Please wait ${delivered.retryAfterSeconds}s before requesting another email OTP`
+          );
+        }
+        if (echo && delivered.ok && delivered.otp) {
+          devOtp = delivered.otp;
+        }
+      } else if (echo) {
+        // Same response shape for unknown addresses — decoy is not stored and cannot verify.
+        devOtp = generateLocalPasswordResetOtp();
+      }
+
+      return NextResponse.json(
+        echo && devOtp ? { ...GENERIC_SEND_RESPONSE, devOtp } : GENERIC_SEND_RESPONSE
+      );
+    }
+
+    // Normal path: Supabase email OTP for real accounts. Lookup/send after respond.
     after(async () => {
       try {
         const user = await db.users.findByEmail(email);
-        if (user) await sendPasswordResetOtp(email);
+        if (user) await sendSupabasePasswordResetOtp(email);
       } catch (error) {
         console.error('Forgot password OTP send error:', error);
       }

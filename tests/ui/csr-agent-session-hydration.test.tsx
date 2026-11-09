@@ -72,6 +72,34 @@ describe('useSessionHydration', () => {
     expect(setSessions.mock.calls.at(-1)?.[0]).toEqual([expect.objectContaining({ id: stored.id })])
   })
 
+  it('uses the committed selection when it changes during hydration', async () => {
+    const selected = { ...stored, id: '22222222-3333-4444-8555-666666666666', title: 'Schools' }
+    let resolveFetch!: (response: Response) => void
+    mockFetch(() => new Promise<Response>((resolve) => { resolveFetch = resolve }))
+    const setSessions = vi.fn()
+    const applySession = vi.fn()
+    const { rerender } = renderHook(
+      ({ activeSessionId }: { activeSessionId: string }) =>
+        useSessionHydration({
+          mounted: true,
+          userId: 7,
+          token: 'tok',
+          sessions: [stored, selected],
+          activeSessionId,
+          setSessions,
+          setActiveSessionId: vi.fn(),
+          applySession,
+          markPayloadPersisted: vi.fn(),
+        }),
+      { initialProps: { activeSessionId: stored.id } }
+    )
+
+    rerender({ activeSessionId: selected.id })
+    resolveFetch(jsonResponse({ success: true, data: { sessions: [stored, selected], activeSessionId: stored.id } }))
+    await waitFor(() => expect(applySession).toHaveBeenCalled())
+    expect(applySession.mock.calls[0][0]).toEqual(expect.objectContaining({ id: selected.id }))
+  })
+
   it('does not replace the selected chat when the auth token is reissued', async () => {
     mockFetch(() => jsonResponse({ success: true, data: { sessions: [stored], activeSessionId: stored.id } }))
     const setSessions = vi.fn()

@@ -4,6 +4,7 @@ import { CSR_SCHEDULE_VII_CATEGORIES } from '@/lib/categories';
 import { rankRecommendedNgosForViewer } from '@/lib/csr-agent/recommendation-utils';
 import {
   assertNgoLiveCsr1,
+  authErrorResponse,
   CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE,
   requireCaVerifiedPayer,
 } from '@/lib/server-auth';
@@ -89,6 +90,8 @@ export async function GET(request: NextRequest) {
       total: payload.length,
     });
   } catch (err) {
+    const auth = authErrorResponse(err);
+    if (auth) return auth;
     console.error('NGO network error:', err);
     return Response.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }
@@ -159,6 +162,8 @@ export async function POST(request: NextRequest) {
 
     return await createNetworkDonationOrder(context, body?.amount);
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     if (error instanceof PayeeNotConnectedError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
     }

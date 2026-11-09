@@ -208,6 +208,26 @@ describe('createPlatformPricedOrder', () => {
     expect(client.orders.create.mock.calls[0][0]).not.toHaveProperty('transfers')
   })
 
+  it('skips linked-account checks when requirePayeeConnection is false even with a beneficiary id', async () => {
+    useSupabase((query) => (query.table === 'users' ? { data: { profile_data: {} } } : undefined))
+    const { client, razorpay } = fakeRazorpay()
+    await createPlatformPricedOrder({
+      razorpay,
+      baseAmountInr: 100000,
+      receipt: 'csr_ms_test',
+      paymentKind: 'csr_milestone',
+      beneficiaryUserId: 2,
+      beneficiaryName: 'E2E Synthetic NGO Trust',
+      requirePayeeConnection: false,
+    })
+    expect(client.orders.create).toHaveBeenCalledTimes(1)
+    expect(client.orders.create.mock.calls[0][0]).not.toHaveProperty('transfers')
+    expect(client.orders.create.mock.calls[0][0].notes).toMatchObject({
+      payment_kind: 'csr_milestone',
+      beneficiary_user_id: '2',
+    })
+  })
+
   it.each([
     [{ razorpay_linked_account_id: 'acc_1', razorpay_link_status: 'pending' }, /still pending activation/],
     [{ bank_details: 'HDFC ****1234' }, /saved bank details but has not finished connecting Razorpay/],
@@ -413,6 +433,7 @@ describe('verifyNgoNetworkDonation', () => {
 describe('resolvePaymentSource', () => {
   it.each([
     [{ source: 'company_ca_payment', assignment_id: 1 }, {}, 'company_ca'],
+    [{ payment_kind: 'csr_milestone', source: 'csr_milestone_payment' }, {}, 'csr_milestone'],
     [{ payment_kind: 'csr_capability_rental' }, {}, 'service_offer'],
     [{ service_offer_id: 3 }, {}, 'service_offer'],
     [{ settlement_scope: 'daily_rental' }, {}, 'engagement_settlement'],

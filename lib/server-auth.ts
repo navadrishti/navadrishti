@@ -24,6 +24,9 @@ import {
 } from '@/lib/platform-ca-auth';
 import { supabase } from '@/lib/db';
 import { ensureCompanyCaIdAssigned, isCompanyCAUser } from '@/lib/company-ca';
+import { findCompanyEmployeeIdentityByUserId } from '@/lib/company-employee';
+import { isNgoFieldOfficerUser } from '@/lib/ngo-field-officer';
+import { isCompanyEmployeeApiAllowed } from '@/lib/company-employee-access';
 import { parseJsonObject } from '@/lib/utils';
 
 export const AUTH_TOKEN_COOKIE = 'token';
@@ -157,16 +160,32 @@ export function findAuthUser(
   return token ? verifyToken(token) : null;
 }
 
-export async function overlayLiveUserType<T extends { id: number; user_type: string }>(claims: T): Promise<T> {
+export async function overlayLiveUserType<T extends { id: number; user_type: string; verification_status?: UserData['verification_status'] }>(
+  claims: T,
+  pathname?: string
+): Promise<T> {
+  if (testAuthOverlay) return testAuthOverlay(claims, pathname);
+  let live: Awaited<ReturnType<typeof findSessionGate>>;
   try {
-    const live = await findSessionGate(Number(claims.id));
-    if (live.userType && live.userType !== claims.user_type) {
-      return { ...claims, user_type: live.userType };
-    }
+    live = await findSessionGate(Number(claims.id));
   } catch {
-    // Tests and brief DB outages keep the JWT claims rather than failing the request.
+    console.error('[auth] session status lookup failed');
+    throw new AuthError('Authorization service temporarily unavailable', 503);
   }
-  return claims;
+  if (live.reason) throw new AuthError(live.reason, 403);
+  if (!live.userType) throw new AuthError('Account role is unavailable', 403);
+  if (pathname && live.delegatedCompanyEmployee &&
+      !isCompanyEmployeeApiAllowed(pathname, { mustChangePassword: live.companyEmployeeMustChangePassword })) {
+    throw new AuthError('This account can only access assigned project monitoring', 403);
+  }
+  let next = claims;
+  if (live.userType && live.userType !== claims.user_type) {
+    next = { ...next, user_type: live.userType };
+  }
+  if (live.verificationStatus !== claims.verification_status) {
+    next = { ...next, verification_status: live.verificationStatus ?? 'unverified' };
+  }
+  return next;
 }
 
 export async function getAuthUserFromRequest(request: NextRequest): Promise<UserData> {
@@ -179,52 +198,94 @@ export async function getAuthUserFromRequest(request: NextRequest): Promise<User
     );
   }
 
-  return overlayLiveUserType(user);
+  return overlayLiveUserType(user, request.nextUrl.pathname);
 }
 
-const SESSION_BLOCK_CACHE_MS = 30_000;
 type SessionGate = {
   reason: string | null;
   delegatedCompanyCa: boolean;
+  delegatedFieldOfficer: boolean;
+  delegatedCompanyEmployee: boolean;
+  companyEmployeeMustChangePassword: boolean;
   userType: UserData['user_type'] | null;
-  expiresAt: number;
+  verificationStatus: UserData['verification_status'] | null;
 };
-const sessionBlockCache = new Map<number, SessionGate>();
+
+let testAuthOverlay: (<T extends { id: number; user_type: string; verification_status?: UserData['verification_status'] }>(
+  claims: T,
+  pathname?: string
+) => Promise<T>) | null = null;
+
+export function setTestAuthOverlay(
+  overlay: typeof testAuthOverlay
+) {
+  if (process.env.NODE_ENV !== 'test') return;
+  testAuthOverlay = overlay;
+}
+
+function asVerificationStatus(value: unknown): UserData['verification_status'] | null {
+  const status = String(value || '').trim().toLowerCase();
+  if (status === 'verified' || status === 'unverified' || status === 'pending' || status === 'suspended') {
+    return status;
+  }
+  return null;
+}
 
 /**
  * Bans and suspensions must end live sessions too, not only the next sign-in.
- * Cached briefly per instance so every API call does not cost a users lookup.
+ * Every request rechecks identity so transitions are visible across instances.
  */
 export async function findSessionGate(
   userId: number
-): Promise<Pick<SessionGate, 'reason' | 'delegatedCompanyCa' | 'userType'>> {
-  const cached = sessionBlockCache.get(userId);
-  if (cached && cached.expiresAt > Date.now()) {
-    return { reason: cached.reason, delegatedCompanyCa: cached.delegatedCompanyCa, userType: cached.userType };
-  }
-
+): Promise<
+  Pick<
+    SessionGate,
+    | 'reason'
+    | 'delegatedCompanyCa'
+    | 'delegatedFieldOfficer'
+    | 'delegatedCompanyEmployee'
+    | 'companyEmployeeMustChangePassword'
+    | 'userType'
+    | 'verificationStatus'
+  >
+> {
   const { data, error } = await supabase
     .from('users')
-    .select('account_status, locked_until, profile_data, user_type')
+    .select('account_status, locked_until, profile_data, user_type, verification_status')
     .eq('id', userId)
     .maybeSingle();
   if (error) throw error;
 
-  const reason = data ? getAccountAccessBlockReason(data) : 'This account no longer exists.';
+  let reason = data ? getAccountAccessBlockReason(data) : 'This account no longer exists.';
   const delegatedCompanyCa = data ? await isCompanyCAUser(userId) : false;
+  const delegatedFieldOfficer = data ? await isNgoFieldOfficerUser(userId) : false;
+  const employeeIdentity = data ? await findCompanyEmployeeIdentityByUserId(userId) : null;
+  const delegatedCompanyEmployee = Boolean(employeeIdentity);
+  const companyEmployeeMustChangePassword = Boolean(employeeIdentity?.must_change_password);
+  if (employeeIdentity && employeeIdentity.status !== 'active') {
+    reason = reason || 'This account cannot sign in.';
+  }
   const userType = data?.user_type === 'ngo' || data?.user_type === 'company' || data?.user_type === 'individual'
     ? data.user_type
     : null;
-  sessionBlockCache.set(userId, { reason, delegatedCompanyCa, userType, expiresAt: Date.now() + SESSION_BLOCK_CACHE_MS });
-  return { reason, delegatedCompanyCa, userType };
+  const verificationStatus = data ? asVerificationStatus(data.verification_status) : null;
+  return {
+    reason,
+    delegatedCompanyCa,
+    delegatedFieldOfficer,
+    delegatedCompanyEmployee,
+    companyEmployeeMustChangePassword,
+    userType,
+    verificationStatus,
+  };
 }
 
 export async function findSessionBlockReason(userId: number): Promise<string | null> {
   return (await findSessionGate(userId)).reason;
 }
 
-export function forgetSessionBlockReason(userId: number) {
-  sessionBlockCache.delete(userId);
+export function forgetSessionBlockReason(_userId: number) {
+  // Session state is no longer cached in the application process.
 }
 
 export function assertUserType(user: UserData, allowed: Array<UserData['user_type']>) {
@@ -428,7 +489,7 @@ export async function getActiveCAFromRequest(
   return ca;
 }
 
-export function authErrorStatus(error: unknown, fallback: 401 | 403 = 401): 401 | 403 {
+export function authErrorStatus(error: unknown, fallback: 401 | 403 = 401): 401 | 403 | 503 {
   return error instanceof AuthError ? error.status : fallback;
 }
 
@@ -484,7 +545,7 @@ export async function getCompanyCAFromRequest(
   const token = extractCompanyCAToken(request);
 
   if (!token) {
-    throw new Error('Company CA authentication required');
+    throw new Error('Evidence Verifier authentication required');
   }
 
   const user = verifyCompanyCAToken(token) ?? verifyToken(token);
@@ -499,11 +560,11 @@ export async function getCompanyCAFromRequest(
     .single();
 
   if (error || !identity) {
-    throw new Error('Company CA identity not found');
+    throw new Error('Evidence Verifier identity not found');
   }
 
   if (identity.status !== 'active') {
-    throw new Error('Company CA identity is not active');
+    throw new Error('Evidence Verifier identity is not active');
   }
 
   if (identity.must_change_password && !options.allowPasswordChangePending) {
@@ -556,11 +617,11 @@ export async function getEvidenceApproverContext(
     expectedCompanyUserId !== undefined &&
     companyCA.identity.company_user_id !== expectedCompanyUserId
   ) {
-    throw new Error('Company CA is not authorized for this company project');
+    throw new Error('Evidence Verifier is not authorized for this company project');
   }
 
   if (options.requiredPermission && !hasCompanyCaPermission(companyCA.identity, options.requiredPermission)) {
-    throw new AuthError('Company CA does not have permission for this action', 403);
+    throw new AuthError('Evidence Verifier does not have permission for this action', 403);
   }
 
   return {

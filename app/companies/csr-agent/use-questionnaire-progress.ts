@@ -114,6 +114,7 @@ type StatusLabelInput = {
   isQuestionnaireComplete: boolean
   hasLeadInvites: boolean
   hasAcceptedLead: boolean
+  hasEvidenceVerifier?: boolean
   isGeneratingCampaigns: boolean
   conversationStage: ConversationStage
   activeQuestion: { question: string } | null
@@ -124,6 +125,7 @@ export function getActiveQuestionLabel({
   isQuestionnaireComplete,
   hasLeadInvites,
   hasAcceptedLead,
+  hasEvidenceVerifier = false,
   isGeneratingCampaigns,
   activeQuestion,
 }: StatusLabelInput) {
@@ -131,13 +133,22 @@ export function getActiveQuestionLabel({
   if (!isQuestionnaireComplete) return activeQuestion?.question || "Campaign details"
   if (!hasLeadInvites) return "All details captured — invite a lead NGO to continue"
   if (!hasAcceptedLead) return "Waiting for lead NGO acceptance"
-  return isGeneratingCampaigns ? "Generating campaign draft..." : "Ready to publish"
+  if (!hasEvidenceVerifier) return "Allot an Evidence Verifier to start drafting"
+  return isGeneratingCampaigns ? "Catalyst is assembling the draft..." : "Ready to publish"
 }
 
-export function getPromptTitle({ hasDraft, isQuestionnaireComplete, hasLeadInvites, hasAcceptedLead, conversationStage }: StatusLabelInput) {
+export function getPromptTitle({
+  hasDraft,
+  isQuestionnaireComplete,
+  hasLeadInvites,
+  hasAcceptedLead,
+  hasEvidenceVerifier = false,
+  conversationStage,
+}: StatusLabelInput) {
   if (hasDraft) return "Ready to publish"
   if (isQuestionnaireComplete) {
-    if (hasAcceptedLead) return "Ready to publish"
+    if (hasAcceptedLead && hasEvidenceVerifier) return "Catalyst drafting"
+    if (hasAcceptedLead) return "Allot Evidence Verifier"
     return hasLeadInvites ? "Waiting for lead NGO" : "Invite a lead NGO"
   }
   if (conversationStage === "project") return "Step 1: Campaign details"

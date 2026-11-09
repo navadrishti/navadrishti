@@ -69,17 +69,23 @@ html[data-nd-console-pending-auth='1'] body {
     background-color: #F47B20;
   }
 
+  /* SEO / agent metadata only — must never intercept UI clicks */
   .agent-only {
-    position: absolute;
-    left: -9999px;
-    top: auto;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    pointer-events: none;
-    user-select: none;
+    position: absolute !important;
+    left: -9999px !important;
+    top: 0 !important;
+    width: 1px !important;
+    height: 1px !important;
+    margin: -1px !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    clip-path: inset(50%) !important;
+    border: 0 !important;
+    white-space: nowrap !important;
+    pointer-events: none !important;
+    user-select: none !important;
+    z-index: -1 !important;
   }
   
   .line-clamp-2 {

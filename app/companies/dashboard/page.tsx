@@ -19,10 +19,12 @@ import { ImpactReportsPanel } from '@/components/companies/impact-reports-panel'
 import { dashboardProfilePayoutHref, usePayoutConnection } from '@/hooks/use-payout-connection';
 import { CapabilityOffersTab } from './capability-offers-tab';
 import { CsrProjectsTab } from './csr-projects-tab';
-import { CompanyCaTab } from './company-ca-tab';
 import { CaResetPasswordDialog } from './ca-reset-password-dialog';
+import { useCompanyEmployees } from './employees/use-company-employees';
+import { CompanyOverviewSection } from './overview-section';
 import { COMPANY_DASHBOARD_SIDEBAR_ITEMS, companyDashboardTabHref, resolveCompanyDashboardTab } from './dashboard-tabs';
-import { useCompanyCaAccounts } from './use-company-ca-accounts';
+import { TeamManagementTab } from './team/team-management-tab';
+import { useEvidenceVerifierAccounts } from './use-evidence-verifier-accounts';
 import { useCompanyDashboardData } from './use-company-dashboard-data';
 import { useCsrProjectActions } from './use-csr-project-actions';
 import { useOfferRequestActions } from './use-offer-request-actions';
@@ -34,14 +36,18 @@ function CompanyDashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const mounted = useIsClient();
-  const activeTab = resolveCompanyDashboardTab(searchParams.get('tab') || 'profile');
+  const activeTab = resolveCompanyDashboardTab(searchParams.get('tab') || 'overview');
   const highlightedRequestId = Number(searchParams.get('requestId') || '');
   const [capabilityOffersTab, setCapabilityOffersTab] = useState<CapabilityOffersSubTab>('your-capabilities');
   const [offerRequestsTab, setOfferRequestsTab] = useState<OfferRequestsSubTab>('pending');
 
   const allVerified = isFullyVerifiedAccount(user);
 
-  const companyCa = useCompanyCaAccounts(user?.id, activeTab === 'company-ca');
+  const companyCa = useEvidenceVerifierAccounts(
+    user?.id,
+    activeTab === 'team' || activeTab === 'overview'
+  );
+  const companyEmployees = useCompanyEmployees(user?.id, activeTab === 'team');
   const data = useCompanyDashboardData({
     userId: user?.id,
     highlightedRequestId,
@@ -95,7 +101,7 @@ function CompanyDashboardContent() {
               <div>
                 <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
                 <p className="text-gray-500 mt-1">
-                  Manage your company CSR activities and service engagements
+                  CSR portfolio overview, project tracking, and company workspaces. Evidence review stays with assigned Evidence Verifiers.
                 </p>
               </div>
             </div>
@@ -117,6 +123,18 @@ function CompanyDashboardContent() {
                   window.history.replaceState(null, '', companyDashboardTabHref(value));
                   router.replace(companyDashboardTabHref(value), { scroll: false });
                     }} className="w-full">
+                  <TabsContent value="overview" className="mt-4 space-y-4">
+                    <CompanyOverviewSection
+                      data={data}
+                      onNavigate={navigateToTab}
+                      caAccountCount={
+                        companyCa.loadingCompanyCAAccounts
+                          ? null
+                          : companyCa.activeCompanyCAAccounts.length
+                      }
+                    />
+                  </TabsContent>
+
                   <TabsContent value="profile" className="mt-4 space-y-4">
                     <ProfileDashboardTab />
                   </TabsContent>
@@ -136,6 +154,7 @@ function CompanyDashboardContent() {
                       updatingOfferRequestId={offerRequestActions.updatingOfferRequestId}
                       onOfferRequestStatusUpdate={offerRequestActions.handleOfferRequestStatusUpdate}
                       onOfferRequestsUpdated={data.fetchOfferRequests}
+                      onOffersChanged={data.fetchServiceOffers}
                     />
                   </TabsContent>
 
@@ -143,8 +162,8 @@ function CompanyDashboardContent() {
                     <CsrProjectsTab data={data} actions={csrProjectActions} allVerified={allVerified} />
                   </TabsContent>
 
-                  <TabsContent value="company-ca" className="mt-4 space-y-4">
-                    <CompanyCaTab ca={companyCa} />
+                  <TabsContent value="team" className="mt-4 space-y-4">
+                    <TeamManagementTab employees={companyEmployees} evidenceVerifiers={companyCa} />
                   </TabsContent>
 
                   <CaResetPasswordDialog ca={companyCa} />

@@ -2,6 +2,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { FieldError } from '@/components/registration/field-error'
 import type { FormErrors, InputChangeHandler } from '@/components/registration/types'
+import { getCalendarYearIst } from '@/lib/utils'
 import type { NgoRegistrationFormData } from './types'
 
 type NgoDetailsSectionProps = {
@@ -23,7 +24,7 @@ export function NgoDetailsSection({ values, errors, onChange }: NgoDetailsSectio
             name="founded"
             type="number"
             min="1900"
-            max={new Date().getFullYear()}
+            max={getCalendarYearIst()}
             value={values.founded}
             onChange={onChange}
             placeholder="2020"

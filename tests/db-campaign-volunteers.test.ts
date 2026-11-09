@@ -129,6 +129,9 @@ function campaignDb(profiles: Record<number, unknown> = {}) {
     }
     if (query.table === 'service_attendance_entries') return { data: entries }
     if (query.table === 'users' && query.op === 'select') {
+      if (callsOf(query, 'in').length) {
+        return { data: [21, 22, 24].map((id) => ({ id, user_type: 'individual' })) }
+      }
       const id = Number(eqsOf(query).id)
       return { data: { id, name: `User ${id}`, profile_data: profiles[id] ?? {} } }
     }
@@ -166,6 +169,24 @@ describe('buildCampaignVolunteerAttendanceSummary', () => {
 })
 
 describe('processCompletedCampaignVolunteerOutcomes', () => {
+  it('does not infer NGO attendance or impose attendance outcomes on an NGO', async () => {
+    useDb((query) => {
+      if (query.table === 'campaigns') return {
+        data: { ...campaign, impact_metrics: { volunteer_applications: [{ user_id: 30 }] } },
+      }
+      if (query.table === 'service_engagement_assignments') return { data: [
+        { id: 'a30', assignee_user_id: 30, target_type: 'campaign', meta: {} },
+      ] }
+      if (query.table === 'users' && query.op === 'select') return { data: [{ id: 30, user_type: 'ngo' }] }
+      return undefined
+    })
+    const result = await processCompletedCampaignVolunteerOutcomes('c1')
+    expect(result.summary?.roster).toEqual([])
+    expect(result).toMatchObject({ banned: 0, historyWritten: 0 })
+    expect(fake.find('users', 'update')).toHaveLength(0)
+    expect(fake.find('service_attendance_entries')).toHaveLength(0)
+  })
+
   it('bans low attendance and records high attendance history', async () => {
     campaignDb({ 21: { volunteering_history: [{ campaign_id: 'other' }] } })
 
@@ -189,13 +210,14 @@ describe('processCompletedCampaignVolunteerOutcomes', () => {
   it('leaves active campaigns alone', async () => {
     useDb((query) => (query.table === 'campaigns' ? { data: { ...campaign, status: 'active' } } : undefined))
     await expect(processCompletedCampaignVolunteerOutcomes('c1')).resolves.toMatchObject({ banned: 0, historyWritten: 0 })
-    expect(fake.find('users')).toHaveLength(0)
+    expect(fake.find('users', 'update')).toHaveLength(0)
   })
 })
 
 describe('listCompanyCampaignVolunteerAttendance', () => {
   it('lists recent company campaigns that have volunteers', async () => {
     useDb((query) => {
+      if (query.table === 'users') return { data: [21, 22, 24].map((id) => ({ id, user_type: 'individual' })) }
       if (query.table !== 'campaigns') return undefined
       if (eqsOf(query).company_id) return { data: [{ id: 'c1' }, { id: 'c2' }] }
       return { data: eqsOf(query).id === 'c1' ? campaign : { ...campaign, id: 'c2', impact_metrics: {} } }

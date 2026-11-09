@@ -6,6 +6,7 @@ import { VerifiedAccountName } from '@/components/verification-badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CsrTrackingProjectDetails, hasDistinctImplementingLead, type CSRTrackingAssignment } from '@/components/csr-tracking-project-details';
+import { CompanyProjectOpsSummary } from '@/components/company-project-ops-summary';
 import { partitionByWorkBucket } from '@/lib/work-item-bucket';
 import { LeadNgoInvitePanel } from './lead-ngo-invite-panel';
 import type { NgoDirectoryItem } from './types';
@@ -82,6 +83,8 @@ export function CsrTrackingSection({
                   partnerStatus={assignment.lead_ngo_verification_status}
                   partnerVerified={assignment.lead_ngo_verified}
                 />
+
+                <CompanyProjectOpsSummary projectId={assignment.project_id} />
 
                 {hasDistinctImplementingLead(assignment) ? (
                   <div className="flex flex-wrap items-center gap-1 rounded-md border bg-emerald-50 p-2 text-xs text-emerald-800">

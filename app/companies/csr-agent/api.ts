@@ -183,6 +183,62 @@ export async function requestServiceRecommendations(
   }
 }
 
+export async function requestMilestoneSuggestions(input: {
+  companyId: number
+  payload: ProjectIntakeData
+  refresh?: boolean
+}): Promise<{ sets: Array<{ title: string; milestones: MilestoneInput[] }>; warning: string | null }> {
+  const { payload } = input
+  const budget = parseMoneyValue(payload.budget || '') || 0
+  const response = await fetch('/api/csr-agent/suggest-milestones', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      company_id: String(input.companyId),
+      campaignName: payload.campaignName || '',
+      category: payload.category || '',
+      city: payload.city || '',
+      state_province: payload.state || '',
+      budget,
+      start_date: payload.startDate || '',
+      end_date: payload.endDate || '',
+      volunteerRequirement: payload.volunteerRequirement || '',
+      requirementDetails: payload.requirementDetails || '',
+      refresh: Boolean(input.refresh),
+    }),
+  })
+
+  const result = await response.json()
+  if (!response.ok || !result?.success || !Array.isArray(result?.data)) {
+    throw new Error(readApiError(result, 'Failed to suggest milestones'))
+  }
+
+  const sets = (result.data as Array<{
+    title?: string
+    milestones?: Array<{
+      title?: string
+      description?: string
+      budget_allocated?: number
+      start_date?: string
+      end_date?: string
+    }>
+  }>).map((set) => ({
+    title: String(set.title || 'Suggested set'),
+    milestones: (Array.isArray(set.milestones) ? set.milestones : []).map((milestone) => ({
+      title: String(milestone.title || '').trim(),
+      description: String(milestone.description || '').trim(),
+      budgetTarget: String(milestone.budget_allocated ?? ''),
+      startDate: milestone.start_date || undefined,
+      endDate: milestone.end_date || undefined,
+    })),
+  }))
+
+  return {
+    sets,
+    warning: typeof result.warning === 'string' && result.warning.trim() ? result.warning : null,
+  }
+}
+
 export async function requestCampaignDrafts(input: {
   companyId: number
   budget: number
@@ -236,6 +292,7 @@ export function buildPublishCampaignBody(draft: GeneratedCampaign, context: {
   volunteerRequirement: string
   selectedProjectSuggestionId: string | null
   projectSuggestions: ProjectSuggestion[]
+  evidenceVerifierIdentityId: string
 }) {
   const { selectedProjectSuggestionId } = context
   return {
@@ -262,6 +319,7 @@ export function buildPublishCampaignBody(draft: GeneratedCampaign, context: {
       })),
       invited_offer_ids: context.invitedOfferIds,
       volunteer_requirement: context.volunteerRequirement,
+      evidence_verifier_identity_id: context.evidenceVerifierIdentityId,
       ...(selectedProjectSuggestionId ? { beneficiaries: Number((context.projectSuggestions.find(p => p.id === selectedProjectSuggestionId)?.expected_beneficiaries) || draft.impact_metrics.beneficiaries || 0) } : {}),
       selected_existing_project_id: selectedProjectSuggestionId,
     },

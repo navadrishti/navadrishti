@@ -1,12 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { jsonRequest, tokenFor } from './support/requests'
-import { businessQueries, eqValue, hasCall, supabaseFake, type FakeQuery } from './support/supabase-fake'
+import { businessQueries, eqValue, hasCall, supabaseFake, type FakeQuery, type FakeResult } from './support/supabase-fake'
+import { setLiveUserTypeOverlay } from '@/lib/auth/session'
+import { overlayLiveUserType } from '@/lib/server-auth'
 import { parseProjectMeta, withProjectMeta } from '@/lib/service-request-allocation'
 import { assertNgoCsr1CoversProject } from '@/lib/server-auth'
 import { respondToLeadNgoInvitation, selectLeadNgo } from '@/lib/service-request-assignments/lead-ngo'
 import { submitProjectApplication } from '@/lib/service-request-assignments/project-applications'
 import { LEAD_NGO_INVITE_CONTRIBUTION_TYPE, OWNER_NGO_CANNOT_BE_LEAD_MESSAGE, projectLeadInviteId } from '@/lib/service-request-assignments/shared'
 
+vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db', async () => {
   const { supabaseFake: fake } = await import('./support/supabase-fake')
   return {
@@ -33,8 +36,20 @@ vi.mock('@/lib/service-request-assignments/shared', async (importOriginal) => ({
 
 const contributions = () => supabaseFake.queries.filter((query) => query.table === 'service_request_contributions')
 
+function respondWith(handler: (query: FakeQuery) => FakeResult | undefined) {
+  supabaseFake.respondWith((query) => {
+    if (query.table === 'users' && query.columns === 'account_status, locked_until, profile_data, user_type, verification_status') {
+      const id = Number(eqValue(query, 'id'))
+      return { data: { id, user_type: id === 10 ? 'company' : 'ngo', account_status: 'active', verification_status: 'verified', profile_data: {} } }
+    }
+    if (['company_ca_identities', 'ngo_field_officer_identities', 'company_employee_identities'].includes(query.table) && eqValue(query, 'user_id') !== undefined) return { data: null }
+    return handler(query)
+  })
+}
+
 beforeEach(() => {
   supabaseFake.reset()
+  setLiveUserTypeOverlay((claims, pathname) => overlayLiveUserType(claims, pathname))
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
@@ -43,7 +58,7 @@ describe('revoke-lead-ngo', () => {
 
   beforeEach(() => {
     removed = [{ id: 'inv1' }]
-    supabaseFake.respondWith((query: FakeQuery) => {
+    respondWith((query: FakeQuery) => {
       if (query.table === 'service_request_projects') return { data: { id: 'p1', ngo_id: 3, description: '' } }
       if (query.table === 'service_requests') return { data: [] }
       if (query.table === 'service_request_contributions' && query.op === 'delete') return { data: removed }
@@ -114,7 +129,7 @@ describe('respondToLeadNgoInvitation', () => {
       options.invite === undefined
         ? { id: 'inv1', contributor_id: 5, status: 'pending', meta: { project_id: 'p1', inviting_company_id: 10 } }
         : options.invite
-    supabaseFake.respondWith((query) => {
+    respondWith((query) => {
       if (query.table === 'service_request_projects') {
         if (query.op === 'update') return { data: options.projectClaimed === false ? null : { id: 'p1' } }
         return { data: { valid_until: null, timeline: null } }
@@ -157,7 +172,7 @@ describe('respondToLeadNgoInvitation', () => {
 
   it('does not let the project owner accept as lead', async () => {
     setup()
-    supabaseFake.respondWith((query) => {
+    respondWith((query) => {
       if (query.table === 'service_request_projects') {
         return { data: { valid_until: null, timeline: null, ngo_id: 5 } }
       }
@@ -237,7 +252,7 @@ describe('respondToLeadNgoInvitation', () => {
         status: 'pending',
       }],
     })
-    supabaseFake.respondWith((query) => {
+    respondWith((query) => {
       if (query.table === 'service_request_contributions') return { data: null }
       if (query.table === 'service_request_projects') {
         if (query.op === 'update') return { data: { id: 'p1' } }
@@ -270,7 +285,7 @@ describe('respondToLeadNgoInvitation', () => {
         status: 'pending',
       }],
     })
-    supabaseFake.respondWith((query) => {
+    respondWith((query) => {
       if (query.table === 'service_request_contributions') return { data: null }
       if (query.table === 'service_request_projects') {
         if (query.op === 'update') return { data: { id: 'p1' } }
@@ -303,7 +318,7 @@ describe('invite-lead-ngo without child needs', () => {
     )
 
   it('writes a pending meta invite onto the project', async () => {
-    supabaseFake.respondWith((query) => {
+    respondWith((query) => {
       if (query.table === 'service_request_projects') {
         if (query.op === 'update') return { data: { id: 'p1' } }
         return {
@@ -339,7 +354,7 @@ describe('invite-lead-ngo without child needs', () => {
   })
 
   it('rejects inviting the owner NGO as lead', async () => {
-    supabaseFake.respondWith((query) => {
+    respondWith((query) => {
       if (query.table === 'service_request_projects') {
         return {
           data: {
@@ -363,7 +378,7 @@ describe('invite-lead-ngo without child needs', () => {
   })
 
   it('clears an owner stored as lead so a real lead can be invited', async () => {
-    supabaseFake.respondWith((query) => {
+    respondWith((query) => {
       if (query.table === 'service_request_projects') {
         if (query.op === 'update') return { data: { id: 'p1' } }
         return {
@@ -392,7 +407,7 @@ describe('invite-lead-ngo without child needs', () => {
 
 describe('selectLeadNgo', () => {
   it('rejects selecting the project owner as lead', async () => {
-    supabaseFake.respondWith((query) => {
+    respondWith((query) => {
       if (query.table === 'service_request_projects') {
         return { data: { ngo_id: 5, valid_until: null, timeline: null } }
       }
@@ -412,7 +427,7 @@ describe('selectLeadNgo', () => {
 
 describe('apply-project', () => {
   function setup(description = '', extra: Record<string, unknown> = {}) {
-    supabaseFake.respondWith((query) => {
+    respondWith((query) => {
       if (query.table === 'service_request_projects') {
         if (query.op === 'update') return { data: { id: 'p1' } }
         return {

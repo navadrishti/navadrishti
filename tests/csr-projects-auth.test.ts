@@ -5,6 +5,7 @@ import { GET as getAudit } from '@/app/api/csr-projects/[id]/audit/route'
 import { GET as getEvidence, POST as postEvidence } from '@/app/api/csr-projects/[id]/evidence/route'
 import { tokenFor } from './support/requests'
 import { createSupabaseFake, type FakeQuery, type FakeResult } from './support/supabase-fake'
+import './support/install-test-auth'
 
 const state = vi.hoisted(() => ({
   dbCalls: [] as string[],
@@ -55,7 +56,13 @@ function useSupabase(respond: (query: FakeQuery) => FakeResult | undefined) {
   return fake
 }
 
-const project = { id: 'p1', company_user_id: 13, ngo_user_id: 12 }
+const project = {
+  id: 'p1',
+  company_user_id: 13,
+  ngo_user_id: 12,
+  campaign_id: 'campaign-1',
+  campaigns: { lead_ngo_user_id: 12 },
+}
 
 beforeEach(() => {
   state.dbCalls.length = 0
@@ -84,7 +91,10 @@ describe('csr project routes authenticate before reading the project', () => {
     const fake = useSupabase((query) => (query.table === 'csr_projects' ? { data: project } : undefined))
     const res = await call(handler, method, tokenFor(50, 'ngo'))
     expect(res.status).toBe(403)
-    expect(fake.queries.map((query) => query.table)).toEqual(['company_ca_identities', 'csr_projects'])
+    expect(fake.find('csr_projects')).toHaveLength(1)
+    expect(fake.queries.some((query) =>
+      ['csr_milestone_evidence', 'csr_milestone_reviews', 'csr_payment_confirmations', 'csr_audit_log'].includes(query.table)
+    )).toBe(false)
   })
 
   it('returns the audit log to the project NGO', async () => {
@@ -98,10 +108,22 @@ describe('csr project routes authenticate before reading the project', () => {
     expect(await res.json()).toEqual({ success: true, data: [{ id: 'log_1' }] })
   })
 
-  it('lets a company CA of the owning company view the evidence timeline', async () => {
+  it('lets an Evidence Verifier assigned to the owning company project view the evidence timeline', async () => {
     useSupabase((query) => {
       if (query.table === 'company_ca_identities') {
         return { data: { id: 'ci_1', user_id: 30, company_user_id: 13, ca_id: 'CA-1', status: 'active', permissions: {} } }
+      }
+      if (query.table === 'company_ca_project_assignments') {
+        return {
+          data: {
+            id: 'asg_1',
+            company_ca_identity_id: 'ci_1',
+            company_ca_user_id: 30,
+            company_user_id: 13,
+            project_id: 'p1',
+            status: 'active',
+          },
+        }
       }
       if (query.table === 'csr_projects') return { data: project }
       return { data: [] }

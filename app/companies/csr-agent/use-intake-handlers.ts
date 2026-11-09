@@ -1,4 +1,5 @@
 import type { MilestoneMode } from "./chat-composer"
+import { requestMilestoneSuggestions } from "./api"
 import {
   applyCsrProjectAnswer,
   applyEditedCsrUserAnswer,
@@ -6,6 +7,7 @@ import {
   CSR_MILESTONE_COUNT_PROMPT,
   firstUnfilledProjectIndex,
   resolveCsrPromptBefore,
+  type SuggestedMilestoneSet,
 } from "./helpers"
 import {
   type CSRAgentSession,
@@ -20,6 +22,7 @@ import type { CampaignState } from "./use-campaign-state"
 
 type IntakeHandlersOptions = {
   campaign: CampaignState
+  userId: number | undefined
   setServiceSuggestions: (suggestions: ServiceSuggestion[]) => void
   acceptedLeadNgo: LeadNgoInvite | null
   finalizeConversation: () => Promise<void>
@@ -56,6 +59,7 @@ export function useIntakeHandlers({
     setShowMilestoneSuggestions,
     setMilestoneMode,
   },
+  userId,
   setServiceSuggestions,
   acceptedLeadNgo,
   finalizeConversation,
@@ -248,9 +252,56 @@ export function useIntakeHandlers({
     }, 0)
   }
 
-  const generateSuggestedMilestoneSets = (data: ProjectIntakeData, refresh = false) => {
-    setSuggestedMilestoneSets(buildSuggestedMilestoneSets(data, refresh))
+  const applyLocalMilestoneFallback = (data: ProjectIntakeData, refresh = false) => {
+    const sets = buildSuggestedMilestoneSets(data, refresh)
+    setSuggestedMilestoneSets(sets)
     setShowMilestoneSuggestions(true)
+    return sets
+  }
+
+  const generateSuggestedMilestoneSets = async (data: ProjectIntakeData, refresh = false) => {
+    setIsTyping(true)
+    try {
+      if (!userId) {
+        applyLocalMilestoneFallback(data, refresh)
+        appendAssistantMessage(
+          'Catalyst prepared structured milestone sets from your intake. Select one, or refresh for other options.'
+        )
+        return
+      }
+
+      const { sets, warning } = await requestMilestoneSuggestions({
+        companyId: userId,
+        payload: data,
+        refresh,
+      })
+      const mapped: SuggestedMilestoneSet[] = sets.map((set, index) => ({
+        id: `suggest-api-${Date.now()}-${index}-${refresh ? 'r' : 's'}`,
+        title: set.title,
+        milestones: set.milestones,
+      }))
+      if (mapped.length === 0) {
+        applyLocalMilestoneFallback(data, refresh)
+      } else {
+        setSuggestedMilestoneSets(mapped)
+        setShowMilestoneSuggestions(true)
+      }
+      if (warning) appendAssistantMessage(warning)
+      else {
+        appendAssistantMessage(
+          refresh
+            ? 'Catalyst refreshed milestone suggestions from your campaign details. Pick a set or refresh again.'
+            : 'Catalyst suggested milestone sets from your campaign details, budget, location, and timeline. Select a set or refresh for other options.'
+        )
+      }
+    } catch {
+      applyLocalMilestoneFallback(data, refresh)
+      appendAssistantMessage(
+        'Catalyst used structured milestone sets from your intake because generative suggestions were unavailable. Select a set or enter milestones manually.'
+      )
+    } finally {
+      setIsTyping(false)
+    }
   }
 
   const handleSelectSuggestedSet = (setIndex: number) => {
@@ -261,7 +312,13 @@ export function useIntakeHandlers({
     setMilestoneIndex(Math.max(0, set.milestones.length - 1))
     setMilestoneQuestionIndex(0)
     setShowMilestoneSuggestions(false)
-    appendAssistantMessage(`Selected suggested milestone set: ${set.title}. ${acceptedLeadNgo ? 'Generating your campaign draft now.' : 'Invite a lead NGO in the preview panel and wait for them to accept from their dashboard before the draft is generated.'}`)
+    appendAssistantMessage(
+      `Selected suggested milestone set: ${set.title}. ${
+        acceptedLeadNgo
+          ? 'Allot an Evidence Verifier in the Publish panel if you have not already — Catalyst assembles the draft after that.'
+          : 'Invite a lead NGO in the preview panel, wait for acceptance, then allot an Evidence Verifier before Catalyst assembles the draft.'
+      }`
+    )
     persistSnapshot({})
     if (acceptedLeadNgo) {
       setTimeout(() => {
@@ -276,8 +333,8 @@ export function useIntakeHandlers({
       // Stay in the milestone-count stage so the fixed count options keep rendering.
       appendAssistantMessage('Okay — please tell me how many milestones to plan. Pick a number between 1 and 10 or type it in.')
     } else {
-      generateSuggestedMilestoneSets(projectData)
-      appendAssistantMessage('I will suggest a few full milestone sets based on your campaign title, category and location. You can select a set or refresh for other options.')
+      appendAssistantMessage('Catalyst is preparing milestone suggestions from the details you shared…')
+      void generateSuggestedMilestoneSets(projectData)
     }
   }
 
@@ -292,7 +349,9 @@ export function useIntakeHandlers({
     handleQuickPick,
     handleSelectSuggestedSet,
     handleChooseEnterOrSuggest,
-    refreshMilestoneSuggestions: () => generateSuggestedMilestoneSets(projectData, true),
+    refreshMilestoneSuggestions: () => {
+      void generateSuggestedMilestoneSets(projectData, true)
+    },
     closeMilestoneSuggestions,
   }
 }

@@ -5,6 +5,12 @@ import { authStoreAvailable, switchToMemoryIfMissing } from '@/lib/auth-store';
 type RateLimitOptions = {
   limit: number;
   windowMs: number;
+  /**
+   * When true, deny on missing store / RPC errors instead of falling back to
+   * per-instance memory (required for multi-instance abuse ceilings).
+   * Production always fails closed regardless of this flag.
+   */
+  failClosed?: boolean;
 };
 
 export type RateLimitResult =
@@ -62,8 +68,13 @@ function denyRateLimit(): RateLimitResult {
 
 export async function rateLimit(key: string, options: RateLimitOptions): Promise<RateLimitResult> {
   const production = process.env.NODE_ENV === 'production';
+  const failClosed =
+    Boolean(options.failClosed) ||
+    production ||
+    process.env.RATE_LIMIT_FAIL_CLOSED === '1';
+
   if (!authStoreAvailable()) {
-    return production ? denyRateLimit() : rateLimitInMemory(key, options);
+    return failClosed ? denyRateLimit() : rateLimitInMemory(key, options);
   }
 
   try {
@@ -82,7 +93,7 @@ export async function rateLimit(key: string, options: RateLimitOptions): Promise
   } catch (error) {
     const missing = switchToMemoryIfMissing(error);
     if (!missing) console.error('Rate limit store error:', error);
-    if (production) return denyRateLimit();
+    if (failClosed) return denyRateLimit();
     return rateLimitInMemory(key, options);
   }
 }

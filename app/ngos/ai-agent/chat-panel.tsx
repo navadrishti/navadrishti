@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { MatchHeading, MATCH_CARD_CLASS, MATCH_PANEL_CLASS, MATCH_SCORE_CLASS } from "@/components/agent-shell"
+import { SuggestionDisclaimer, SuggestionSourceBadge } from "@/components/agent-guidance"
 import { VerifiedAccountName } from "@/components/verification-badge"
 import { AGENT_NAMES } from "@/lib/ai-agent-sessions"
 import type { RelatedOfferEntry } from "./intake"
@@ -64,9 +65,13 @@ function NeedOfferSuggestions({ needIndex, offers, appliedOfferIds, onApplyOffer
   return (
     <div className={MATCH_PANEL_CLASS}>
       <MatchHeading
-        title={`${AGENT_NAMES.atlas} matches`}
+        title={`${AGENT_NAMES.pulse} matches`}
         description={`Need ${needIndex + 1}. Applications are sent when you publish.`}
+        badge={<SuggestionSourceBadge source="pulse" />}
       />
+      <SuggestionDisclaimer>
+        Suggested offers are recommendations. Selection does not apply until you publish.
+      </SuggestionDisclaimer>
       <div className="mt-3 space-y-2">
         {offers.map((entry) => {
           const applied = appliedOfferIds.includes(entry.offer.id)

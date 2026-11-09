@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { authErrorResponse } from '@/lib/server-auth';
 import { getTokenClaims } from '@/lib/auth';
 import { db, getApplicationApplicantUserId } from '@/lib/db';
 import {
@@ -65,6 +66,8 @@ export async function GET(
     const parties = await previewServiceRequestDeliveryParties({ requestId, application });
     return NextResponse.json({ success: true, data: parties });
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     if (error instanceof DeliveryRequestError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
@@ -131,6 +134,8 @@ export async function POST(
       },
     });
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     if (error instanceof DeliveryRequestError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }

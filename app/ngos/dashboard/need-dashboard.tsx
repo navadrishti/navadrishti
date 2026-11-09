@@ -1,4 +1,5 @@
 'use client';
+import { toast } from 'sonner'
 
 import { readApiError } from '@/lib/user-facing-error'
 import { clientAuthFetchInit } from '@/lib/client-session';
@@ -9,7 +10,6 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2 } from 'lucide-react';
 import { formatStatusLabel } from '@/lib/format-date';
 import Link from 'next/link';
-import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   getNeedRemainingQuantity,
@@ -106,7 +106,6 @@ export function NgoNeedDashboardInline({
   variant?: 'ongoing' | 'history';
   onUpdated?: () => void | Promise<void>;
 }) {
-  const { toast } = useToast();
   const [updatingId, setUpdatingId] = useState<number | null>(null);
 
   const accepted = getAcceptedNgoNeedAssignments(need);
@@ -135,11 +134,7 @@ export function NgoNeedDashboardInline({
   ) => {
     const applicationId = needApplicantRowId(assignment);
     if (!(applicationId > 0)) {
-      toast({
-        title: 'Could not update application',
-        description: 'This application could not be identified. Refresh and try again.',
-        variant: 'destructive',
-      });
+      toast.error('Could not update application', { description: 'This application could not be identified. Refresh and try again.' });
       return;
     }
 
@@ -183,23 +178,15 @@ export function NgoNeedDashboardInline({
             )
           : remainingQty;
 
-      toast({
-        title: decision === 'accepted' ? 'Application accepted' : 'Application rejected',
-        description:
-          decision === 'accepted'
+      toast.success(decision === 'accepted' ? 'Application accepted' : 'Application rejected', { description: decision === 'accepted'
             ? remainingAfterAccept <= 0
               ? `${assignment.volunteer?.name || 'Applicant'} is now assigned. Other pending applications were declined.`
               : `${assignment.volunteer?.name || 'Applicant'} is now assigned. More applications can still be accepted.`
-            : `${assignment.volunteer?.name || 'Applicant'} was not selected.`,
-      });
+            : `${assignment.volunteer?.name || 'Applicant'} was not selected.` });
 
       await onUpdated?.();
     } catch (error) {
-      toast({
-        title: 'Could not update application',
-        description: readApiError(error, 'Something went wrong'),
-        variant: 'destructive',
-      });
+      toast.error('Could not update application', { description: readApiError(error, 'Something went wrong') });
     } finally {
       setUpdatingId(null);
     }

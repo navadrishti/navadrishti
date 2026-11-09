@@ -75,6 +75,15 @@ const KNOWN_MESSAGES: Array<[RegExp, string]> = [
   [/attendanceentryid\(s\) or contributionid\(s\) required/i, 'Please choose the items to pay for.'],
   [/razorpay is not configured/i, 'Payments are not available right now. Please try again later.'],
   [/internal server error/i, 'Something went wrong. Please try again.'],
+  [/milestones must be a json array/i, 'Campaign milestones are invalid. Regenerate the draft and try again.'],
+  [/milestone \d+ budget_allocated is not numeric/i, 'One of the milestone budgets is not a valid number. Check the draft milestones and try again.'],
+  [/milestone \d+ amount is not numeric/i, 'One of the milestone budgets is not a valid number. Check the draft milestones and try again.'],
+  [/milestone \d+ budget_allocated must be non-negative/i, 'Milestone budgets cannot be negative. Check the draft milestones and try again.'],
+  [/milestone \d+ amount must be non-negative/i, 'Milestone budgets cannot be negative. Check the draft milestones and try again.'],
+  [/milestone \d+ has an invalid due\/end date/i, 'One of the milestones has an invalid due date. Check the draft milestones and try again.'],
+  [/milestone budgets add up to .+ but budget_inr is/i, 'Milestone budgets must add up to the campaign budget. Check the draft and try again.'],
+  [/milestone budget_allocated amounts must be non-negative/i, 'Milestone budgets must be valid non-negative amounts. Check the draft and try again.'],
+  [/project has duplicate milestone_order/i, 'This campaign has conflicting milestone orders. Regenerate the draft and try again.'],
 ]
 
 function humanizeFieldName(field: string) {
@@ -169,6 +178,10 @@ function stripTechnicalNoise(text: string) {
   const rewritten = rewriteSnakeCasePhrases(
     text
       .replace(/\bValidation failed\.?\s*/gi, '')
+      // PL/pgSQL variable typos surface as column "v_…" — never show those as field names.
+      .replace(/\b(?:null value in )?column "(v_[^"]+)"[^.]*\.?/gi, () => {
+        return 'Publishing failed while saving milestones. Please try again.'
+      })
       .replace(/\bnull value in column "([^"]+)"[^.]*\.?/gi, (_match, column: string) => {
         return `Please fill in the ${humanizeFieldName(column)}.`
       })

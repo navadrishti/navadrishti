@@ -225,6 +225,9 @@ export default function AdminPage() {
               offerCount={serviceOffers.length}
               requestCount={adminRequests.length}
               projectCount={adminProjects.length}
+              campaignCount={adminCampaigns.length}
+              ticketCount={tickets.length}
+              onNavigate={setActiveTab}
             />
             )}
 

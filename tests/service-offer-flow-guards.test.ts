@@ -1,11 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { GET as listOffers } from '@/app/api/service-offers/route'
+
+vi.mock('server-only', () => ({}))
+
+import { GET as listOffers, POST as createOffer } from '@/app/api/service-offers/route'
 import { DELETE as deleteOffer, GET as getOffer, PUT as updateOffer } from '@/app/api/service-offers/[id]/route'
 import { POST as applyToOffer } from '@/app/api/service-offers/[id]/clients/route'
 import { POST as createOrder } from '@/app/api/service-offers/[id]/clients/[clientId]/payments/create-order/route'
 import { POST as verifyPayment } from '@/app/api/service-offers/[id]/clients/[clientId]/payments/verify/route'
 import { PUT as decideRequest } from '@/app/api/service-offers/requests/[requestId]/route'
 import { buildOfferRow, coerceOfferBody } from '@/lib/service-offer-payload'
+import { setLiveUserTypeOverlay } from '@/lib/auth/session'
+import { overlayLiveUserType } from '@/lib/server-auth'
 import { jsonRequest, razorpaySignature, tokenFor } from './support/requests'
 import { argOf, eqValue, fakeAdjustProgress, hasCall, supabaseFake, unknownColumns, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
@@ -15,7 +20,11 @@ const mocks = vi.hoisted(() => ({
   serviceRequests: { getById: vi.fn() },
   adjustProgress: vi.fn(),
   verification: vi.fn(),
+  getAdminUser: vi.fn((): { id: number; email: string; name: string; user_type: 'individual' | 'ngo' | 'company' } | null => null),
   createPlatformPricedOrder: vi.fn(),
+  emitOfferMarketplaceEvent: vi.fn(async () => undefined),
+  emitOfferCreatedAudit: vi.fn(async () => undefined),
+  assertPayoutActive: vi.fn(async () => undefined),
   razorpay: { orders: { fetch: vi.fn() }, payments: { fetch: vi.fn(), refund: vi.fn() } },
 }))
 
@@ -27,9 +36,11 @@ vi.mock('@/lib/db', async () => {
     adjustServiceRequestProgress: mocks.adjustProgress,
   }
 })
-vi.mock('@/lib/server-auth', async () => {
+vi.mock('@/lib/server-auth', async (importOriginal) => {
   const { isCaVerifiedAccount, CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE } = await import('@/lib/auth')
   return {
+    ...(await importOriginal<typeof import('@/lib/server-auth')>()),
+    getAdminUser: mocks.getAdminUser,
     resolveEffectiveVerificationStatus: mocks.verification,
     requireCaVerifiedPayer: async (userId: number, userType: string) => {
       const status = await mocks.verification(userId, userType)
@@ -39,6 +50,10 @@ vi.mock('@/lib/server-auth', async () => {
   }
 })
 vi.mock('@/lib/embeddings', () => ({ syncServiceOfferEmbedding: vi.fn(async () => undefined) }))
+vi.mock('@/lib/service-offers/marketplace-events', () => ({
+  emitOfferMarketplaceEvent: mocks.emitOfferMarketplaceEvent,
+  emitOfferCreatedAudit: mocks.emitOfferCreatedAudit,
+}))
 vi.mock('next/server', async (importOriginal) => ({
   ...(await importOriginal<typeof import('next/server')>()),
   after: () => undefined,
@@ -47,7 +62,7 @@ vi.mock('@/lib/razorpay-route', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/razorpay-route')>()),
   createPlatformPricedOrder: mocks.createPlatformPricedOrder,
   buildPricingResponse: () => ({}),
-  assertUserRazorpayPayoutActiveForCapabilities: vi.fn(async () => undefined),
+  assertUserRazorpayPayoutActiveForCapabilities: mocks.assertPayoutActive,
 }))
 vi.mock('razorpay', () => ({
   default: vi.fn(function () {
@@ -57,20 +72,33 @@ vi.mock('razorpay', () => ({
 
 const OWNER = 40
 const NGO = 12
+let ownerRole: 'company' | 'ngo' | 'individual' = 'company'
 
 const params = <T extends Record<string, string>>(value: T) => ({ params: Promise.resolve(value) })
 const respond = (fn: (query: FakeQuery) => FakeResult | undefined) => supabaseFake.reset(fn)
 
 beforeEach(() => {
+  ownerRole = 'company'
+  setLiveUserTypeOverlay(overlayLiveUserType)
+  supabaseFake.intercept((query) => {
+    if (query.table !== 'users' || !query.columns?.includes('account_status')) return undefined
+    const id = Number(eqValue(query, 'id'))
+    const role = id === OWNER ? ownerRole : id === NGO ? 'ngo' : null
+    return { data: role ? { user_type: role, account_status: 'active', verification_status: 'unverified', profile_data: {} } : null }
+  })
   vi.stubEnv('NEXT_PUBLIC_RAZORPAY_KEY_ID', 'key')
   vi.stubEnv('RAZORPAY_KEY_SECRET', 'rzp_secret')
   vi.spyOn(console, 'error').mockImplementation(() => {})
   mocks.adjustProgress.mockImplementation(fakeAdjustProgress)
   mocks.verification.mockResolvedValue('verified')
+  mocks.assertPayoutActive.mockResolvedValue(undefined)
+  mocks.emitOfferCreatedAudit.mockResolvedValue(undefined)
+  mocks.getAdminUser.mockReturnValue(null)
   supabaseFake.reset()
 })
 
 afterEach(() => {
+  supabaseFake.intercept(null)
   vi.resetAllMocks()
   vi.unstubAllEnvs()
 })
@@ -348,7 +376,91 @@ describe('service offer request decisions', () => {
     const res = await run({ status: 'completed', fulfilled_amount: 700 })
     expect(res.status).toBe(200)
     expect(mocks.adjustProgress).toHaveBeenCalledWith(expect.objectContaining({ id: 20 }), { amount: 0, quantity: 0 }, { targetAmount: 10000, targetQuantity: 0 })
-    expect(supabaseFake.writes('service_requests')).toHaveLength(0)
+    const clientComplete = supabaseFake.writes('service_clients').find((query) => (query.payload as { status?: string }).status === 'completed')
+    expect(clientComplete?.payload).toMatchObject({ fulfilled_amount: 700, fulfilled_quantity: 0 })
+    expect(mocks.emitOfferMarketplaceEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'offer_fulfilment_completed', recipientUserId: OWNER })
+    )
+    expect(mocks.emitOfferMarketplaceEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'offer_fulfilment_completed', recipientUserId: NGO })
+    )
+  })
+
+  it('emits accept notification to the requesting NGO after a successful accept', async () => {
+    setup()
+    const res = await run({ status: 'accepted' })
+    expect(res.status).toBe(200)
+    expect(mocks.emitOfferMarketplaceEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'offer_request_accepted',
+        applicationId: 5,
+        recipientUserId: NGO,
+        actorUserId: OWNER,
+      })
+    )
+  })
+
+  it('does not emit marketplace events when completion is refused', async () => {
+    setup()
+    expect((await run({ status: 'completed' })).status).toBe(409)
+    expect(mocks.emitOfferMarketplaceEvent).not.toHaveBeenCalled()
+  })
+
+  it('credits unpaid fulfilment amount and quantity exactly once via adjustProgress', async () => {
+    setup({ status: 'accepted', proposed: 999 })
+    const res = await run({ status: 'completed', fulfilled_amount: 400, fulfilled_quantity: 3 })
+    expect(res.status).toBe(200)
+    expect(mocks.adjustProgress).toHaveBeenCalledTimes(1)
+    expect(mocks.adjustProgress).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 20 }),
+      { amount: 400, quantity: 3 },
+      { targetAmount: 10000, targetQuantity: 0 }
+    )
+    const clientComplete = supabaseFake.writes('service_clients').find((query) => (query.payload as { status?: string }).status === 'completed')
+    expect(clientComplete?.payload).toMatchObject({ fulfilled_amount: 400, fulfilled_quantity: 3 })
+  })
+
+  it('uses fulfilled values rather than proposed values for progress credit', async () => {
+    setup({ status: 'accepted', proposed: 5000 })
+    const res = await run({ status: 'completed', fulfilled_amount: 250, fulfilled_quantity: 2 })
+    expect(res.status).toBe(200)
+    expect(mocks.adjustProgress).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 20 }),
+      { amount: 250, quantity: 2 },
+      expect.any(Object)
+    )
+  })
+
+  it('credits fulfilled quantity once on paid completion without re-crediting amount', async () => {
+    setup({ status: 'accepted', responseMeta: { payment_status: 'paid' } })
+    const res = await run({ status: 'completed', fulfilled_amount: 700, fulfilled_quantity: 4 })
+    expect(res.status).toBe(200)
+    expect(mocks.adjustProgress).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 20 }),
+      { amount: 0, quantity: 4 },
+      { targetAmount: 10000, targetQuantity: 0 }
+    )
+    const clientComplete = supabaseFake.writes('service_clients').find((query) => (query.payload as { status?: string }).status === 'completed')
+    expect(clientComplete?.payload).toMatchObject({ fulfilled_amount: 700, fulfilled_quantity: 4 })
+  })
+
+  it('returns 409 on repeated completion without additional progress updates', async () => {
+    setup({ status: 'completed' })
+    const res = await run({ status: 'completed', fulfilled_amount: 100 })
+    expect(res.status).toBe(409)
+    expect(mocks.adjustProgress).not.toHaveBeenCalled()
+    expect(supabaseFake.writes('service_clients')).toHaveLength(0)
+  })
+
+  it('compensates completion when need progress update fails', async () => {
+    setup({ status: 'accepted' })
+    mocks.adjustProgress.mockRejectedValueOnce(new Error('progress boom'))
+    const res = await run({ status: 'completed', fulfilled_amount: 100, fulfilled_quantity: 1 })
+    expect(res.status).toBe(500)
+    const compensate = supabaseFake.writes('service_clients').find((query) => (query.payload as { status?: string }).status === 'accepted')
+    expect(compensate?.payload).toMatchObject({ status: 'accepted', completed_at: null })
+    const assignmentReopen = supabaseFake.writes('service_engagement_assignments').find((query) => (query.payload as { status?: string }).status === 'active')
+    expect(assignmentReopen?.payload).toMatchObject({ status: 'active', completed_at: null })
   })
 
   it('prices acceptance from the offer, not the applicant proposal', async () => {
@@ -508,15 +620,16 @@ describe('service offer listing', () => {
     expect(titles).toEqual([])
   })
 
-  it('hides unlisted, in-use, unverified, rejected, and disconnected-payout offers from the public catalog', async () => {
+  it('hides in-use, unverified, and disconnected-payout offers; ignores legacy listing/approval flags', async () => {
     setupPublic(
       [
-        { id: 1, creator_id: OWNER, title: 'Unlisted kit', status: 'active', is_listed: false, valid_until: null, ngo: merchant },
+        { id: 1, creator_id: OWNER, title: 'Legacy unlisted kit', status: 'active', is_listed: false, valid_until: null, ngo: merchant },
         { id: 2, creator_id: OWNER, title: 'Build well', status: 'active', is_listed: true, valid_until: null, ngo: merchant },
         { id: 3, creator_id: 99, title: 'Unverified van', status: 'active', is_listed: true, valid_until: null, ngo: { verification_status: 'pending' } },
         { id: 4, creator_id: 100, title: 'River cleaning machine', status: 'active', is_listed: true, valid_until: null, ngo: { verification_status: 'verified', profile_data: {} } },
-        { id: 5, creator_id: OWNER, title: 'Distribute school bags', status: 'active', admin_status: 'rejected', is_listed: true, valid_until: null, ngo: merchant },
+        { id: 5, creator_id: OWNER, title: 'Legacy rejected bags', status: 'active', admin_status: 'rejected', is_listed: true, valid_until: null, ngo: merchant },
         { id: 6, creator_id: OWNER, title: 'Solar Installation', status: 'active', is_listed: true, valid_until: null, ngo: merchant },
+        { id: 7, creator_id: OWNER, title: 'Inactive van', status: 'inactive', is_listed: true, valid_until: null, ngo: merchant },
       ],
       [{ id: 9, client_id: NGO, service_offer_id: 2, status: 'accepted', response_meta: {}, client: { name: 'NGO' } }],
       [
@@ -527,7 +640,22 @@ describe('service offer listing', () => {
     )
     const res = await listOffers(jsonRequest('http://localhost/api/service-offers?view=all'))
     const body = await res.json()
-    expect((body.data || []).map((row: { title?: string }) => row.title)).toEqual(['Solar Installation'])
+    expect((body.data || []).map((row: { title?: string }) => row.title).sort()).toEqual([
+      'Legacy rejected bags',
+      'Legacy unlisted kit',
+      'Solar Installation',
+    ])
+  })
+
+  it('does not gate public discovery on admin_status or is_listed', async () => {
+    expect(
+      await titlesForPublic([
+        { id: 10, creator_id: OWNER, title: 'Pending leftover', status: 'active', admin_status: 'pending', is_listed: true, valid_until: null, ngo: merchant },
+        { id: 11, creator_id: OWNER, title: 'Blank admin status', status: 'active', admin_status: '', is_listed: true, valid_until: null, ngo: merchant },
+        { id: 12, creator_id: OWNER, title: 'Rejected leftover', status: 'active', admin_status: 'rejected', is_listed: true, valid_until: null, ngo: merchant },
+        { id: 13, creator_id: OWNER, title: 'Unlisted leftover', status: 'active', admin_status: 'approved', is_listed: false, valid_until: null, ngo: merchant },
+      ])
+    ).toEqual(['Pending leftover', 'Blank admin status', 'Rejected leftover', 'Unlisted leftover'])
   })
 })
 
@@ -544,14 +672,21 @@ describe('service offer applications', () => {
   const apply = (body: Record<string, unknown>) =>
     applyToOffer(jsonRequest('http://localhost/api/service-offers/7/clients', { token: tokenFor(NGO, 'ngo'), body }), params({ id: '7' }))
 
-  it.each([
-    ['inactive', { status: 'inactive' }],
-    ['rejected', { admin_status: 'rejected' }],
-    ['unlisted', { is_listed: false }],
-  ])('refuses applications to an %s offer', async (_label, override) => {
-    mocks.serviceOffers.getById.mockResolvedValue({ ...offer, ...override })
+  it('refuses applications to an inactive offer', async () => {
+    mocks.serviceOffers.getById.mockResolvedValue({ ...offer, status: 'inactive' })
     expect((await apply({ selected_need_ids: [31] })).status).toBe(409)
     expect(supabaseFake.find('service_clients', 'insert')).toHaveLength(0)
+  })
+
+  it('allows applications when only legacy listing/approval flags differ', async () => {
+    mocks.serviceOffers.getById.mockResolvedValue({ ...offer, admin_status: 'rejected', is_listed: false })
+    supabaseFake.reset({
+      service_requests: [{ data: [need] }],
+      'service_clients.select': [{ data: null }],
+      'service_clients.insert': [{ data: { id: 101 } }],
+    })
+    const res = await apply({ selected_need_ids: [31] })
+    expect(res.status).not.toBe(409)
   })
 
   it('rejects an invalid proposed amount', async () => {
@@ -591,16 +726,10 @@ describe('single service offer', () => {
     expect(res.status).toBe(404)
   })
 
-  it('hides unlisted offers from the public', async () => {
-    mocks.serviceOffers.getById.mockResolvedValue({ ...baseOffer, is_listed: false })
+  it('lets the public see active offers regardless of legacy is_listed or admin_status', async () => {
+    mocks.serviceOffers.getById.mockResolvedValue({ ...baseOffer, is_listed: false, admin_status: 'rejected' })
     const res = await getOffer(jsonRequest('http://localhost/api/service-offers/3'), params({ id: '3' }))
-    expect(res.status).toBe(404)
-  })
-
-  it('hides rejected offers from the public', async () => {
-    mocks.serviceOffers.getById.mockResolvedValue({ ...baseOffer, admin_status: 'rejected' })
-    const res = await getOffer(jsonRequest('http://localhost/api/service-offers/3'), params({ id: '3' }))
-    expect(res.status).toBe(404)
+    expect(res.status).toBe(200)
   })
 
   it('lets the public see an active offer that is still pending leftover review', async () => {
@@ -683,11 +812,235 @@ describe('single service offer', () => {
     expect(supabaseFake.writes('offer_capabilities', 'insert')).toHaveLength(0)
   })
 
-  it('refuses to delete an offer with accepted applications', async () => {
+  it('archives an offer with applications instead of hard-deleting history', async () => {
     mocks.serviceOffers.getById.mockResolvedValue(baseOffer)
-    supabaseFake.reset({ 'service_clients.select': [{ data: { id: 5 } }] })
+    supabaseFake.reset({
+      'service_offers.select': [{ data: { id: 3, creator_id: OWNER, status: 'active' } }],
+      'service_clients.select': [{ data: { id: 5 } }],
+      'service_offers.update': [{ data: { id: 3 } }],
+      'csr_audit_log.insert': [{ data: { id: 1 } }],
+    })
     const res = await deleteOffer(jsonRequest('http://localhost/api/service-offers/3', { token: tokenFor(OWNER, 'company'), method: 'DELETE' }), params({ id: '3' }))
-    expect(res.status).toBe(409)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ success: true, mode: 'archived' })
+    const [update] = supabaseFake.writes('service_offers', 'update')
+    expect(update.payload).toEqual(expect.objectContaining({ status: 'inactive' }))
+    expect(supabaseFake.writes('service_offers', 'delete')).toHaveLength(0)
     expect(mocks.serviceOffers.delete).not.toHaveBeenCalled()
+  })
+
+  it('hard-deletes an unused offer owned by the caller', async () => {
+    mocks.serviceOffers.getById.mockResolvedValue(baseOffer)
+    supabaseFake.reset({
+      'service_offers.select': [{ data: { id: 3, creator_id: OWNER, status: 'active' } }],
+      'service_clients.select': [{ data: null }],
+      'service_offers.delete': [{ data: null }],
+      'csr_audit_log.insert': [{ data: { id: 1 } }],
+    })
+    const res = await deleteOffer(jsonRequest('http://localhost/api/service-offers/3', { token: tokenFor(OWNER, 'company'), method: 'DELETE' }), params({ id: '3' }))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ success: true, mode: 'deleted' })
+    expect(supabaseFake.writes('service_offers', 'delete')).toHaveLength(1)
+  })
+
+  it('rejects listing-toggle-only updates', async () => {
+    mocks.serviceOffers.getById.mockResolvedValue({ ...baseOffer, is_listed: true, status: 'active' })
+    const res = await updateOffer(
+      jsonRequest('http://localhost/api/service-offers/3', {
+        token: tokenFor(OWNER, 'company'),
+        body: { is_listed: false },
+        method: 'PUT',
+      }),
+      params({ id: '3' })
+    )
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({
+      error: expect.stringContaining('Listing toggles are no longer supported'),
+    })
+    expect(supabaseFake.writes('service_offers')).toHaveLength(0)
+  })
+
+  it('blocks a non-owner from editing another publisher offer', async () => {
+    mocks.serviceOffers.getById.mockResolvedValue(existingService)
+    const res = await updateOffer(
+      jsonRequest('http://localhost/api/service-offers/3', {
+        token: tokenFor(NGO, 'ngo'),
+        body: serviceBody,
+        method: 'PUT',
+      }),
+      params({ id: '3' })
+    )
+    expect(res.status).toBe(403)
+    expect(supabaseFake.writes('service_offers')).toHaveLength(0)
+  })
+
+  it('lets an admin edit any offer and writes an audit row', async () => {
+    mocks.getAdminUser.mockReturnValue({
+      id: -1,
+      email: 'admin@navadrishti.test',
+      name: 'Admin',
+      user_type: 'company',
+    })
+    mocks.serviceOffers.getById.mockResolvedValue(existingService)
+    supabaseFake.reset({
+      'service_offers.update': [{ data: { id: 3 } }],
+      'offer_capabilities.delete': [{ data: null }],
+      'offer_capabilities.insert': [{ data: { id: 1 } }],
+      'csr_audit_log.insert': [{ data: { id: 1 } }],
+    })
+    const res = await updateOffer(
+      jsonRequest('http://localhost/api/service-offers/3', {
+        body: serviceBody,
+        method: 'PUT',
+      }),
+      params({ id: '3' })
+    )
+    expect(res.status).toBe(200)
+    const audits = supabaseFake.writes('csr_audit_log', 'insert')
+    expect(audits[0].payload).toEqual(expect.objectContaining({
+      entity_type: 'service_offer',
+      event_type: 'offer_admin_updated',
+    }))
+  })
+
+  it('lets an admin archive any offer with applications', async () => {
+    mocks.getAdminUser.mockReturnValue({
+      id: -1,
+      email: 'admin@navadrishti.test',
+      name: 'Admin',
+      user_type: 'company',
+    })
+    mocks.serviceOffers.getById.mockResolvedValue({ ...baseOffer, creator_id: 999 })
+    supabaseFake.reset({
+      'service_offers.select': [{ data: { id: 3, creator_id: 999, status: 'active' } }],
+      'service_clients.select': [{ data: { id: 5 } }],
+      'service_offers.update': [{ data: { id: 3 } }],
+      'csr_audit_log.insert': [{ data: { id: 1 } }],
+    })
+    const res = await deleteOffer(
+      jsonRequest('http://localhost/api/service-offers/3', { method: 'DELETE' }),
+      params({ id: '3' })
+    )
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ success: true, mode: 'archived' })
+  })
+})
+
+describe('service offer creation', () => {
+  const createBody = {
+    title: 'Teaching volunteers',
+    description: 'Weekend teaching support for partner NGOs',
+    offer_type: 'service',
+    transaction_type: 'volunteer',
+    impact_area: ['Education'],
+    valid_until: '2099-12-31',
+    offer_details: { skills_required: ['Teaching'] },
+  }
+
+  const create = (body: Record<string, unknown>, userType: 'company' | 'ngo' | 'individual' = 'company') => {
+    ownerRole = userType
+    return createOffer(
+      jsonRequest('http://localhost/api/service-offers', {
+        token: tokenFor(OWNER, userType),
+        body,
+        method: 'POST',
+      })
+    )
+  }
+
+  it('creates an active listed offer immediately without waiting for admin approval', async () => {
+    respond((query) => {
+      if (query.table === 'users' && query.op === 'select') {
+        return { data: { id: OWNER, user_type: 'company', verification_status: 'verified' } }
+      }
+      if (query.table === 'service_offers' && query.op === 'insert') {
+        return { data: { id: 88 } }
+      }
+      if (query.table === 'offer_capabilities' && query.op === 'insert') {
+        return { data: { id: 9 } }
+      }
+      return undefined
+    })
+
+    const res = await create(createBody)
+    expect(res.status).toBe(201)
+    const body = await res.json()
+    expect(body).toMatchObject({ success: true, data: { id: 88 } })
+
+    const [insert] = supabaseFake.writes('service_offers', 'insert')
+    const insertPayload = insert.payload as Record<string, unknown>
+    expect(insertPayload).toEqual(
+      expect.objectContaining({
+        creator_id: OWNER,
+        status: 'active',
+        is_listed: true,
+        title: 'Teaching volunteers',
+      })
+    )
+    // Immediate publish — no admin_status approval write / pending gate.
+    expect(insertPayload).not.toHaveProperty('admin_status')
+    expect(insertPayload.status).toBe('active')
+    expect(mocks.emitOfferCreatedAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ offerId: 88, actorUserId: OWNER })
+    )
+  })
+
+  it('rejects creation when payout is not connected', async () => {
+    respond((query) => {
+      if (query.table === 'users' && query.op === 'select') {
+        return { data: { id: OWNER, user_type: 'company', verification_status: 'verified' } }
+      }
+      return undefined
+    })
+    mocks.assertPayoutActive.mockRejectedValueOnce(
+      new Error('Connect a Razorpay payout account before listing capabilities.')
+    )
+    const res = await create(createBody)
+    expect(res.status).toBe(403)
+    expect(await res.json()).toMatchObject({ requiresPayoutConnection: true })
+    expect(supabaseFake.writes('service_offers', 'insert')).toHaveLength(0)
+  })
+
+  it('rejects creation when the publisher is not verified', async () => {
+    respond((query) => {
+      if (query.table === 'users' && query.op === 'select') {
+        return { data: { id: OWNER, user_type: 'company', verification_status: 'pending' } }
+      }
+      return undefined
+    })
+    mocks.verification.mockResolvedValueOnce('pending')
+    const res = await create(createBody)
+    expect(res.status).toBe(403)
+    expect(await res.json()).toMatchObject({ requiresVerification: true })
+    expect(supabaseFake.writes('service_offers', 'insert')).toHaveLength(0)
+  })
+
+  it('requires NGO legal entity tags for NGO publishers', async () => {
+    respond((query) => {
+      if (query.table === 'users' && query.op === 'select') {
+        if (query.columns?.includes('profile_data')) {
+          return { data: { profile_data: {} } }
+        }
+        return { data: { id: OWNER, user_type: 'ngo', verification_status: 'verified' } }
+      }
+      if (query.table === 'ngo_verifications') return { data: null }
+      return undefined
+    })
+    const res = await create(createBody, 'ngo')
+    expect(res.status).toBe(403)
+    expect(await res.json()).toMatchObject({ requiresLegalTags: true })
+    expect(supabaseFake.writes('service_offers', 'insert')).toHaveLength(0)
+  })
+
+  it('rejects missing required fields', async () => {
+    respond((query) => {
+      if (query.table === 'users' && query.op === 'select') {
+        return { data: { id: OWNER, user_type: 'company', verification_status: 'verified' } }
+      }
+      return undefined
+    })
+    const res = await create({ title: 'Incomplete' })
+    expect(res.status).toBe(400)
+    expect(supabaseFake.writes('service_offers', 'insert')).toHaveLength(0)
   })
 })

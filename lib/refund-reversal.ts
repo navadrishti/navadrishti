@@ -176,8 +176,13 @@ async function reverseCompanyCa(input: RefundReversalInput, result: RefundRevers
 }
 
 async function reverseMilestone(input: RefundReversalInput, result: RefundReversalResult) {
+  // Partial refunds: keep confirmation `confirmed` (original amount preserved) and leave the
+  // milestone `completed`. Net disbursed is captured − cumulative processed refunds from
+  // razorpay_refunds — aggregations must read that ledger; do not reopen the milestone.
   if (!input.fullyRefunded) {
-    result.warnings.push('Partial milestone refunds do not change the milestone or project funds; refund the full amount to reopen it.')
+    result.actions.push(
+      `Partial CSR milestone refund of INR ${Number(input.refundInr || 0).toFixed(2)} recorded; confirmation and milestone progress unchanged; net disbursed uses the refund ledger`
+    )
     return
   }
   const { data: confirmations, error } = await supabase

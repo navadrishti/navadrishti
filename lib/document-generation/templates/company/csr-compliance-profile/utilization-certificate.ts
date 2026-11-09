@@ -31,16 +31,19 @@ export type UtilizationCertificateData = {
   gaps?: string[]
 }
 
+function finiteOrNull(value: number | null | undefined): number | null {
+  if (value == null) return null
+  const n = Number(value)
+  return Number.isFinite(n) ? n : null
+}
+
 export function utilizationCertificateTemplate(data: UtilizationCertificateData): string {
-  const utilized = Number(data.fundsUtilized)
-  const budget = Number(data.budgetInr)
-  const confirmed = Number(data.fundsConfirmed)
-  const balance =
-    Number.isFinite(confirmed) && Number.isFinite(utilized) ? Math.max(confirmed - utilized, 0) : null
+  const utilized = finiteOrNull(data.fundsUtilized)
+  const budget = finiteOrNull(data.budgetInr)
+  const confirmed = finiteOrNull(data.fundsConfirmed)
+  const balance = confirmed != null && utilized != null ? Math.max(confirmed - utilized, 0) : null
   const utilizationPct =
-    Number.isFinite(utilized) && Number.isFinite(budget) && budget > 0
-      ? `${((utilized / budget) * 100).toFixed(1)}%`
-      : '—'
+    utilized != null && budget != null && budget > 0 ? `${((utilized / budget) * 100).toFixed(1)}%` : '—'
   const lines = Array.isArray(data.lineItems) ? data.lineItems : []
   const ref =
     data.certificateNo || buildDocumentReference('CSR-UC', data.organizationName)
@@ -111,7 +114,7 @@ export function utilizationCertificateTemplate(data: UtilizationCertificateData)
           <div class="field-value">${formatAmount(data.budgetInr)}</div>
         </div>
         <div class="metric-card">
-          <div class="field-label">Amount Received (Confirmed)</div>
+          <div class="field-label">Amount Received (Net Confirmed)</div>
           <div class="field-value">${formatAmount(data.fundsConfirmed)}</div>
         </div>
         <div class="metric-card">
@@ -161,9 +164,11 @@ export function utilizationCertificateTemplate(data: UtilizationCertificateData)
     <div class="section">
       <div class="section-title">5. Certification Language (Draft)</div>
       <p class="muted">
-        Certified that the amounts shown above have been compiled from GRAM payment confirmations, milestone budgets,
-        and impact metrics for the stated initiative. The undersigned confirms that the statement has been reviewed
-        for internal / funder purposes. This does not constitute a statutory audit certificate.
+        Certified that the amounts shown above have been compiled from GRAM payment confirmations (net of processed
+        refunds only), milestone budgets, and impact metrics for the stated initiative. Unreconciled refund ledgers,
+        pending/failed refunds, catalogue material costs, estimated logistics quotes, waived wages, and proposed /
+        unreconciled expenses are excluded from net received. This does not constitute a statutory audit certificate
+        or CA-signed utilization certificate, and generation alone does not mean the document is approved.
       </p>
     </div>
     ${renderSignatureBlock([

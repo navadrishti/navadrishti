@@ -9,6 +9,9 @@ import { DELETE as deleteAccount } from '@/app/api/auth/delete-account/route'
 import { GET as me } from '@/app/api/auth/me/route'
 import { resetRateLimits } from '@/lib/rate-limit'
 import { createSupabaseFake, type FakeResult } from './support/supabase-fake'
+import { eqValue } from './support/supabase-fake'
+import { setLiveUserTypeOverlay } from '@/lib/auth/session'
+import { overlayLiveUserType } from '@/lib/server-auth'
 
 type UserRow = Record<string, unknown> & { id: number; email: string; password: string }
 
@@ -70,6 +73,7 @@ beforeAll(async () => {
 })
 
 beforeEach(() => {
+  setLiveUserTypeOverlay((claims, pathname) => overlayLiveUserType(claims, pathname))
   mocks.users = []
   mocks.from.mockReset()
   mocks.update.mockReset()
@@ -84,7 +88,16 @@ beforeEach(() => {
 })
 
 function useDb(responses: Record<string, FakeResult[]> = {}) {
-  const fake = createSupabaseFake(responses)
+  const queues = new Map(Object.entries(responses).map(([key, values]) => [key, [...values]]))
+  const fake = createSupabaseFake((query) => {
+    if (query.table === 'users' && query.columns === 'account_status, locked_until, profile_data, user_type, verification_status') {
+      return { data: mocks.users.find((row) => row.id === Number(eqValue(query, 'id'))) ?? null }
+    }
+    if (['ngo_field_officer_identities', 'company_employee_identities'].includes(query.table) && eqValue(query, 'user_id') !== undefined) {
+      return { data: null }
+    }
+    return (queues.get(`${query.table}.${query.op}`) ?? queues.get(query.table))?.shift()
+  })
   mocks.from.mockImplementation(fake.from)
   return fake
 }
@@ -459,11 +472,11 @@ describe('change password', () => {
     expect(mocks.update).not.toHaveBeenCalled()
   })
 
-  it('returns 404 when the account is gone', async () => {
+  it('rejects the session when the account is gone', async () => {
     const response = await changePassword(
       post('/api/auth/change-password', { currentPassword: PASSWORD, newPassword: 'brand-new-pass' }, auth())
     )
-    expect(response.status).toBe(404)
+    expect(response.status).toBe(403)
   })
 
   it('verifies against the password lookup, not the public profile lookup', async () => {
@@ -506,7 +519,7 @@ describe('delete account', () => {
     const response = await remove({ password: 'not-it', confirmation: 'DELETE MY ACCOUNT' })
     expect(response.status).toBe(400)
     expect(await response.json()).toEqual({ error: 'Incorrect password' })
-    expect(fake.queries).toHaveLength(0)
+    expect(fake.queries.filter((query) => query.op !== 'select')).toHaveLength(0)
     expect(mocks.findById).not.toHaveBeenCalled()
   })
 

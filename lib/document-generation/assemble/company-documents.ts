@@ -106,14 +106,17 @@ async function annexureProjectRows(companyId: number): Promise<AnnexureProjectRo
       const campaign = parseJsonObject(project.campaigns)
       const impact = pickLatestImpact(project)
       const agencyName = await resolvePartnerName(project.ngo_user_id)
-      const spent = asNumber(impact?.funds_utilized) || confirmedFunds(project)
+      const utilised = asNumber(impact?.funds_utilized)
+      const netConfirmed = confirmedFunds(project)
+      // Prefer verified utilisation; otherwise net confirmed only when refunds are reconciled.
+      const spent = utilised > 0 ? utilised : netConfirmed
       rows.push({
         name: asString(project.title) || asString(campaign.title) || 'CSR Project',
         scheduleVii: asString(campaign.schedule_vii) || null,
         location:
           asString(project.region) || readCampaignLocation(campaign) || null,
         implementingAgency: agencyName,
-        amountSpent: spent || null,
+        amountSpent: spent != null && spent > 0 ? spent : null,
         status: asString(project.project_status) || null,
         mode: agencyName ? 'Through implementing agency' : 'Direct / as recorded',
       })

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, Suspense } from "react"
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, Suspense } from "react"
 import { useIsClient } from "@/hooks/use-is-client"
 import { useAuth } from "@/lib/auth-context"
 import { isCaVerifiedAccount } from "@/lib/auth"
@@ -13,6 +13,7 @@ import {
   restoreMobileChatScrollPosition,
   scrollAgentMessagesContainer,
 } from "@/lib/ai-agent-sessions"
+import { AgentIntroCard, AgentUsageNote } from "@/components/agent-guidance"
 import type { CSRAgentSession } from "./session"
 import { getUserInitials, isPendingLeadInvite, sortSessionsByRecency, upsertSession } from "./helpers"
 import { useSessionCloudSync } from "./use-session-cloud-sync"
@@ -66,6 +67,7 @@ function CSRAgentPage() {
   const mounted = useIsClient()
   const [sessions, setSessions] = useState<CSRAgentSession[]>([])
   const [activeSessionId, setActiveSessionId] = useState("")
+  const [evidenceVerifierIdentityId, setEvidenceVerifierIdentityId] = useState("")
   const campaign = useCampaignState()
   const {
     messages,
@@ -147,9 +149,9 @@ function CSRAgentPage() {
   const userInitials = getUserInitials(user?.name)
   const orderedSessions = useMemo(() => sortSessionsByRecency(sessions), [sessions])
 
-  const appendAssistantMessage = (content: string) => {
+  const appendAssistantMessage = useCallback((content: string) => {
     setMessages((current) => [...current, { role: "assistant", content }])
-  }
+  }, [setMessages])
 
   const {
     ngoDirectory,
@@ -191,6 +193,7 @@ function CSRAgentPage() {
     isQuestionnaireComplete,
     hasLeadInvites: leadNgoInvites.some(isPendingLeadInvite),
     hasAcceptedLead: Boolean(acceptedLeadNgo),
+    hasEvidenceVerifier: Boolean(String(evidenceVerifierIdentityId || "").trim()),
     isGeneratingCampaigns,
     conversationStage,
     activeQuestion,
@@ -274,6 +277,7 @@ function CSRAgentPage() {
     canUseCampaignActions,
     acceptedLeadNgo,
     leadNgoInvites,
+    evidenceVerifierIdentityId,
     serviceSuggestions,
     loadRecommendations,
     projectSuggestions,
@@ -282,6 +286,33 @@ function CSRAgentPage() {
     normalizeSessionFromState,
     appendAssistantMessage,
   })
+
+  useEffect(() => {
+    if (!hasLockedLeadNgo) {
+      setEvidenceVerifierIdentityId('')
+    }
+  }, [hasLockedLeadNgo])
+
+  const leadAcceptedPromptRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (!acceptedLeadNgo) {
+      leadAcceptedPromptRef.current = null
+      return
+    }
+    if (generatedCampaigns.length > 0 || isGeneratingCampaigns) return
+    if (String(evidenceVerifierIdentityId || "").trim()) return
+    if (leadAcceptedPromptRef.current === acceptedLeadNgo.ngoId) return
+    leadAcceptedPromptRef.current = acceptedLeadNgo.ngoId
+    appendAssistantMessage(
+      `${acceptedLeadNgo.name} accepted as lead NGO. Allot an Evidence Verifier in the Publish panel — Catalyst starts drafting only after that assignment.`
+    )
+  }, [
+    acceptedLeadNgo,
+    evidenceVerifierIdentityId,
+    generatedCampaigns.length,
+    isGeneratingCampaigns,
+    appendAssistantMessage,
+  ])
 
   const { handleSaveProjectPreviewEdit, handleSaveMilestonePreviewEdit } = usePreviewEdits({
     campaign,
@@ -301,6 +332,7 @@ function CSRAgentPage() {
     closeMilestoneSuggestions,
   } = useIntakeHandlers({
     campaign,
+    userId: user?.id,
     setServiceSuggestions,
     acceptedLeadNgo,
     finalizeConversation,
@@ -350,13 +382,25 @@ function CSRAgentPage() {
     if (conversationStage === "generating") return
     if (generationError) return
     if (!acceptedLeadNgo) return
+    if (!String(evidenceVerifierIdentityId || "").trim()) return
     if (isHydratingFromServerRef.current || isApplyingSessionRef.current) return
     void finalizeConversation()
   })
 
   useEffect(() => {
     finalizeWhenReady()
-  }, [mounted, user?.id, isQuestionnaireComplete, generatedCampaigns.length, isGeneratingCampaigns, isTyping, conversationStage, generationError, acceptedLeadNgo?.ngoId])
+  }, [
+    mounted,
+    user?.id,
+    isQuestionnaireComplete,
+    generatedCampaigns.length,
+    isGeneratingCampaigns,
+    isTyping,
+    conversationStage,
+    generationError,
+    acceptedLeadNgo?.ngoId,
+    evidenceVerifierIdentityId,
+  ])
 
   useEffect(() => {
     if (!isQuestionnaireComplete) return
@@ -386,17 +430,21 @@ function CSRAgentPage() {
       <AgentWorkspace
         toolbarLabel={promptTitle}
         renderProgress={() => (
-          <ProgressHeader
-            title={promptTitle}
-            progressLabel={generatedCampaigns.length > 0 ? "100%" : `${Math.min(answeredQuestions, totalQuestions)} / ${totalQuestions || 1}`}
-            progressPercent={progressPercent}
-            cloudSaveText={cloudSaveText}
-            className="mb-0"
-          />
+          <div className="space-y-2">
+            <AgentIntroCard agent="catalyst" compact />
+            <AgentUsageNote agent="catalyst" />
+            <ProgressHeader
+              title={promptTitle}
+              progressLabel={generatedCampaigns.length > 0 ? "100%" : `${Math.min(answeredQuestions, totalQuestions)} / ${totalQuestions || 1}`}
+              progressPercent={progressPercent}
+              cloudSaveText={cloudSaveText}
+              className="mb-0"
+            />
+          </div>
         )}
         renderSessions={({ close }) => (
           <SessionSidebar
-            className="h-full"
+            className="h-full min-h-0"
             sessions={orderedSessions}
             activeSessionId={activeSessionId}
             onNewSession={() => {
@@ -479,7 +527,9 @@ function CSRAgentPage() {
             actionsEnabled={canUseCampaignActions}
             publishing={publishing}
             publishedCampaignId={campaign.publishedCampaignId}
-            onPublish={handlePublishDraft}
+            evidenceVerifierIdentityId={evidenceVerifierIdentityId}
+            onEvidenceVerifierChange={setEvidenceVerifierIdentityId}
+            onPublish={() => void handlePublishDraft()}
             onRetry={() => finalizeConversation()}
           />
         </PreviewPanel>

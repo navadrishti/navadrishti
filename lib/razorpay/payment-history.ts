@@ -10,6 +10,7 @@ export type PaymentHistorySource =
   | 'service_offer'
   | 'engagement_settlement'
   | 'company_ca'
+  | 'csr_milestone'
   | 'razorpay';
 
 export type PaymentHistoryRecord = {
@@ -48,6 +49,14 @@ export function resolvePaymentSource(
   }
 
   if (
+    orderNotes?.payment_kind === 'csr_milestone' ||
+    orderNotes?.source === 'csr_milestone_payment' ||
+    orderNotes?.target_type === 'csr_milestone'
+  ) {
+    return { source: 'csr_milestone', source_label: 'CSR milestone' };
+  }
+
+  if (
     orderNotes?.target_type === 'csr_capability_rental' ||
     orderNotes?.payment_kind === 'csr_capability_rental'
   ) {
@@ -80,7 +89,7 @@ export function resolvePaymentSource(
     return { source: 'service_request', source_label: 'Financial need' };
   }
 
-  return { source: 'razorpay', source_label: 'Razorpay payment' };
+  return { source: 'razorpay', source_label: 'Online payment' };
 }
 
 async function fetchMatchingPaymentOrders(userId: number, userType: string, role: PaymentHistoryRole) {
@@ -96,7 +105,8 @@ async function fetchMatchingPaymentOrders(userId: number, userType: string, role
       .limit(300);
 
     if (error) throw error;
-    return (data || []).filter((row) => !isCompanyCaOrder(row));
+    // Include evidence-verification / company-CA orders paid to this beneficiary.
+    return data || [];
   }
 
   const [{ data: payerOrders, error: payerError }, { data: caOrders, error: caError }] = await Promise.all([
@@ -198,8 +208,13 @@ export async function fetchUserPaymentHistory(options: {
     const payer = userById[Number(order?.payer_user_id || 0)];
     const ngo = userById[Number(order?.ngo_user_id || 0)];
 
-    let serviceRequestTitle = request?.title || offer?.title || 'Razorpay payment';
+    let serviceRequestTitle = request?.title || offer?.title || 'Online payment';
     if (source === 'company_ca') serviceRequestTitle = 'Evidence verification payment';
+    if (source === 'csr_milestone') {
+      serviceRequestTitle =
+        String(orderNotes?.milestone_title || orderNotes?.project_title || request?.title || '').trim() ||
+        'CSR milestone payment';
+    }
     if (source === 'engagement_settlement') serviceRequestTitle = request?.title || 'Engagement settlement';
     if (source === 'service_offer') serviceRequestTitle = offer?.title || request?.title || 'Capability offer payment';
     if (source === 'ngo_network') {

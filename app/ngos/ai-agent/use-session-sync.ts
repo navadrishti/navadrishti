@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import {
   areSameSessionList,
   keepActiveAndMeaningfulSessions,
@@ -29,9 +29,11 @@ export function useSessionSync({ mounted, userId, token }: SessionSyncOptions) {
   const tokenRef = useRef(token)
   const sessionsRef = useRef(sessions)
   const activeSessionIdRef = useRef(activeSessionId)
-  tokenRef.current = token
-  sessionsRef.current = sessions
-  activeSessionIdRef.current = activeSessionId
+  useLayoutEffect(() => {
+    tokenRef.current = token
+    sessionsRef.current = sessions
+    activeSessionIdRef.current = activeSessionId
+  }, [token, sessions, activeSessionId])
   const serverPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastPersistedServerPayloadRef = useRef('')
   const pendingServerPayloadRef = useRef<string | null>(null)

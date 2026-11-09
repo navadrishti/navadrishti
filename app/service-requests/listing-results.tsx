@@ -10,11 +10,6 @@ import type { ListingKind, ProjectListing, ServiceRequestListing } from './types
 
 const gridClass = 'grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
 
-function hasAcceptedApplicant(request: ServiceRequestListing) {
-  const count = Number(request?.accepted_volunteers_count ?? request?.volunteers_count ?? 0)
-  return Number.isFinite(count) && count > 0
-}
-
 export function ListingResults({
   listingKind,
   loading,
@@ -112,17 +107,28 @@ export function ListingResults({
               created_at={request.created_at}
               urgency_level={request.urgency_level}
               volunteers_needed={request.volunteers_needed}
+              accepted_volunteers_count={request.accepted_volunteers_count}
+              volunteers_count={request.volunteers_count}
               timeline={request.timeline}
               deadline={request.deadline}
               requirements={request.requirements}
               current_amount={request.current_amount}
+              target_amount={request.target_amount}
+              remaining_amount={request.remaining_amount}
+              current_quantity={request.current_quantity}
+              target_quantity={request.target_quantity}
+              remaining_quantity={request.remaining_quantity}
+              request_type={request.request_type}
+              estimated_budget={request.estimated_budget}
+              status={request.status}
+              updated_at={request.updated_at}
               impact_score={request.impact_score}
               project={request.project}
               currentTime={currentTime}
               type="request"
               onDelete={() => onDeleteRequest(request.id)}
               isDeleting={deletingRequestId === request.id}
-              showDeleteButton={isOwner && !hasAcceptedApplicant(request)}
+              showDeleteButton={isOwner}
               isOwner={isOwner}
               canInteract={true}
             />

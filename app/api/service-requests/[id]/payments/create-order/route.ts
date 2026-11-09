@@ -6,6 +6,7 @@ import { isFinancialRequest } from '@/lib/admin-refund';
 import { parseAmountToInr, parseJsonObject } from '@/lib/utils';
 import {
   assertNgoLiveCsr1,
+  authErrorResponse,
   CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE,
   requireCaVerifiedPayer,
 } from '@/lib/server-auth';
@@ -182,6 +183,8 @@ export async function POST(
       }
     });
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     if (error instanceof PayeeNotConnectedError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
     }

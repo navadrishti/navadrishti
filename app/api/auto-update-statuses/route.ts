@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { findAuthUser } from '@/lib/server-auth';
+import { authErrorResponse, getAuthUserFromRequest } from '@/lib/server-auth';
 
 export async function POST(request: NextRequest) {
   try {
-    const user = findAuthUser(request);
-    if (!user?.id) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
+    const user = await getAuthUserFromRequest(request);
     const userId = user.id;
 
     const { data: requests } = await supabase
@@ -62,6 +59,8 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error('Error in auto-update service request statuses:', error);
     return NextResponse.json(
       {

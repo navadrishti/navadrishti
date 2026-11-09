@@ -1,4 +1,5 @@
 'use client'
+import { toast } from 'sonner'
 import { readApiError } from '@/lib/user-facing-error'
 import { clientAuthHeaders } from '@/lib/client-session';
 
@@ -7,13 +8,11 @@ import { useIsClient } from '@/hooks/use-is-client'
 import { useNow } from '@/hooks/use-now'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
-import { useToast } from '@/hooks/use-toast'
 import type { ListingKind, ProjectListing, ServiceRequestListing } from './types'
 
 export function useServiceRequests() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
-  const { toast } = useToast()
   const searchParams = useSearchParams()
   const mounted = useIsClient()
   const [listingKind, setListingKind] = useState<ListingKind>('needs')
@@ -75,13 +74,13 @@ export function useServiceRequests() {
       const data = await res.json()
 
       if (data.success) {
-        toast({ title: 'Success', description: 'Need deleted' })
+        toast.success('Success', { description: 'Need deleted' })
         fetchNeeds()
       } else {
-        toast({ title: 'Error', description: readApiError(data, 'Delete failed'), variant: 'destructive' })
+        toast.error('Error', { description: readApiError(data, 'Delete failed') })
       }
     } catch {
-      toast({ title: 'Error', description: 'Delete failed', variant: 'destructive' })
+      toast.error('Error', { description: 'Delete failed' })
     } finally {
       setDeleting(null)
     }
@@ -99,13 +98,13 @@ export function useServiceRequests() {
       const data = await res.json().catch(() => null)
 
       if (res.ok && data?.success) {
-        toast({ title: 'Success', description: 'Project deleted' })
+        toast.success('Success', { description: 'Project deleted' })
         fetchProjects()
       } else {
-        toast({ title: 'Error', description: readApiError(data, 'Delete failed'), variant: 'destructive' })
+        toast.error('Error', { description: readApiError(data, 'Delete failed') })
       }
     } catch {
-      toast({ title: 'Error', description: 'Delete failed', variant: 'destructive' })
+      toast.error('Error', { description: 'Delete failed' })
     } finally {
       setDeletingProjectId(null)
     }

@@ -1,10 +1,11 @@
 "use client"
 
 import { useIsClient } from "@/hooks/use-is-client"
+import { isCompanyEmployeeUserClient } from "@/lib/access-control"
 import { useAuth } from "@/lib/auth-context"
+import { getDashboardLink, getHeaderNavItems } from "./header/nav-config"
 import { DesktopSidebar } from "./header/desktop-sidebar"
 import { MobileHeader } from "./header/mobile-header"
-import { getHeaderNavItems } from "./header/nav-config"
 import { useProfileSearch } from "./header/use-profile-search"
 
 export { AuthBackButton, AuthCardBackRow } from "./header/auth-back-button"
@@ -13,6 +14,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
   const { user, loading, logout } = useAuth()
   const search = useProfileSearch()
   const mounted = useIsClient()
+  const isEmployee = isCompanyEmployeeUserClient(user)
 
   const handleLogout = async () => {
     await logout()
@@ -20,6 +22,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
 
   const navLoading = !mounted || loading
   const navItems = getHeaderNavItems(user, mounted)
+  const brandHref = isEmployee ? getDashboardLink(user) : '/'
   
   return (
     <>
@@ -30,6 +33,9 @@ export function Header({ className = '' }: { className?: string } = {}) {
         search={search}
         user={user}
         onLogout={handleLogout}
+        brandHref={brandHref}
+        hideSearch={isEmployee}
+        hideUtilityNav={isEmployee}
       />
       <MobileHeader
         navItems={navItems}
@@ -37,6 +43,9 @@ export function Header({ className = '' }: { className?: string } = {}) {
         search={search}
         user={user}
         onLogout={handleLogout}
+        brandHref={brandHref}
+        hideSearch={isEmployee}
+        hideUtilityNav={isEmployee}
       />
     </>
   )

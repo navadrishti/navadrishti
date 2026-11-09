@@ -9,14 +9,21 @@ export type IndividualNgoRequestApplication = {
   request?: {
     id?: number;
     title?: string;
+    description?: string | null;
     category?: string;
     request_type?: string;
     location?: string;
     status?: string;
-    project?: { title?: string | null } | null;
-    ngo?: { name?: string | null; email?: string | null } | null;
-    requester?: { name?: string | null; email?: string | null } | null;
+    timeline?: string | null;
+    urgency_level?: string | null;
+    estimated_budget?: number | string | null;
+    beneficiary_count?: number | null;
+    project?: { title?: string | null; location?: string | null; timeline?: string | null } | null;
+    ngo?: { name?: string | null; email?: string | null; verification_status?: string | null } | null;
+    requester?: { name?: string | null; email?: string | null; verification_status?: string | null } | null;
   } | null;
+  updated_at?: string | null;
+  created_at?: string | null;
 };
 
 export type CapabilityOffersSubTab = 'your-capabilities' | 'requests';

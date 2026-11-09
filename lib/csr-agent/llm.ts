@@ -63,8 +63,6 @@ function parseJson(text: string): Record<string, unknown> {
   throw new Error(`Could not parse JSON from LLM output: ${cleaned.slice(0, 200)}`);
 }
 
-/* ───────────────── SCHEMAS ───────────────── */
-
 function coerceInteger(schema: z.ZodNumber) {
   return z.preprocess((value) => {
     if (typeof value === "number") {
@@ -90,7 +88,8 @@ export const requestMilestoneSchema = z.object({
 });
 
 export const generateCampaignsInputSchema = z.object({
-  company_id:     z.string().min(1),
+  // Optional from clients — the API always rebinds this to the authenticated company.
+  company_id:     z.string().min(1).optional(),
   budget:         z.number().positive(),
   milestones:     z.number().int().min(1).max(10),
   category:       z.string().min(1),
@@ -152,10 +151,6 @@ export type GenerateCampaignsInput = z.infer<typeof generateCampaignsInputSchema
 export type ResponseMilestone     = z.infer<typeof responseMilestoneSchema>;
 export type Campaign               = z.infer<typeof campaignSchema>;
 
-type CampaignLever = "Direct Implementation" | "Capacity Building" | "Access & Distribution"
-
-/* ───────────────── CONSTANTS ───────────────── */
-
 const SCHEDULE_VII = `
 Schedule VII Categories (Companies Act 2013):
 i   - Hunger, poverty, malnutrition, health, sanitation
@@ -171,8 +166,6 @@ x   - Slum development
 xi  - Disaster management
 xii - Other (PM Relief Fund)
 `;
-
-/* ───────────────── HELPERS ───────────────── */
 
 function buildPrompt(input: GenerateCampaignsInput): string {
   const {
@@ -264,7 +257,6 @@ OUTPUT FORMAT
       "category": "${category}",
       "location": "${locationStr}",
       "budget_inr": ${budget},
-
       "budget_breakdown": {
         "infrastructure": 0,
         "training": 0,
@@ -297,43 +289,6 @@ OUTPUT FORMAT
   ]
 }
 `;
-}
-
-/* ───────────────── SERVICE ───────────────── */
-
-export async function generateCampaigns(input: GenerateCampaignsInput): Promise<Campaign[]> {
-  const prompt = buildPrompt(input);
-
-  try {
-    const raw = await GeminiChat([{ role: "user", content: prompt }]);
-    const parsed = parseJson(raw);
-    const result = campaignResponseSchema.safeParse(parsed);
-
-    if (!result.success) {
-      console.error("Campaign response validation failed:", result.error.flatten());
-      throw new Error("Invalid LLM response structure");
-    }
-
-    return result.data.campaigns;
-  } catch (err) {
-    if (err instanceof GeminiError) {
-      console.error("Campaign drafting API error:", err.message);
-      throw new Error("Campaign drafting is currently unavailable.");
-    } 
-
-    if (err instanceof Error && err.message) {
-      if (err.message.includes("GEMINI_API_KEY is missing")) {
-        throw new Error("Campaign drafting is currently unavailable.");
-      }
-
-      if (err.message.includes("API Key not found") || err.message.includes("API_KEY_INVALID")) {
-        throw new Error("Campaign drafting is currently unavailable.");
-      }
-    }
-
-    console.error("JSON parse failed:", err);
-    throw new Error("Failed to parse LLM response");
-  }
 }
 
 const safeNumber = (value: number, fallback = 0) => (Number.isFinite(value) ? value : fallback)
@@ -373,15 +328,197 @@ const distributeMilestoneBudget = (total: number, count: number, preferred?: num
   return Array.from({ length: count }, (_, index) => base + (index < remainder ? 1 : 0))
 }
 
-const buildMilestoneDescription = (lever: CampaignLever, sourceDescription: string, location: string) => {
-  if (lever === "Direct Implementation") return sourceDescription
-  if (lever === "Capacity Building") {
-    return `Train local stakeholders and institutions in ${location} to operationalize: ${sourceDescription}`
-  }
-  return `Deliver resources and last-mile access in ${location} to realize: ${sourceDescription}`
+export const suggestMilestonesInputSchema = z.object({
+  company_id: z.string().min(1).optional(),
+  campaignName: z.string().trim().optional(),
+  category: z.string().min(1),
+  city: z.string().min(1),
+  state_province: z.string().min(1),
+  budget: z.number().positive(),
+  start_date: z.string().min(1),
+  end_date: z.string().min(1),
+  volunteerRequirement: z.string().trim().optional(),
+  requirementDetails: z.string().trim().optional(),
+  refresh: z.boolean().optional(),
+})
+
+const suggestedMilestoneItemSchema = z.object({
+  title: z.string().min(1),
+  description: z.string().min(1),
+  budget_allocated: z.number().nonnegative(),
+  start_date: z.string().trim().optional(),
+  end_date: z.string().trim().optional(),
+})
+
+const suggestedMilestoneSetSchema = z.object({
+  title: z.string().min(1),
+  milestones: z.array(suggestedMilestoneItemSchema).min(1).max(10),
+})
+
+export const suggestMilestonesResponseSchema = z.object({
+  sets: z.array(suggestedMilestoneSetSchema).min(1).max(5),
+})
+
+export type SuggestMilestonesInput = z.infer<typeof suggestMilestonesInputSchema>
+export type SuggestedMilestoneSetDraft = z.infer<typeof suggestedMilestoneSetSchema>
+
+function buildMilestoneSuggestionPrompt(input: SuggestMilestonesInput): string {
+  const location = `${input.city}${input.state_province ? `, ${input.state_province}` : ""}`
+  const refreshNote = input.refresh
+    ? "Provide alternate phasing from any previous suggestion — vary titles and sequencing."
+    : "Prefer practical on-ground phases for Indian CSR delivery."
+
+  return `
+You are Catalyst's milestone planner for Indian CSR campaigns.
+Suggest 3 distinct milestone sets from the company's intake. Do not invent a full campaign draft.
+
+${SCHEDULE_VII}
+
+-----------------------------------
+INTAKE
+-----------------------------------
+- Campaign name: ${input.campaignName || "(untitled)"}
+- Category / Schedule VII focus: ${input.category}
+- Location: ${location}
+- Budget (INR): ${input.budget}
+- Start: ${input.start_date}
+- End: ${input.end_date}
+- Volunteer requirement: ${input.volunteerRequirement || "(not specified)"}
+- Requirement details: ${input.requirementDetails || "(not specified)"}
+
+-----------------------------------
+RULES
+-----------------------------------
+- Return EXACTLY 3 sets with different lengths (e.g. short ~3, standard ~5, extended ~7-8) when the timeline allows.
+- Each set's milestone budget_allocated values must sum EXACTLY to ${input.budget}.
+- Keep milestone dates within ${input.start_date} to ${input.end_date} when dates are provided.
+- Titles and descriptions must be concrete and tied to the intake (category, location, requirement details).
+- ${refreshNote}
+- Output MUST be raw JSON only. No markdown.
+
+-----------------------------------
+OUTPUT FORMAT
+-----------------------------------
+{
+  "sets": [
+    {
+      "title": "Short (3 milestones)",
+      "milestones": [
+        {
+          "title": "string",
+          "description": "string",
+          "budget_allocated": 0,
+          "start_date": "${input.start_date}",
+          "end_date": "${input.end_date}"
+        }
+      ]
+    }
+  ]
+}
+`
 }
 
+function rebalanceMilestoneBudgets(
+  milestones: SuggestedMilestoneSetDraft["milestones"],
+  totalBudget: number,
+): SuggestedMilestoneSetDraft["milestones"] {
+  if (milestones.length === 0) return milestones
+  const amounts = distributeMilestoneBudget(
+    totalBudget,
+    milestones.length,
+    milestones.map((m) => safeNumber(m.budget_allocated)),
+  )
+  return milestones.map((milestone, index) => ({
+    ...milestone,
+    budget_allocated: amounts[index] || 0,
+  }))
+}
+
+/** Gemini-backed milestone set suggestions from company intake. */
+export async function suggestMilestoneSets(input: SuggestMilestonesInput): Promise<SuggestedMilestoneSetDraft[]> {
+  const prompt = buildMilestoneSuggestionPrompt(input)
+
+  try {
+    const raw = await GeminiChat([{ role: "user", content: prompt }])
+    const parsed = parseJson(raw)
+    const result = suggestMilestonesResponseSchema.safeParse(parsed)
+
+    if (!result.success) {
+      console.error("Milestone suggestion validation failed:", result.error.flatten())
+      throw new Error("Invalid LLM response structure")
+    }
+
+    return result.data.sets.map((set) => ({
+      ...set,
+      milestones: rebalanceMilestoneBudgets(set.milestones, Math.round(input.budget)),
+    }))
+  } catch (err) {
+    if (err instanceof GeminiError) {
+      console.error("Milestone suggestion API error:", err.message)
+      throw new Error("Milestone suggestions are currently unavailable.")
+    }
+
+    if (err instanceof Error && err.message) {
+      if (
+        err.message.includes("GEMINI_API_KEY is missing") ||
+        err.message.includes("API Key not found") ||
+        err.message.includes("API_KEY_INVALID")
+      ) {
+        throw new Error("Milestone suggestions are currently unavailable.")
+      }
+    }
+
+    console.error("Milestone suggestion parse failed:", err)
+    throw new Error("Failed to parse LLM response")
+  }
+}
+
+/** Generate campaign drafts with Gemini and validate the provider response. */
+export async function generateCampaigns(input: GenerateCampaignsInput): Promise<Campaign[]> {
+  const prompt = buildPrompt(input)
+
+  try {
+    const raw = await GeminiChat([{ role: "user", content: prompt }])
+    const parsed = parseJson(raw)
+    const result = campaignResponseSchema.safeParse(parsed)
+
+    if (!result.success) {
+      console.error("Campaign response validation failed:", result.error.flatten())
+      throw new Error("Invalid LLM response structure")
+    }
+
+    return result.data.campaigns
+  } catch (err) {
+    if (err instanceof GeminiError) {
+      console.error("Campaign drafting API error:", err.message)
+      throw new Error("Campaign drafting is currently unavailable.")
+    }
+
+    if (err instanceof Error && err.message) {
+      if (err.message.includes("GEMINI_API_KEY is missing")) {
+        throw new Error("Campaign drafting is currently unavailable.")
+      }
+
+      if (err.message.includes("API Key not found") || err.message.includes("API_KEY_INVALID")) {
+        throw new Error("Campaign drafting is currently unavailable.")
+      }
+    }
+
+    console.error("JSON parse failed:", err)
+    throw new Error("Failed to parse LLM response")
+  }
+}
+
+/** @deprecated Prefer assembleCampaigns — kept for callers/tests that used the fallback name. */
 export function buildFallbackCampaigns(input: GenerateCampaignsInput): Campaign[] {
+  return assembleCampaigns(input)
+}
+
+/**
+ * Assemble exactly one publishable campaign draft from intake + selected milestones.
+ * Generative AI is not used here — milestones must already come from the user or Catalyst suggestions.
+ */
+export function assembleCampaigns(input: GenerateCampaignsInput): Campaign[] {
   const location = `${input.city}${input.state_province ? `, ${input.state_province}` : ""}`
   const campaignCategory = input.category
   const budget = Math.max(1, Math.round(input.budget))
@@ -399,71 +536,46 @@ export function buildFallbackCampaigns(input: GenerateCampaignsInput): Campaign[
     ? sourceMilestones.slice(0, milestoneCount)
     : defaultMilestones
 
-  const levers: Array<{ lever: CampaignLever; titlePrefix: string; breakdown: [number, number, number, number, number] }> = [
-    {
-      lever: "Direct Implementation",
-      titlePrefix: "Infrastructure-first",
-      breakdown: [45, 15, 20, 12, 8],
-    },
-    {
-      lever: "Capacity Building",
-      titlePrefix: "Capability-first",
-      breakdown: [20, 40, 15, 15, 10],
-    },
-    {
-      lever: "Access & Distribution",
-      titlePrefix: "Access-first",
-      breakdown: [18, 12, 45, 15, 10],
-    },
-  ]
+  const preferredBudgets = seedMilestones.map((milestone) => safeNumber(milestone.budget_allocated))
+  const milestoneBudgets = distributeMilestoneBudget(budget, seedMilestones.length, preferredBudgets)
 
-  return levers.map((config, campaignIndex) => {
-    const preferredBudgets = config.lever === "Direct Implementation"
-      ? seedMilestones.map((milestone) => safeNumber(milestone.budget_allocated))
-      : undefined
-    const milestoneBudgets = distributeMilestoneBudget(budget, seedMilestones.length, preferredBudgets)
-
-    const milestones: ResponseMilestone[] = seedMilestones.map((source, index) => {
-      const sourceTitle = String(source.title || '').trim()
-      const sourceDescription = String(source.description || '').trim()
-      const weeks = Math.max(1, Math.floor((index + 1 + milestoneCount) / milestoneCount))
-      const milestoneTitle = sourceTitle || (config.lever === "Direct Implementation"
-        ? `Milestone ${index + 1}: Execution`
-        : config.lever === "Capacity Building"
-          ? `Milestone ${index + 1}: Training Enablement`
-          : `Milestone ${index + 1}: Access Delivery`)
-
-      return {
-        title: milestoneTitle,
-        description: buildMilestoneDescription(config.lever, sourceDescription || `Milestone ${index + 1}`, location),
-        duration_weeks: weeks,
-        budget_allocated: milestoneBudgets[index] || 0,
-        start_date: source.start_date,
-        end_date: source.end_date,
-        deliverables: [
-          `${config.lever} plan approved for stage ${index + 1}`,
-          `Execution evidence recorded for ${location}`,
-          `KPI checkpoint completed for phase ${index + 1}`,
-        ],
-      }
-    })
+  const milestones: ResponseMilestone[] = seedMilestones.map((source, index) => {
+    const sourceTitle = String(source.title || '').trim()
+    const sourceDescription = String(source.description || '').trim()
+    const weeks = Math.max(1, Math.floor((index + 1 + milestoneCount) / milestoneCount))
 
     return {
-      title: `${config.titlePrefix} ${campaignCategory} Program ${campaignIndex + 1}`,
-      description: `Ground execution in ${location} for ${requirementText}. Volunteer requirement: ${volunteerRequirement}. Uses a ${config.lever.toLowerCase()} lever with measurable beneficiaries and monitored delivery.`,
+      title: sourceTitle || `Milestone ${index + 1}`,
+      description: sourceDescription || `Phase ${index + 1} for ${requirementText} in ${location}`,
+      duration_weeks: weeks,
+      budget_allocated: milestoneBudgets[index] || 0,
+      start_date: source.start_date,
+      end_date: source.end_date,
+      deliverables: [
+        `Phase ${index + 1} plan approved`,
+        `Execution evidence recorded for ${location}`,
+        `KPI checkpoint completed for phase ${index + 1}`,
+      ],
+    }
+  })
+
+  return [
+    {
+      title: `${campaignCategory} Campaign — ${input.city}`,
+      description: `Ground execution in ${location} for ${requirementText}. Volunteer requirement: ${volunteerRequirement}. Assembled from your intake and selected milestones.`,
       category: campaignCategory,
       location,
       budget_inr: budget,
-      budget_breakdown: splitBudget(budget, config.breakdown),
+      budget_breakdown: splitBudget(budget, [40, 20, 20, 12, 8]),
       schedule_vii: campaignCategory,
-      sdg_alignment: campaignIndex === 0 ? [1, 6, 11] : campaignIndex === 1 ? [4, 5, 8] : [3, 10, 12],
+      sdg_alignment: [4, 8, 11],
       start_date: input.start_date,
       end_date: input.end_date,
       impact_metrics: {
-        beneficiaries: Math.max(50, Math.round(budget / 5000) + (campaignIndex * 25)),
+        beneficiaries: Math.max(50, Math.round(budget / 5000)),
         duration: `${input.start_date} to ${input.end_date}`,
       },
       milestones,
-    }
-  })
+    },
+  ]
 }

@@ -48,6 +48,15 @@ describe('toUserFacingError', () => {
     expect(toUserFacingError('invalid input syntax for type uuid: "abc"')).toBe('This item could not be found.')
   })
 
+  it('does not expose PL/pgSQL variable typos as field names', () => {
+    expect(toUserFacingError('column "v_m_milestone" does not exist')).toBe(
+      'Publishing failed while saving milestones. Please try again.',
+    )
+    expect(toUserFacingError('Milestone 1 budget_allocated is not numeric')).toBe(
+      'One of the milestone budgets is not a valid number. Check the draft milestones and try again.',
+    )
+  })
+
   it('keeps admin auth distinct from a missing login', () => {
     expect(toUserFacingError('Admin authentication required')).toBe('You need an admin account to do that.')
     expect(toUserFacingError('Unauthorized')).toBe('Please log in to continue.')

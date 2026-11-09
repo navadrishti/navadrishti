@@ -54,7 +54,20 @@ export function ProjectQueueSection({ projects }: { projects: CsrProjectSummary[
                       </p>
                       <p>Next: {project.next_milestone?.title || 'N/A'}</p>
                       <p>Deadline: {project.deadline_at || 'N/A'}</p>
-                      <p>Confirmed Funds: Rs {project.confirmed_funds ?? 0}</p>
+                      <p>
+                        Funds disbursed (net):{' '}
+                        {project.confirmed_funds_available === false || project.confirmed_funds == null
+                          ? 'Unreconciled'
+                          : `Rs ${Number(project.confirmed_funds).toLocaleString('en-IN')}`}
+                      </p>
+                      <p>
+                        Approved awaiting payment: Rs{' '}
+                        {(project.approved_awaiting_payment_funds ?? 0).toLocaleString('en-IN')}
+                      </p>
+                      <p>
+                        Pending payments (initiated): Rs{' '}
+                        {(project.pending_payment_funds ?? 0).toLocaleString('en-IN')}
+                      </p>
                     </EvidenceMetaGrid>
                     <div className="mt-3">
                       <Badge variant="secondary">{project.milestones_count ?? 0} milestones</Badge>

@@ -119,6 +119,7 @@ const response = await fetch('/api/campaigns/volunteer-assignments', {
     loadingCampaignVolunteerAssignments,
     ongoingCampaignVolunteerAssignments: campaignVolunteerAssignments.filter((assignment) => assignment.lifecycle !== 'completed'),
     completedCampaignVolunteerAssignments: campaignVolunteerAssignments.filter((assignment) => assignment.lifecycle === 'completed'),
+    fetchServiceOffers,
     fetchOfferRequests,
     fetchMyApplications,
   };

@@ -3,8 +3,6 @@ import { isMerchantRazorpayPayoutActive } from '@/lib/razorpay-route'
 import { parseJsonObject } from '@/lib/utils'
 import {z} from "zod";
 
-/* ───────────────── SCHEMAS ───────────────── */
-
 export const InputSchema = z.object({
     title: z.string(),
     description: z.string(),
@@ -21,8 +19,6 @@ export const InputSchema = z.object({
 )
 
 export type InputSchemaType = z.infer<typeof InputSchema>;
-
-/* ───────────────── TYPES ───────────────── */
 
 export type CapabilityMatch = {
     capability_id: number
@@ -54,8 +50,6 @@ type ServiceOfferRow = {
     tags: unknown
     valid_until?: string | null
     status?: string | null
-    admin_status?: string | null
-    is_listed?: boolean | null
     creator_id?: number | null
 }
 
@@ -161,8 +155,6 @@ const buildSimilarity = (
     return Math.min(0.95, Math.max(0.2, 0.2 + rawSimilarity))
 }
 
-/* ───────────────── SCORING ───────────────── */
-
 const scoreMatch = ( match: Omit<CapabilityMatch, 'score'> , input: InputSchemaType): number => {
     let score = 0
 
@@ -205,8 +197,6 @@ const scoreMatch = ( match: Omit<CapabilityMatch, 'score'> , input: InputSchemaT
     return Math.round(score)
 }
 
-/* ───────────────── SERVICE ───────────────── */
-
 export const findServiceOffers = async (input: InputSchemaType): Promise<CapabilityMatch[]> => {
 
     // validation done in route handler. Input is valid
@@ -236,8 +226,6 @@ export const findServiceOffers = async (input: InputSchemaType): Promise<Capabil
             tags,
             valid_until,
             status,
-            admin_status,
-            is_listed,
             creator_id
         `)
         .eq('status', 'active')
@@ -298,8 +286,6 @@ export const findServiceOffers = async (input: InputSchemaType): Promise<Capabil
             return false
         }
         if (['inactive', 'completed', 'cancelled', 'paused'].includes(String(offer.status || '').toLowerCase())) return false
-        if (String(offer.admin_status || '').toLowerCase() === 'rejected') return false
-        if (offer.is_listed === false) return false
         return true
     })
 

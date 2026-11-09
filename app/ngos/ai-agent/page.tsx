@@ -5,7 +5,8 @@ import { useIsClient } from "@/hooks/use-is-client"
 import { useAuth } from "@/lib/auth-context"
 import { AgentShell } from "@/components/agent-shell"
 import { AgentWorkspace } from "@/components/agent-workspace"
-import { AGENT_NAMES, agentLoadingLabel } from "@/lib/ai-agent-sessions"
+import { AgentIntroCard, AgentUsageNote } from "@/components/agent-guidance"
+import { AGENT_NAMES, agentLoadingLabel, confirmAgentPublish } from "@/lib/ai-agent-sessions"
 import { describeCloudSaveStatus } from "@/lib/cloud-save-status"
 import { useSessionSync } from "./use-session-sync"
 import { useIntakeState } from "./use-intake-state"
@@ -118,19 +119,23 @@ export default function NGOAIAgentPage() {
       <AgentWorkspace
         toolbarLabel={progress.promptTitle}
         renderProgress={() => (
-          <ProgressHeader
-            title={progress.promptTitle}
-            isDraftComplete={Boolean(generatedDraft)}
-            promptNumber={progress.promptNumber}
-            promptCount={progress.promptCount}
-            progressPercent={progress.progressPercent}
-            cloudSaveText={cloudSaveText}
-            className="mb-0"
-          />
+          <div className="space-y-2">
+            <AgentIntroCard agent="atlas" compact />
+            <AgentUsageNote agent="atlas" />
+            <ProgressHeader
+              title={progress.promptTitle}
+              isDraftComplete={Boolean(generatedDraft)}
+              promptNumber={progress.promptNumber}
+              promptCount={progress.promptCount}
+              progressPercent={progress.progressPercent}
+              cloudSaveText={cloudSaveText}
+              className="mb-0"
+            />
+          </div>
         )}
         renderSessions={({ close }) => (
           <SessionSidebar
-            className="h-full"
+            className="h-full min-h-0"
             sessions={orderedSessions}
             activeSessionId={activeSessionId}
             onNewSession={() => {
@@ -161,6 +166,12 @@ export default function NGOAIAgentPage() {
             onRemoveAll={offers.removeAllOffersForNeed}
             onToggleOffer={offers.toggleOfferForNeed}
             onPublish={() => {
+              const ok = confirmAgentPublish(
+                intakePath === 'need'
+                  ? 'Publish this need to the marketplace? Selected offer applications will be sent.'
+                  : 'Publish this project package to the marketplace? This creates live listings.'
+              )
+              if (!ok) return
               void publishDraft()
             }}
           />

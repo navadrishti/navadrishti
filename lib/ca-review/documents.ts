@@ -3,8 +3,20 @@ import { reverificationDocumentLabels } from '@/lib/reverification'
 import type { CAReviewDocument } from '@/lib/ca-review-types'
 import { parseJsonObject } from '@/lib/utils'
 import { isTrustedDocumentUrl } from './document-urls'
+import {
+  isKycDocumentRef,
+  kycContentPath,
+  parseKycDocumentRef,
+  resolveDocumentFieldValue,
+} from '@/lib/kyc/document-refs'
+import { kycContentProxyEnabled } from '@/lib/kyc/flags'
 
 function fileNameFromUrl(url: string, fallback: string) {
+  const ref = parseKycDocumentRef(url)
+  if (ref) {
+    const name = ref.publicId.split('/').pop() || ''
+    return name || fallback
+  }
   try {
     const path = new URL(url).pathname
     const name = decodeURIComponent(path.split('/').pop() || '')
@@ -15,6 +27,8 @@ function fileNameFromUrl(url: string, fallback: string) {
 }
 
 function isImageUrl(url: string) {
+  const ref = parseKycDocumentRef(url)
+  if (ref) return ref.resourceType === 'image'
   const path = url.split(/[?#]/)[0]
   return /\.(png|jpe?g|webp|gif)$/i.test(path) || path.includes('/image/upload')
 }
@@ -27,18 +41,29 @@ function documentLabel(key: string) {
   return reverificationDocumentLabels[key] || key.replace(/([A-Z])/g, ' $1').replace(/[_-]/g, ' ').trim()
 }
 
+function reviewFileUrl(storageValue: string): string {
+  const ref = parseKycDocumentRef(storageValue)
+  if (ref && kycContentProxyEnabled()) return kycContentPath(ref.documentId)
+  return storageValue
+}
+
 function documentsFromMap(map: Record<string, unknown>, prefix: string): CAReviewDocument[] {
   return Object.entries(map)
     .map(([key, value]) => {
-      const fileUrl = getComplianceDocumentUrl(value)
-      if (!isTrustedDocumentUrl(fileUrl)) return null
+      const storageValue = resolveDocumentFieldValue(value) || getComplianceDocumentUrl(value)
+      if (!storageValue) return null
+      if (isKycDocumentRef(storageValue)) {
+        if (!parseKycDocumentRef(storageValue)) return null
+      } else if (!isTrustedDocumentUrl(storageValue)) {
+        return null
+      }
       return {
         id: `${prefix}-${key}`,
         key,
         label: documentLabel(key),
-        file_name: fileNameFromUrl(fileUrl, `${key}.pdf`),
-        file_url: fileUrl,
-        is_image: isImageUrl(fileUrl),
+        file_name: fileNameFromUrl(storageValue, `${key}.pdf`),
+        file_url: reviewFileUrl(storageValue),
+        is_image: isImageUrl(storageValue),
         ocr_fields: [],
         ocr_status: 'pending' as const,
       }

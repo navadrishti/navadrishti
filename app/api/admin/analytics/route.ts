@@ -2,13 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { getAdminUser } from '@/lib/server-auth';
 
-type ReviewDayBucket = {
+type DayBucket = {
   date: string;
-  total_reviewed: number;
-  approved_count: number;
-  rejected_count: number;
-  avg_review_time_hours: number;
-  _review_times: number[];
+  created: number;
+  active: number;
+  inactive: number;
 };
 
 function toDateKey(value: unknown): string {
@@ -18,6 +16,10 @@ function toDateKey(value: unknown): string {
   return date.toISOString().split('T')[0];
 }
 
+/**
+ * Offer analytics use operational lifecycle (status), not obsolete
+ * admin_status / listing-approval review metrics.
+ */
 export async function GET(request: NextRequest) {
   try {
     if (!getAdminUser(request)) {
@@ -29,131 +31,65 @@ export async function GET(request: NextRequest) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - periodDays);
 
-    const [serviceOfferStatsResult, performanceStatsResult] = await Promise.all([
-      supabase
-        .from('service_offers')
-        .select(`
+    const { data: serviceOfferStats } = await supabase
+      .from('service_offers')
+      .select(`
           id,
-          admin_status,
+          status,
           created_at,
-          admin_reviewed_at,
-          submitted_for_review_at,
-          offer_type
+          offer_type,
+          valid_until
         `)
-        .gte('created_at', startDate.toISOString()),
+      .gte('created_at', startDate.toISOString());
 
-      supabase
-        .from('service_offer_reviews')
-        .select(`
-          *,
-          service_offer:service_offers(created_at, submitted_for_review_at)
-        `)
-        .gte('reviewed_at', startDate.toISOString())
-    ]);
+    const rows = serviceOfferStats || [];
+    const now = Date.now();
 
-    const serviceOfferStats = serviceOfferStatsResult.data || [];
-    const performanceStats = performanceStatsResult.data || [];
-    const reviewStats = performanceStats.reduce((acc: Record<string, ReviewDayBucket>, review) => {
-      const dateKey = toDateKey(review.reviewed_at || review.review_date || review.created_at);
+    const totalServiceOffers = rows.length;
+    const activeOffers = rows.filter((so) => String(so.status || '').toLowerCase() === 'active').length;
+    const inactiveOffers = rows.filter((so) =>
+      ['inactive', 'completed', 'cancelled', 'paused'].includes(String(so.status || '').toLowerCase())
+    ).length;
+    const expiredActiveOffers = rows.filter((so) => {
+      if (String(so.status || '').toLowerCase() !== 'active') return false;
+      if (!so.valid_until) return false;
+      const ms = Date.parse(String(so.valid_until));
+      return Number.isFinite(ms) && ms < now;
+    }).length;
+
+    const dayStats = rows.reduce((acc: Record<string, DayBucket>, offer) => {
+      const dateKey = toDateKey(offer.created_at);
       if (!acc[dateKey]) {
-        acc[dateKey] = {
-          date: dateKey,
-          total_reviewed: 0,
-          approved_count: 0,
-          rejected_count: 0,
-          avg_review_time_hours: 0,
-          _review_times: []
-        };
+        acc[dateKey] = { date: dateKey, created: 0, active: 0, inactive: 0 };
       }
-
       const bucket = acc[dateKey];
-      bucket.total_reviewed += 1;
-
-      const decision = String(review.review_action || review.decision || '').toLowerCase();
-      if (decision === 'approved' || decision === 'accept' || decision === 'accepted') bucket.approved_count += 1;
-      if (decision === 'rejected' || decision === 'declined' || decision === 'decline') bucket.rejected_count += 1;
-
-      const submittedAt = review.service_offer?.submitted_for_review_at || review.service_offer?.created_at;
-      const reviewedAt = review.reviewed_at || review.review_date;
-      if (submittedAt && reviewedAt) {
-        const submitted = new Date(submittedAt);
-        const reviewed = new Date(reviewedAt);
-        if (!Number.isNaN(submitted.getTime()) && !Number.isNaN(reviewed.getTime())) {
-          bucket._review_times.push((reviewed.getTime() - submitted.getTime()) / (1000 * 60 * 60));
-        }
-      }
-
+      bucket.created += 1;
+      const status = String(offer.status || '').toLowerCase();
+      if (status === 'active') bucket.active += 1;
+      if (['inactive', 'completed', 'cancelled', 'paused'].includes(status)) bucket.inactive += 1;
       return acc;
     }, {});
 
-    const emailStats: { delivery_status?: string | null; notification_type?: string | null }[] = [];
-
-    const totalServiceOffers = serviceOfferStats.length;
-    const pendingOffers = serviceOfferStats.filter(so => so.admin_status === 'pending').length;
-    const approvedOffers = serviceOfferStats.filter(so => so.admin_status === 'approved').length;
-    const rejectedOffers = serviceOfferStats.filter(so => so.admin_status === 'rejected').length;
-
-    const reviewTimes = performanceStats.map(review => {
-      if (review.service_offer?.submitted_for_review_at && review.reviewed_at) {
-        const submitted = new Date(review.service_offer.submitted_for_review_at);
-        const reviewed = new Date(review.reviewed_at);
-        return (reviewed.getTime() - submitted.getTime()) / (1000 * 60 * 60); // Hours
-      }
-      return null;
-    }).filter(time => time !== null);
-
-    const avgReviewTime = reviewTimes.length > 0 
-      ? reviewTimes.reduce((sum, time) => sum + time, 0) / reviewTimes.length 
-      : 0;
-
-    const overdueThresholdHours = 5 * 24; // 5 days
-    const overdueOffers = serviceOfferStats.filter(so => {
-      if (so.admin_status === 'pending' && so.submitted_for_review_at) {
-        const submitted = new Date(so.submitted_for_review_at);
-        const now = new Date();
-        const hoursWaiting = (now.getTime() - submitted.getTime()) / (1000 * 60 * 60);
-        return hoursWaiting > overdueThresholdHours;
-      }
-      return false;
-    }).length;
-
-    // Email delivery metrics
-    const totalEmails = emailStats.length;
-    const deliveredEmails = emailStats.filter((e) => e.delivery_status === 'delivered').length;
-    const failedEmails = emailStats.filter((e) => e.delivery_status === 'failed').length;
-    const emailDeliveryRate = totalEmails > 0 ? (deliveredEmails / totalEmails) * 100 : 0;
-
-    // Category breakdown
-    const categoryStats = serviceOfferStats.reduce((acc, offer) => {
+    const categoryStats = rows.reduce((acc, offer) => {
       const category = offer.offer_type || 'Unknown';
       if (!acc[category]) {
-        acc[category] = { total: 0, pending: 0, approved: 0, rejected: 0 };
+        acc[category] = { total: 0, active: 0, inactive: 0 };
       }
-      acc[category].total++;
-      const status = String(offer.admin_status);
-      acc[category][status] = (acc[category][status] || 0) + 1;
+      acc[category].total += 1;
+      const status = String(offer.status || '').toLowerCase();
+      if (status === 'active') acc[category].active += 1;
+      if (['inactive', 'completed', 'cancelled', 'paused'].includes(status)) acc[category].inactive += 1;
       return acc;
     }, {} as Record<string, Record<string, number>>);
 
-    // Daily trends for charts
-    const dailyTrends = Object.values(reviewStats)
+    const dailyTrends = Object.values(dayStats)
       .map((stat) => ({
         date: stat.date,
-        total_reviewed: stat.total_reviewed || 0,
-        approved: stat.approved_count || 0,
-        rejected: stat.rejected_count || 0,
-        avg_review_time: stat._review_times.length > 0
-          ? stat._review_times.reduce((sum, time) => sum + time, 0) / stat._review_times.length
-          : 0
+        created: stat.created,
+        active: stat.active,
+        inactive: stat.inactive,
       }))
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
-
-    // Priority breakdown
-    const priorityStats = performanceStats.reduce((acc, review) => {
-      const priority = review.review_priority || 3;
-      acc[priority] = (acc[priority] || 0) + 1;
-      return acc;
-    }, {} as Record<number, number>);
 
     return NextResponse.json({
       success: true,
@@ -161,40 +97,38 @@ export async function GET(request: NextRequest) {
       data: {
         overview: {
           total_service_offers: totalServiceOffers,
-          pending_offers: pendingOffers,
-          approved_offers: approvedOffers,
-          rejected_offers: rejectedOffers,
-          overdue_offers: overdueOffers,
-          approval_rate: totalServiceOffers > 0 ? Math.round((approvedOffers / totalServiceOffers) * 100) : 0,
-          avg_review_time_hours: Math.round(avgReviewTime * 100) / 100,
-          email_delivery_rate: Math.round(emailDeliveryRate * 100) / 100
+          active_offers: activeOffers,
+          inactive_offers: inactiveOffers,
+          expired_active_offers: expiredActiveOffers,
+          // Legacy keys kept as zeros so old admin clients do not crash.
+          pending_offers: 0,
+          approved_offers: activeOffers,
+          rejected_offers: inactiveOffers,
+          overdue_offers: 0,
+          approval_rate: 0,
+          avg_review_time_hours: 0,
+          email_delivery_rate: 0,
         },
         trends: {
           daily: dailyTrends,
           categories: categoryStats,
-          priorities: priorityStats
+          priorities: {},
         },
         email_metrics: {
-          total_sent: totalEmails,
-          delivered: deliveredEmails,
-          failed: failedEmails,
-          delivery_rate: emailDeliveryRate,
-          by_type: emailStats.reduce((acc, email) => {
-            const type = email.notification_type || 'unknown';
-            if (!acc[type]) acc[type] = 0;
-            acc[type]++;
-            return acc;
-          }, {} as Record<string, number>)
+          total_sent: 0,
+          delivered: 0,
+          failed: 0,
+          delivery_rate: 0,
+          by_type: {},
         },
         performance: {
-          avg_review_time_hours: avgReviewTime,
-          overdue_count: overdueOffers,
-          fastest_review_time: reviewTimes.length > 0 ? Math.min(...reviewTimes) : 0,
-          slowest_review_time: reviewTimes.length > 0 ? Math.max(...reviewTimes) : 0
-        }
-      }
+          avg_review_time_hours: 0,
+          overdue_count: 0,
+          fastest_review_time: 0,
+          slowest_review_time: 0,
+        },
+      },
     });
-
   } catch (error) {
     console.error('Admin analytics error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

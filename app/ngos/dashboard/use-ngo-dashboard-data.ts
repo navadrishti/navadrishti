@@ -44,6 +44,7 @@ export function useNgoDashboardData(userId: number | undefined) {
   const [submittingEvidenceProjectId, setSubmittingEvidenceProjectId] = useState<string | null>(null);
   const [loadingCSRProjects, setLoadingCSRProjects] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
+  const [loadingNeeds, setLoadingNeeds] = useState(true);
   const [loadingOfferApplications, setLoadingOfferApplications] = useState(false);
   const [loadingOfferRequests, setLoadingOfferRequests] = useState(false);
 
@@ -66,7 +67,8 @@ const response = await fetch('/api/service-offers?view=my-offers&include_expired
 
   const fetchServiceRequests = async () => {
     try {
-const [ongoingResponse, historyResponse] = await Promise.all([
+      setLoadingNeeds(true);
+      const [ongoingResponse, historyResponse] = await Promise.all([
         fetch('/api/service-request-assignments?view=ongoing', {
           headers: clientAuthHeaders()
         }),
@@ -75,17 +77,33 @@ const [ongoingResponse, historyResponse] = await Promise.all([
         })
       ]);
 
-      const ongoingData = await ongoingResponse.json();
-      const historyData = await historyResponse.json();
+      const ongoingData = await ongoingResponse.json().catch(() => null);
+      const historyData = await historyResponse.json().catch(() => null);
 
-      if (ongoingData.success) {
-        setOngoingNeeds(Array.isArray(ongoingData.data) ? ongoingData.data : []);
+      // Owned standalone needs from the NGO assignments view — keep buckets in sync.
+      setOngoingNeeds(
+        ongoingResponse.ok && ongoingData?.success && Array.isArray(ongoingData.data)
+          ? ongoingData.data
+          : []
+      );
+      setHistoryNeeds(
+        historyResponse.ok && historyData?.success && Array.isArray(historyData.data)
+          ? historyData.data
+          : []
+      );
+
+      if (!ongoingResponse.ok || !ongoingData?.success) {
+        console.error('Owned ongoing needs fetch failed:', ongoingData?.error || ongoingResponse.status);
       }
-      if (historyData.success) {
-        setHistoryNeeds(Array.isArray(historyData.data) ? historyData.data : []);
+      if (!historyResponse.ok || !historyData?.success) {
+        console.error('Owned history needs fetch failed:', historyData?.error || historyResponse.status);
       }
     } catch (error) {
-      console.error('Error fetching service requests:', error);
+      console.error('Error fetching owned needs:', error);
+      setOngoingNeeds([]);
+      setHistoryNeeds([]);
+    } finally {
+      setLoadingNeeds(false);
     }
   };
 
@@ -276,7 +294,7 @@ const response = await fetch('/api/campaigns/volunteer-assignments', {
   const fetchCSRProjects = async () => {
     try {
       setLoadingCSRProjects(true);
-const response = await fetch('/api/csr-projects', {
+const response = await fetch('/api/csr-projects?viewer=ngo', {
         headers: clientAuthHeaders()
       });
 
@@ -297,7 +315,7 @@ const response = await fetch('/api/csr-projects', {
   const fetchProjectEvidenceTimeline = async (projectId: string) => {
     try {
       setLoadingEvidenceProjectId(projectId);
-const response = await fetch(`/api/csr-projects/${projectId}/evidence`, {
+const response = await fetch(`/api/csr-projects/${projectId}/evidence?viewer=ngo`, {
         headers: clientAuthHeaders()
       });
 
@@ -406,8 +424,10 @@ const response = await fetch(`/api/csr-projects/${projectId}/evidence`, {
     submittingEvidenceProjectId,
     loadingCSRProjects,
     loadingData,
+    loadingNeeds,
     loadingOfferApplications,
     loadingOfferRequests,
+    fetchServiceOffers,
     fetchServiceRequests,
     fetchOfferApplications,
     fetchOfferRequests,

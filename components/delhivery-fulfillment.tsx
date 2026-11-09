@@ -65,9 +65,8 @@ export function DelhiveryFulfillment({
   role,
   onUpdated,
 }: DelhiveryFulfillmentProps) {
-  const parentMeta = parseJsonObject(responseMeta);
   const [bookedMeta, setBookedMeta] = useState<Record<string, unknown> | null>(null);
-  const meta = { ...parentMeta, ...bookedMeta };
+  const meta = useMemo(() => ({ ...parseJsonObject(responseMeta), ...bookedMeta }), [responseMeta, bookedMeta]);
   const [busy, setBusy] = useState<'book' | 'sync' | null>(null);
   const [pickup, setPickup] = useState<DelhiveryPartyForm>(() => emptyDelhiveryPartyForm());
   const [consignee, setConsignee] = useState<DelhiveryPartyForm>(() => emptyDelhiveryPartyForm());

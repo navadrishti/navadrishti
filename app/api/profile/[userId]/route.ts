@@ -21,7 +21,7 @@ import {
 import { applyCaBadgeToProfile } from '@/lib/platform-ca-auth';
 import { isCompanyCAUser } from '@/lib/company-ca';
 import { isNgoRazorpayPayoutActive } from '@/lib/razorpay-route';
-import { findAuthUser, getAdminUser } from '@/lib/server-auth';
+import { authErrorResponse, findAuthUser, getAdminUser, getAuthUserFromRequest } from '@/lib/server-auth';
 import { getErrorMessage } from '@/lib/utils';
 
 interface RouteParams {
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }, { status: 404 });
     }
 
-    const viewer = findAuthUser(request, { allowCookie: true });
+    const viewer = findAuthUser(request) ? await getAuthUserFromRequest(request) : null;
     const canViewPrivate =
       Boolean(getAdminUser(request)) || (isPlatformUserSession(viewer) && Number(viewer.id) === parsedUserId);
 
@@ -339,6 +339,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     });
 
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Profile fetch error:', error);
     return Response.json({ 
       success: false,

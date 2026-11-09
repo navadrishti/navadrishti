@@ -80,7 +80,7 @@ export function YourCapabilityOfferCard({ offer, pastReason, isOngoing = false }
               </Badge>
             ) : (
               <Badge variant="outline" className="border-sky-300 bg-sky-50 text-sky-800">
-                Listed
+                Active
               </Badge>
             )}
           </div>
@@ -154,7 +154,7 @@ export function YourCapabilityOfferCard({ offer, pastReason, isOngoing = false }
         <Button size="sm" asChild>
           <Link href={`/service-offers/${offer.id}`}>Open Detail</Link>
         </Button>
-        {!pastReason || pastReason === 'expired' || pastReason === 'unlisted' ? (
+        {!pastReason || pastReason === 'expired' || pastReason === 'inactive' ? (
           <Button size="sm" variant="outline" asChild>
             <Link href={`/service-offers/edit/${offer.id}`}>Edit</Link>
           </Button>

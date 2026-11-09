@@ -61,12 +61,40 @@ export interface NgoDirectoryItem {
 
 export type LeadNgoInvite = NonNullable<CSRTrackingAssignment['lead_ngo_invites']>[number];
 
+export type CompanyCaProjectAssignmentRow = {
+  id: string
+  company_ca_identity_id: string
+  project_id: string
+  status: string
+  assigned_at?: string | null
+  deactivated_at?: string | null
+  project?: {
+    id: string
+    title: string | null
+    project_status: string | null
+    region?: string | null
+    start_date?: string | null
+    end_date?: string | null
+  } | null
+}
+
+export type EligibleEvidenceVerifierProject = {
+  id: string
+  title: string
+  project_status: string
+  region: string | null
+  start_date: string | null
+  end_date: string | null
+}
+
 export type CompanyCaAccount = Pick<
   Tables<'company_ca_identities'>,
   'id' | 'ca_id' | 'user_id' | 'company_user_id' | 'status' | 'permissions' | 'must_change_password' | 'created_at'
 > & {
-  users: Pick<Tables<'users'>, 'id' | 'name' | 'email'> | null;
-};
+  users: Pick<Tables<'users'>, 'id' | 'name' | 'email'> | null
+  assignments?: CompanyCaProjectAssignmentRow[]
+  last_login_at?: string | null
+}
 
 export interface CompanyCaForm {
   name: string;
@@ -74,11 +102,6 @@ export interface CompanyCaForm {
   password: string;
   ca_id: string;
   auto_generate_ca_id: boolean;
-}
-
-export interface CompanyCaFeedback {
-  type: 'success' | 'error';
-  message: string;
 }
 
 export interface CreatedCompanyCaCredentials {

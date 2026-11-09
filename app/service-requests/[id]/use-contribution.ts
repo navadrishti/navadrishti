@@ -1,10 +1,10 @@
 'use client'
+import { toast } from 'sonner'
 
 import { readApiError } from '@/lib/user-facing-error'
 import { useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { isCaVerifiedAccount } from '@/lib/auth'
-import { useToast } from '@/hooks/use-toast'
 import { parseAmountToInr } from '@/lib/utils'
 import { openRazorpayCheckout } from '@/lib/razorpay-checkout'
 import type { ServiceRequest } from './types'
@@ -16,9 +16,7 @@ interface UseContributionOptions {
 }
 
 export function useContribution({ request, canPayForRequest, fetchRequestDetails }: UseContributionOptions) {
-  const { user, token } = useAuth()
-  const { toast } = useToast()
-  const [paymentAmount, setPaymentAmount] = useState('')
+  const { user, token } = useAuth()  const [paymentAmount, setPaymentAmount] = useState('')
   const [paying, setPaying] = useState(false)
 
   const handleContribute = async () => {
@@ -27,7 +25,7 @@ export function useContribution({ request, canPayForRequest, fetchRequestDetails
 
     const requestedInr = parseAmountToInr(paymentAmount)
     if (requestedInr <= 0) {
-      toast({ title: 'Invalid amount', description: 'Enter a valid contribution amount in INR.', variant: 'destructive' })
+      toast.error('Invalid amount', { description: 'Enter a valid contribution amount in INR.' })
       return
     }
 
@@ -44,11 +42,7 @@ export function useContribution({ request, canPayForRequest, fetchRequestDetails
 
       const orderPayload = await orderRes.json()
       if (!orderRes.ok || !orderPayload?.success) {
-        toast({
-          title: 'Unable to start payment',
-          description: readApiError(orderPayload, 'Failed to create payment order'),
-          variant: 'destructive'
-        })
+        toast.error('Unable to start payment', { description: readApiError(orderPayload, 'Failed to create payment order') })
         return
       }
 
@@ -76,36 +70,21 @@ export function useContribution({ request, canPayForRequest, fetchRequestDetails
 
           const verifyPayload = await verifyRes.json()
           if (!verifyRes.ok || !verifyPayload?.success) {
-            toast({
-              title: 'Payment verification failed',
-              description: readApiError(verifyPayload, 'Please contact support with payment reference.'),
-              variant: 'destructive'
-            })
+            toast.error('Payment verification failed', { description: readApiError(verifyPayload, 'Please contact support with payment reference.') })
             return
           }
 
-          toast({
-            title: 'Payment successful',
-            description: verifyPayload?.data?.message || 'Contribution recorded successfully.'
-          })
+          toast.success('Payment successful', { description: verifyPayload?.data?.message || 'Contribution recorded successfully.' })
 
           fetchRequestDetails()
         },
         onFailure: (error) => {
-          toast({
-            title: 'Payment failed',
-            description: error.description || error.reason || 'The payment provider could not complete the payment.',
-            variant: 'destructive'
-          })
+          toast.error('Payment failed', { description: error.description || error.reason || 'The payment provider could not complete the payment.' })
         },
       })
     } catch (error) {
       console.error('Contribution error:', error)
-      toast({
-        title: 'Payment failed',
-        description: readApiError(error, 'Could not open online payment.'),
-        variant: 'destructive'
-      })
+      toast.error('Payment failed', { description: readApiError(error, 'Could not open online payment.') })
     } finally {
       setPaying(false)
     }

@@ -1,23 +1,25 @@
 'use client';
+import { toast } from 'sonner'
 
 import { readApiError } from '@/lib/user-facing-error'
 import { getClientSessionToken } from '@/lib/client-session';
 import { useState, type Dispatch, type SetStateAction } from 'react';
-import { useToast } from '@/hooks/use-toast';
-import type { OfferRequestItem } from '@/lib/offer-requests';
+import {
+  offerRequestAssignedAfterStatus,
+  offerRequestStatusSuccessMessage,
+  type OfferRequestDecisionStatus,
+  type OfferRequestItem,
+} from '@/lib/offer-requests';
 
 export function useOfferRequestActions(setOfferRequests: Dispatch<SetStateAction<OfferRequestItem[]>>) {
-  const { toast } = useToast();
   const [updatingOfferRequestId, setUpdatingOfferRequestId] = useState<number | null>(null);
 
-  const handleOfferRequestStatusUpdate = async (requestId: number, newStatus: 'accepted' | 'rejected') => {
+  const handleOfferRequestStatusUpdate = async (requestId: number, newStatus: OfferRequestDecisionStatus) => {
+    if (updatingOfferRequestId != null) return;
+
     const token = getClientSessionToken();
     if (!token) {
-      toast({
-        title: 'Error',
-        description: 'Please sign in again',
-        variant: 'destructive',
-      });
+      toast.error('Error', { description: 'Please sign in again' });
       return;
     }
 
@@ -35,11 +37,7 @@ export function useOfferRequestActions(setOfferRequests: Dispatch<SetStateAction
 
       const data = await response.json();
       if (!response.ok || !data.success) {
-        toast({
-          title: 'Error',
-          description: readApiError(data, 'Failed to update request status'),
-          variant: 'destructive'
-        });
+        toast.error('Error', { description: readApiError(data, 'Failed to update request status') });
         return;
       }
 
@@ -50,7 +48,7 @@ export function useOfferRequestActions(setOfferRequests: Dispatch<SetStateAction
             return {
               ...request,
               status: newStatus,
-              isAssigned: newStatus === 'accepted'
+              isAssigned: offerRequestAssignedAfterStatus(newStatus)
             };
           }
 
@@ -71,16 +69,9 @@ export function useOfferRequestActions(setOfferRequests: Dispatch<SetStateAction
         })
       );
 
-      toast({
-        title: 'Success',
-        description: newStatus === 'accepted' ? 'Request accepted and offer assigned' : 'Request rejected'
-      });
+      toast.success('Success', { description: offerRequestStatusSuccessMessage(newStatus) });
     } catch {
-      toast({
-        title: 'Error',
-        description: 'Failed to update request status',
-        variant: 'destructive'
-      });
+      toast.error('Error', { description: 'Failed to update request status' });
     } finally {
       setUpdatingOfferRequestId(null);
     }

@@ -1,5 +1,6 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
+import userEvent from '@testing-library/user-event'
 import { CampaignTrackingPanel } from '@/components/campaign-tracking-panel'
 import type { CampaignTracking } from '@/lib/campaign-tracking-types'
 
@@ -46,6 +47,65 @@ function tracking(overrides: Partial<CampaignTracking> = {}): CampaignTracking {
 }
 
 describe('CampaignTrackingPanel', () => {
+  it('renders a bounded horizontal row with accessible paging for a large volunteer list', async () => {
+    const volunteers = Array.from({ length: 45 }, (_, index) => ({
+      user_id: index + 1, name: `Volunteer ${index + 1}`, user_type: 'individual', capacity: 1,
+      today: 'present' as const, days_present: 2, days_absent: 1, person_days: 2,
+      last_attendance_at: '2026-10-10',
+    }))
+    const base = tracking()
+    render(<CampaignTrackingPanel tracking={tracking({
+      lifecycle: 'running', attendance: { ...base.attendance!, volunteers },
+    })} />)
+    const region = screen.getByRole('region', { name: 'Volunteer attendance cards' })
+    expect(region).toHaveClass('flex', 'overflow-x-auto', '[transform:scaleY(-1)]')
+    expect(region).toHaveAttribute('tabindex', '0')
+    expect(region.children).toHaveLength(20)
+    expect(region.children[0]).toHaveClass('w-64', 'shrink-0', '[transform:scaleY(-1)]')
+    expect(screen.queryByText('Scroll horizontally to see volunteers.')).not.toBeInTheDocument()
+    expect(within(region).getByText(/^Volunteer 1$/)).toBeInTheDocument()
+    expect(within(region).getAllByText('(Individual)')).toHaveLength(20)
+    expect(within(region).getAllByText(/Present 2 · Absent 1 · last/)).toHaveLength(20)
+    expect(within(region).getAllByText('Attended today')).toHaveLength(20)
+    expect(screen.getByText('Showing 1–20 of 45')).toBeInTheDocument()
+    expect(screen.queryByText(/Volunteer 21/)).not.toBeInTheDocument()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Next volunteers' }))
+    expect(screen.getByText('Showing 21–40 of 45')).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Volunteer attendance cards' })).getByText(/Volunteer 21/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Next volunteers' }))
+    expect(screen.getByText('Showing 41–45 of 45')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Next volunteers' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Previous volunteers' }))
+    expect(screen.getByText('Showing 21–40 of 45')).toBeInTheDocument()
+  })
+
+  it('does not place a scrollbar above a single volunteer card', () => {
+    const base = tracking()
+    const volunteers = [{
+      user_id: 1, name: 'Volunteer 1', user_type: 'individual', capacity: 1,
+      today: 'absent' as const, days_present: 2, days_absent: 1, person_days: 2,
+      last_attendance_at: '2026-10-10',
+    }]
+    render(<CampaignTrackingPanel tracking={tracking({
+      lifecycle: 'running', attendance: { ...base.attendance!, volunteers },
+    })} />)
+
+    const region = screen.getByRole('region', { name: 'Volunteer attendance cards' })
+    expect(region).not.toHaveClass('[transform:scaleY(-1)]')
+    expect(region.children[0]).not.toHaveClass('[transform:scaleY(-1)]')
+    expect(screen.queryByText('Scroll horizontally to see volunteers.')).not.toBeInTheDocument()
+  })
+
+  it('shows an empty volunteer attendance state without navigation', () => {
+    const base = tracking()
+    render(<CampaignTrackingPanel tracking={tracking({ lifecycle: 'running', attendance: base.attendance })} />)
+
+    expect(screen.getByText('No volunteers signed up yet.')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Volunteer attendance cards' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Next volunteers' })).not.toBeInTheDocument()
+  })
+
   it('keeps planning meters before the campaign starts', () => {
     render(<CampaignTrackingPanel tracking={tracking()} />)
 
@@ -194,12 +254,73 @@ describe('CampaignTrackingPanel', () => {
     expect(screen.getByText(/Meera/)).toBeInTheDocument()
     expect(screen.getByText(/Site engineer/)).toBeInTheDocument()
     expect(screen.getByText(/Water tank/)).toBeInTheDocument()
-    expect(screen.getAllByText('Attended')).toHaveLength(2)
-    expect(screen.getAllByText('Absent')).toHaveLength(2)
+    expect(screen.getAllByText('Attended today')).toHaveLength(2)
+    expect(screen.getAllByText('Absent today')).toHaveLength(2)
     expect(screen.getByText('Milestones, evidence and payment')).toBeInTheDocument()
     expect(screen.getByText('Survey')).toBeInTheDocument()
-    expect(screen.getByText(/Approved by Company CA CAID-6-001/)).toBeInTheDocument()
+    expect(screen.getByText(/Approved by Evidence Verifier CAID-6-001/)).toBeInTheDocument()
     expect(screen.getByText(/Returned to owner/)).toBeInTheDocument()
+  })
+
+  it('hides Payment pending until CA approves evidence', () => {
+    render(
+      <CampaignTrackingPanel
+        tracking={tracking({
+          lifecycle: 'running',
+          days_elapsed: 10,
+          milestone_trail: [
+            {
+              id: 'm-submitted',
+              title: 'Build',
+              status: 'submitted',
+              amount_inr: 50000,
+              due_date: null,
+              payment_done: false,
+              paid_inr: 0,
+              paid_at: null,
+              evidence: [
+                {
+                  id: 'e-sub',
+                  submitted_at: '2026-10-04T08:00:00.000Z',
+                  status: 'submitted',
+                  review: null,
+                },
+              ],
+            },
+            {
+              id: 'm-approved',
+              title: 'Handover',
+              status: 'approved',
+              amount_inr: 30000,
+              due_date: null,
+              payment_done: false,
+              paid_inr: 0,
+              paid_at: null,
+              evidence: [
+                {
+                  id: 'e-ok',
+                  submitted_at: '2026-10-05T08:00:00.000Z',
+                  status: 'submitted',
+                  review: {
+                    decision: 'approved',
+                    reviewed_at: '2026-10-06T10:00:00.000Z',
+                    reviewer_name: 'Priya CA',
+                    reviewer_ca_id: 'CAID-6-001',
+                    reviewer_kind: 'company_ca',
+                  },
+                },
+              ],
+            },
+          ],
+        })}
+      />
+    )
+
+    expect(screen.getByText('Build')).toBeInTheDocument()
+    expect(screen.getByText('Awaiting CA review')).toBeInTheDocument()
+    expect(screen.getByText('Handover')).toBeInTheDocument()
+    expect(screen.getByText('Payment pending')).toBeInTheDocument()
+    expect(screen.getAllByText('Payment pending')).toHaveLength(1)
   })
 
   it('shows volunteer and capability attendance to the lead NGO without listing themselves as lead', () => {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
-import { findAuthUser } from '@/lib/server-auth';
+import { authErrorResponse, getAuthUserFromRequest } from '@/lib/server-auth';
 import { hashPassword, comparePassword } from '@/lib/auth';
 import { zodIssuesToUserMessage } from '@/lib/user-facing-error';
 
@@ -13,10 +13,7 @@ const changePasswordSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    const payload = findAuthUser(req);
-    if (!payload) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
+    const payload = await getAuthUserFromRequest(req);
 
     const userId = payload.id;
     
@@ -69,6 +66,8 @@ export async function POST(req: NextRequest) {
     });
     
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Change password error:', error);
     return NextResponse.json({ 
       error: 'An error occurred while changing your password' 

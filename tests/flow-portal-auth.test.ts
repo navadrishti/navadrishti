@@ -339,10 +339,10 @@ describe('evidence verification change password', () => {
   })
 
   it.each([
-    ['no token', {}, [], 'Company CA authentication required'],
-    ['platform user cookie', { cookie: `token=${generateToken(caSession)}` }, [], 'Company CA authentication required'],
-    ['no identity', undefined, [{ error: { code: 'PGRST116' } }], 'Company CA identity not found'],
-    ['inactive identity', undefined, [{ data: { ...identity, status: 'revoked' } }], 'Company CA identity is not active'],
+    ['no token', {}, [], 'Evidence Verifier authentication required'],
+    ['platform user cookie', { cookie: `token=${generateToken(caSession)}` }, [], 'Evidence Verifier authentication required'],
+    ['no identity', undefined, [{ error: { code: 'PGRST116' } }], 'Evidence Verifier identity not found'],
+    ['inactive identity', undefined, [{ data: { ...identity, status: 'revoked' } }], 'Evidence Verifier identity is not active'],
   ])('returns 401 for %s', async (_label, headers, identities, message) => {
     const fake = useDb({ 'company_ca_identities.select': identities })
     const response = await change({ current_password: PASSWORD, new_password: 'another-pass' }, headers)

@@ -5,6 +5,7 @@ import { formatStatusLabel } from '@/lib/format-date';
 import { VerifiedAccountName } from '@/components/verification-badge';
 import { Badge } from '@/components/ui/badge';
 import { OfferEngagementOverview } from '@/components/offer-engagement-overview';
+import { OfferFulfilmentCompleteButton } from '@/components/offer-fulfilment-complete-button';
 import { formatSelectedNeeds, type OfferRequestItem } from '@/lib/offer-requests';
 
 interface OfferRequestSummaryCardProps {
@@ -64,9 +65,16 @@ export function OfferRequestSummaryCard({ request, actions, showOverview = false
 interface InProgressOfferRequestCardProps {
   request: OfferRequestItem;
   onUpdated: () => void | Promise<void>;
+  updating?: boolean;
+  onComplete?: (requestId: number) => void | Promise<void>;
 }
 
-export function InProgressOfferRequestCard({ request, onUpdated }: InProgressOfferRequestCardProps) {
+export function InProgressOfferRequestCard({
+  request,
+  onUpdated,
+  updating = false,
+  onComplete,
+}: InProgressOfferRequestCardProps) {
   return (
     <div className="rounded-md border bg-white p-4 space-y-3">
       <div className="flex items-start justify-between gap-3">
@@ -91,6 +99,16 @@ export function InProgressOfferRequestCard({ request, onUpdated }: InProgressOff
         </div>
       </div>
       <OfferEngagementOverview request={request} onUpdated={onUpdated} />
+      {onComplete ? (
+        <div className="flex flex-wrap gap-2">
+          <OfferFulfilmentCompleteButton
+            requestId={request.id}
+            status={request.status}
+            updating={updating}
+            onComplete={onComplete}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
