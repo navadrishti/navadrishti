@@ -1,22 +1,26 @@
 import jwt from 'jsonwebtoken'
 import { NextRequest } from 'next/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { GET, POST } from '@/app/api/service-offers/[id]/clients/route'
 import { eqValue, supabaseFake, unknownColumns } from './support/supabase-fake'
+import './support/install-test-auth'
 
 const mocks = vi.hoisted(() => ({
   users: { findById: vi.fn() },
   serviceOffers: { getById: vi.fn() },
   verification: vi.fn(),
+  emitOfferMarketplaceEvent: vi.fn(async () => undefined),
 }))
 
+vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db', async () => {
   const { supabaseFake: fake } = await import('./support/supabase-fake')
   return { supabase: fake.client, db: { users: mocks.users, serviceOffers: mocks.serviceOffers } }
 })
-vi.mock('@/lib/server-auth', async () => {
+vi.mock('@/lib/server-auth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/server-auth')>()
   const { isCaVerifiedAccount, CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE } = await import('@/lib/auth')
   return {
+    ...actual,
     resolveEffectiveVerificationStatus: mocks.verification,
     requireCaVerifiedPayer: async (userId: number, userType: string) => {
       const status = await mocks.verification(userId, userType)
@@ -25,11 +29,17 @@ vi.mock('@/lib/server-auth', async () => {
     },
   }
 })
+vi.mock('@/lib/service-offers/marketplace-events', () => ({
+  emitOfferMarketplaceEvent: mocks.emitOfferMarketplaceEvent,
+  emitOfferCreatedAudit: vi.fn(async () => undefined),
+}))
+
+import { GET, POST } from '@/app/api/service-offers/[id]/clients/route'
 
 const ngoToken = jwt.sign({ id: 12, email: 'ngo@example.org', user_type: 'ngo' }, 'test-secret')
 const ownerToken = jwt.sign({ id: 40, email: 'owner@example.org', user_type: 'company' }, 'test-secret')
 
-const offer = { id: 7, creator_id: 40, offer_type: 'service', transaction_type: 'donate', price_amount: 0, valid_until: null, status: 'active', admin_status: 'approved', is_listed: true }
+const offer = { id: 7, creator_id: 40, title: 'Solar support', offer_type: 'service', transaction_type: 'donate', price_amount: 0, valid_until: null, status: 'active', admin_status: 'approved', is_listed: true }
 const need = { id: 31, title: 'Solar lamps', status: 'active', request_type: 'Skill / Service Need', estimated_budget: null, target_amount: null, target_quantity: null, beneficiary_count: 200, ngo_id: 12 }
 
 function apply(body: Record<string, unknown>, token: string = ngoToken) {
@@ -70,6 +80,26 @@ describe('POST /api/service-offers/[id]/clients', () => {
     })
     expect(eqValue(supabaseFake.find('service_requests')[0], 'ngo_id')).toBe(12)
     expect(unknownColumns(supabaseFake.queries)).toEqual([])
+    expect(mocks.emitOfferMarketplaceEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'offer_request_submitted',
+        applicationId: 5,
+        offerId: 7,
+        recipientUserId: 40,
+        actorUserId: 12,
+      })
+    )
+  })
+
+  it('does not notify when application insert is rejected as a duplicate', async () => {
+    mocks.serviceOffers.getById.mockResolvedValue(offer)
+    supabaseFake.reset({
+      service_requests: [{ data: [need] }],
+      'service_clients.select': [{ data: { id: 4 } }],
+    })
+    const res = await apply({ selected_need_ids: [31] })
+    expect(res.status).toBe(400)
+    expect(mocks.emitOfferMarketplaceEvent).not.toHaveBeenCalled()
   })
 
   it('returns 404 for an offer that does not exist', async () => {

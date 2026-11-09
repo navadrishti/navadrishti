@@ -1,15 +1,14 @@
+import { toast } from 'sonner'
 import { readApiError } from '@/lib/user-facing-error'
 import { clientAuthFetchInit } from '@/lib/client-session';
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { isFullyVerifiedAccount } from '@/lib/auth';
-import { useToast } from '@/hooks/use-toast';
 import { keepOwnApplication, mergeOwnApplication, readReturnedApplication } from './helpers';
 import type { CompanyApplication, ProjectDetailPayload } from './types';
 
 export function useProjectDetail(projectId: string) {
   const { user, token } = useAuth();
-  const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
   const [payload, setPayload] = useState<ProjectDetailPayload | null>(null);
@@ -36,7 +35,7 @@ export function useProjectDetail(projectId: string) {
       const data = await response.json();
       if (!response.ok || !data?.success) {
         if (!silent) {
-          toast({ title: 'Error', description: readApiError(data, 'Failed to load project'), variant: 'destructive' });
+          toast.error('Error', { description: readApiError(data, 'Failed to load project') });
         }
         return;
       }
@@ -46,7 +45,7 @@ export function useProjectDetail(projectId: string) {
       );
     } catch {
       if (!silent) {
-        toast({ title: 'Error', description: 'Failed to load project', variant: 'destructive' });
+        toast.error('Error', { description: 'Failed to load project' });
       }
     } finally {
       setLoading(false);
@@ -87,7 +86,7 @@ export function useProjectDetail(projectId: string) {
     if (!allVerified) {
       const description = 'Company must be fully verified before CSR application.'
       setApplyError(description)
-      toast({ title: 'Verification required', description, variant: 'destructive' });
+      toast.error('Verification required');
       return;
     }
     setApplyLoading(true);
@@ -109,10 +108,7 @@ export function useProjectDetail(projectId: string) {
 
       if (response.status === 409 && /already applied/i.test(String(data?.error || ''))) {
         if (returned) rememberApplication(returned)
-        toast({
-          title: 'Already applied',
-          description: readApiError(data, 'Your existing takeover application is shown below.'),
-        });
+        toast.success('Already applied', { description: readApiError(data, 'Your existing takeover application is shown below.') });
         await fetchProjectDetail({ silent: true });
         return;
       }
@@ -120,17 +116,17 @@ export function useProjectDetail(projectId: string) {
       if (!response.ok || !data?.success) {
         const description = readApiError(data, 'Could not apply')
         setApplyError(description)
-        toast({ title: 'Application failed', description, variant: 'destructive' });
+        toast.error('Application failed');
         return;
       }
 
       if (returned) rememberApplication(returned)
-      toast({ title: 'Application submitted', description: data?.data?.message || 'Sent to NGO for review.' });
+      toast.success('Application submitted', { description: data?.data?.message || 'Sent to NGO for review.' });
       await fetchProjectDetail({ silent: true });
     } catch {
       const description = 'Could not apply'
       setApplyError(description)
-      toast({ title: 'Application failed', description, variant: 'destructive' });
+      toast.error('Application failed');
     } finally {
       setApplyLoading(false);
     }

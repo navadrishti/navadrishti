@@ -3,14 +3,15 @@ import Razorpay from 'razorpay'
 import { supabase } from '@/lib/db'
 import { AuthError, getTokenClaims } from '@/lib/auth'
 import {
+  authErrorResponse,
   getCompanyCAFromRequest,
   hasCompanyCaPermission,
   requireCaVerifiedPayer,
 } from '@/lib/server-auth'
 import {
   createEngagementSettlementOrder,
-  getAssignmentOutstandingAmount,
   isDailyRentalAssignment,
+  loadAssignmentOutstanding,
   resolveEngagementSettlementParties,
   settleEngagementFromCapturedPayment,
   verifyRazorpaySignature,
@@ -30,7 +31,7 @@ export async function POST(
       try {
         const companyCA = await getCompanyCAFromRequest(request)
         if (!hasCompanyCaPermission(companyCA.identity, 'can_confirm_payments')) {
-          return NextResponse.json({ error: 'Company CA does not have permission to confirm payments' }, { status: 403 })
+          return NextResponse.json({ error: 'Evidence Verifier does not have permission to confirm payments' }, { status: 403 })
         }
         payerUserId = Number(companyCA.identity.company_user_id)
       } catch (error) {
@@ -135,22 +136,57 @@ export async function POST(
       })
     }
 
-    const settlement = getAssignmentOutstandingAmount(assignment)
-    if (settlement.settlementStatus === 'settled') {
-      return NextResponse.json({ error: 'This engagement is already settled' }, { status: 409 })
-    }
-    if (!['active', 'in_progress'].includes(String(assignment.status || '').toLowerCase())) {
-      return NextResponse.json({ error: 'Only an active engagement can be settled' }, { status: 409 })
+    // Work completion may close the assignment before wages are paid. Allow delayed settlement
+    // on completed engagements; cancelled / other terminal statuses stay ineligible.
+    const assignmentStatus = String(assignment.status || '').toLowerCase()
+    if (!['active', 'in_progress', 'completed'].includes(assignmentStatus)) {
+      return NextResponse.json(
+        { error: 'Only an active or completed engagement with unsettled wages can be settled' },
+        { status: 409 }
+      )
     }
 
-    const result = await createEngagementSettlementOrder(assignment, parties)
+    // Eligibility and outstanding come from attendance rows — never from cached settlement_status.
+    const liveLedger = await loadAssignmentOutstanding(String(assignment.id))
+
+    const requestedAmountRaw = body.amount ?? body.settle_amount_inr ?? body.settleAmountInr
+    const requestedAmountInr =
+      requestedAmountRaw == null || requestedAmountRaw === ''
+        ? null
+        : Number(requestedAmountRaw)
+    if (requestedAmountInr != null && (!Number.isFinite(requestedAmountInr) || requestedAmountInr <= 0)) {
+      return NextResponse.json({ error: 'Settlement amount must be a positive number' }, { status: 400 })
+    }
+    if (requestedAmountInr != null && requestedAmountInr > liveLedger.outstanding + 0.001) {
+      return NextResponse.json(
+        {
+          error:
+            'Settlement amount cannot exceed the outstanding wage balance. Amounts must cover whole attendance days only.',
+        },
+        { status: 400 }
+      )
+    }
+
+    const entryIdsRaw = body.entry_ids ?? body.entryIds
+    const entryIds = Array.isArray(entryIdsRaw)
+      ? entryIdsRaw.map(String).filter(Boolean)
+      : typeof entryIdsRaw === 'string' && entryIdsRaw.trim()
+        ? entryIdsRaw.split(',').map((id: string) => id.trim()).filter(Boolean)
+        : null
+
+    const result = await createEngagementSettlementOrder(assignment, parties, {
+      requestedAmountInr,
+      entryIds,
+    })
     if (!result.paymentRequired) {
+      // No eligible unpaid attendance remained (paid and/or waived). Heal meta; no payment order.
       return NextResponse.json({
         success: true,
         data: {
           settled: true,
           paymentRequired: false,
           settledAmount: 0,
+          outstanding: liveLedger.outstanding,
           meta: result.meta,
         },
       })
@@ -166,13 +202,20 @@ export async function POST(
         settled: false,
         paymentRequired: true,
         outstanding: result.outstanding,
+        settleAmount: result.settleAmount,
+        remainingAfter: result.remainingAfter,
+        entryIds: result.entryIds,
         orderId: result.orderId,
         amount: result.amount,
+        totalCharge: result.totalCharge,
+        baseAmount: result.baseAmount,
         currency: result.currency,
         keyId: result.keyId,
       },
     })
   } catch (error) {
+    const auth = authErrorResponse(error)
+    if (auth) return auth
     if (error instanceof PayeeNotConnectedError) {
       return NextResponse.json({ error: error.message }, { status: 409 })
     }

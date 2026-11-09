@@ -28,6 +28,8 @@ import {
   type UserData,
 } from '@/lib/auth'
 import { toIsoExpiryDate } from '@/lib/auth/normalize'
+import { setLiveUserTypeOverlay } from '@/lib/auth/session'
+import { overlayLiveUserType } from '@/lib/server-auth'
 import {
   applyCaBadgeToProfile,
   generatePlatformCAToken,
@@ -40,6 +42,7 @@ import {
 import { ensureCompanyCaIdAssigned, generateUniqueCompanyCaId } from '@/lib/company-ca'
 import { callsOf, supabaseFake } from './support/supabase-fake'
 
+vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db', async () => {
   const { supabaseFake } = await import('./support/supabase-fake')
   return { supabase: supabaseFake.client, db: {} }
@@ -142,6 +145,13 @@ describe('isPlatformUserSession', () => {
 describe('withAuth', () => {
   const handler = vi.fn((req: NextRequest & { user: UserData }) => Response.json({ id: req.user.id }))
   const wrapped = withAuth(handler)
+
+  beforeEach(() => {
+    supabaseFake.respondWith((query) => query.table === 'users'
+      ? { data: { id: 21, account_status: 'active', user_type: 'company', verification_status: 'verified' } }
+      : { data: null })
+    setLiveUserTypeOverlay((claims, pathname) => overlayLiveUserType(claims, pathname))
+  })
 
   it('passes the user from a bearer token', async () => {
     const response = await wrapped(requestWith({ header: `Bearer ${generateToken(user)}` }))

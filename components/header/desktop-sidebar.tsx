@@ -17,6 +17,9 @@ export function DesktopSidebar({
   search,
   user,
   onLogout,
+  brandHref = '/',
+  hideSearch = false,
+  hideUtilityNav = false,
 }: {
   className: string
   navItems: LaunchHeaderNavItem[]
@@ -24,6 +27,9 @@ export function DesktopSidebar({
   search: ProfileSearch
   user: User | null
   onLogout: () => void
+  brandHref?: string
+  hideSearch?: boolean
+  hideUtilityNav?: boolean
 }) {
   const { searchQuery, showResults, setShowResults, setShowAllResults, handleSearchChange, clearSearch } = search
 
@@ -42,62 +48,64 @@ export function DesktopSidebar({
               </div>
             </div>
           ) : (
-            <ProductBrand href="/" nameClassName="text-white" poweredClassName="text-white/75" />
+            <ProductBrand href={brandHref} nameClassName="text-white" poweredClassName="text-white/75" />
           )}
         </div>
-        <div className="relative shrink-0 px-3 pt-4">
-          <div className="relative z-50">
-            {navLoading ? (
-              <Skeleton className="h-10 w-full rounded-lg bg-white/40" />
-            ) : (
-              <NavbarSearchInput
-                value={searchQuery}
-                onChange={handleSearchChange}
-                onClear={clearSearch}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') {
-                    e.preventDefault()
-                    clearSearch()
-                    e.currentTarget.blur()
-                  }
-                }}
-                onFocus={() => {
-                  setShowResults(true)
-                }}
-                onBlur={(e) => {
-                  setTimeout(() => {
-                    const relatedTarget = e.relatedTarget as HTMLElement
-                    const isClickingDropdown = relatedTarget && (
-                      relatedTarget.closest('[data-search-dropdown]') ||
-                      relatedTarget.getAttribute('data-search-dropdown') !== null
-                    )
-
-                    if (!isClickingDropdown) {
-                      if (!searchQuery.trim()) {
-                        setShowResults(false)
-                        setShowAllResults(false)
-                      }
+        {!hideSearch ? (
+          <div className="relative shrink-0 px-3 pt-4">
+            <div className="relative z-50">
+              {navLoading ? (
+                <Skeleton className="h-10 w-full rounded-lg bg-white/40" />
+              ) : (
+                <NavbarSearchInput
+                  value={searchQuery}
+                  onChange={handleSearchChange}
+                  onClear={clearSearch}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      e.preventDefault()
+                      clearSearch()
+                      e.currentTarget.blur()
                     }
-                  }, 150)
-                }}
-              />
-            )}
-          </div>
+                  }}
+                  onFocus={() => {
+                    setShowResults(true)
+                  }}
+                  onBlur={(e) => {
+                    setTimeout(() => {
+                      const relatedTarget = e.relatedTarget as HTMLElement
+                      const isClickingDropdown = relatedTarget && (
+                        relatedTarget.closest('[data-search-dropdown]') ||
+                        relatedTarget.getAttribute('data-search-dropdown') !== null
+                      )
 
-          {showResults && (
-            <div
-              className="absolute left-full top-0 z-50 ml-2"
-              data-search-dropdown="true"
-              onMouseDown={(e) => e.preventDefault()}
-            >
-              <div className="w-80 p-0 border-2 border-gray-300 rounded-lg shadow-lg overflow-hidden bg-white">
-                <div className="bg-white">
-                  <ProfileSearchResults search={search} variant="sidebar" />
+                      if (!isClickingDropdown) {
+                        if (!searchQuery.trim()) {
+                          setShowResults(false)
+                          setShowAllResults(false)
+                        }
+                      }
+                    }, 150)
+                  }}
+                />
+              )}
+            </div>
+
+            {showResults && (
+              <div
+                className="absolute left-full top-0 z-50 ml-2"
+                data-search-dropdown="true"
+                onMouseDown={(e) => e.preventDefault()}
+              >
+                <div className="w-80 p-0 border-2 border-gray-300 rounded-lg shadow-lg overflow-hidden bg-white">
+                  <div className="bg-white">
+                    <ProfileSearchResults search={search} variant="sidebar" />
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        ) : null}
         <PrimaryNavLinks
           items={navItems}
           isLoading={navLoading}
@@ -106,12 +114,14 @@ export function DesktopSidebar({
           skeletonClassName="h-9 w-full rounded-md bg-white/40"
           linkClassName="rounded-md px-3 py-2 text-sm font-medium text-[#F5F7F8] hover:bg-white/5 hover:text-white focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
         />
-        <SidebarUtilityNav
-          className="shrink-0 border-t border-white/15 px-3 py-3"
-          isLoading={navLoading}
-          buttonClassName="block w-full rounded-md border border-white bg-transparent px-2.5 py-1.5 text-left text-xs font-semibold text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-100"
-          linkClassName="rounded-md px-3 py-2 text-sm font-medium text-[#B7C1C7] hover:bg-white/5 hover:text-white focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
-        />
+        {!hideUtilityNav ? (
+          <SidebarUtilityNav
+            className="shrink-0 border-t border-white/15 px-3 py-3"
+            isLoading={navLoading}
+            buttonClassName="block w-full rounded-md border border-white bg-transparent px-2.5 py-1.5 text-left text-xs font-semibold text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-100"
+            linkClassName="rounded-md px-3 py-2 text-sm font-medium text-[#B7C1C7] hover:bg-white/5 hover:text-white focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
+          />
+        ) : null}
         <SidebarAccount user={user} isLoading={navLoading} onLogout={onLogout} />
       </div>
     </aside>

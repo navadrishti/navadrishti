@@ -14,6 +14,7 @@ import { initiateNgoVerification, reverifyNgoVerification } from '@/lib/ngo-veri
 import { approveReverification, rejectReverification } from '@/lib/reverification'
 import type { JsonRecord } from '@/lib/utils'
 import { jsonRequest, tokenFor } from './support/requests'
+import './support/install-test-auth'
 import { supabaseFake } from './support/supabase-fake'
 
 type StreamCallback = (error: unknown, result?: Record<string, unknown>) => void

@@ -81,13 +81,17 @@ export function implementingAgencyReportTemplate(data: ImplementingAgencyReportD
         <div class="field">
           <span class="field-label">Beneficiaries</span>
           <span class="field-value">${escapeHtml(
-            Number.isFinite(Number(data.beneficiaries)) ? Number(data.beneficiaries).toLocaleString('en-IN') : '—'
+            data.beneficiaries == null || !Number.isFinite(Number(data.beneficiaries))
+              ? '—'
+              : Number(data.beneficiaries).toLocaleString('en-IN')
           )}</span>
         </div>
         <div class="field">
           <span class="field-label">Progress</span>
           <span class="field-value">${escapeHtml(
-            Number.isFinite(Number(data.progressPercentage)) ? `${Number(data.progressPercentage)}%` : '—'
+            data.progressPercentage == null || !Number.isFinite(Number(data.progressPercentage))
+              ? '—'
+              : `${Number(data.progressPercentage)}%`
           )}</span>
         </div>
               </div>
@@ -106,9 +110,9 @@ export function implementingAgencyReportTemplate(data: ImplementingAgencyReportD
           <div class="field-value">${formatAmount(data.budgetInr)}</div>
         </div>
         <div class="metric-card">
-          <div class="field-label">Received</div>
+          <div class="field-label">Received (Net Confirmed)</div>
           <div class="field-value">${formatAmount(data.fundsReceived)}</div>
-          </div>
+        </div>
         <div class="metric-card">
           <div class="field-label">Utilized</div>
           <div class="field-value">${formatAmount(data.fundsUtilized)}</div>

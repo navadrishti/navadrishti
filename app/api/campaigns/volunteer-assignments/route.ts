@@ -15,7 +15,8 @@ import {
 } from '@/lib/campaign-volunteer-attendance'
 
 type CompanySummary = Pick<Tables<'users'>, 'id' | 'name' | 'email' | 'verification_status'>
-type VolunteerAssignment = Pick<Tables<'service_engagement_assignments'>, 'id' | 'meta'>
+type VolunteerAssignment = Pick<Tables<'service_engagement_assignments'>, 'id' | 'meta'> &
+  Partial<Pick<Tables<'service_engagement_assignments'>, 'status' | 'assigned_at'>>
 
 export async function GET(request: NextRequest) {
   try {
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
 
     const { data: assignments } = await supabase
       .from('service_engagement_assignments')
-      .select('id, target_id, meta, target_type')
+      .select('id, target_id, meta, target_type, status, assigned_at')
       .eq('assignee_user_id', user.id)
 
     const campaignAssignments = filterCampaignVolunteerAssignments(assignments)
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest) {
     const assignmentIds = campaignAssignments.map((row) => String(row.id || '')).filter(Boolean)
     type AttendanceEntry = { assignment_id: string; attendance_date: string | null; attendance_status: string | null }
     const { data: attendanceEntries } =
-      assignmentIds.length > 0
+      user.user_type === 'individual' && assignmentIds.length > 0
         ? await supabase
             .from('service_attendance_entries')
             .select('assignment_id, attendance_date, attendance_status')
@@ -76,7 +77,7 @@ export async function GET(request: NextRequest) {
       if (!application || isCampaignLeadNgo(campaign, user.id)) continue
 
       let assignment = assignmentsByCampaignId.get(String(campaign.id))
-      if (!assignment) {
+      if (!assignment && user.user_type === 'individual') {
         try {
           assignment = await ensureCampaignVolunteerAssignment({
             campaign,
@@ -119,7 +120,9 @@ export async function GET(request: NextRequest) {
         end_date: campaign.end_date || null,
         lifecycle,
         role: 'volunteer',
-        volunteer_capacity: Number(application.capacity || 1) || 1,
+        volunteer_capacity: user.user_type === 'ngo'
+          ? (Number.isFinite(Number(application.capacity)) && Number(application.capacity) > 0 ? Number(application.capacity) : null)
+          : Number(application.capacity || 1) || 1,
         applied_at: application.applied_at || null,
         company_id: Number(campaign.company_id || 0),
         company_name: company?.name || 'Company',
@@ -127,7 +130,8 @@ export async function GET(request: NextRequest) {
         company_verification_status: company?.verification_status || null,
         company_verified: String(company?.verification_status || '').toLowerCase() === 'verified',
         assignment_id: assignment?.id || null,
-        attendance_summary: attendanceSummary,
+        assignment_status: assignment?.status || null,
+        ...(user.user_type === 'individual' ? { attendance_summary: attendanceSummary } : {}),
       })
     }
 

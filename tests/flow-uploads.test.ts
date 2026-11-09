@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { generateAdminToken, generateToken, type UserData } from '@/lib/auth'
 import { POST as submitSupportTicket } from '@/app/api/help-support/route'
 import { POST as uploadVerificationDocument } from '@/app/api/verification/upload/route'
+import './support/install-test-auth'
 
 type StreamCallback = (error: unknown, result?: Record<string, unknown>) => void
 

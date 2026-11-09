@@ -11,12 +11,12 @@ type ChatPanelIntroProps = {
 
 export function ChatPanelIntro({ statusLabel, badgeLabel }: ChatPanelIntroProps) {
   return (
-    <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
-      <p className="text-sm font-semibold text-slate-950">{AGENT_NAMES.catalyst}</p>
-      <p className="mt-1 text-xs text-slate-600">Capture the campaign, milestones, and execution details step by step.</p>
-      <p className="mt-3 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Conversation</p>
-      <p className="mt-1 text-sm text-slate-600">{statusLabel}</p>
-      <div className="mt-2 inline-flex max-w-full rounded-full bg-[#1d4ed8]/8 px-3 py-1 text-xs font-medium text-[#1d4ed8]">
+    <div className="rounded-2xl border border-[#2B3E41]/20 bg-[#2B3E41] p-4 text-white shadow-sm">
+      <p className="text-sm font-semibold text-white">{AGENT_NAMES.catalyst}</p>
+      <p className="mt-1 text-xs text-white/75">Capture the campaign, milestones, and execution details step by step.</p>
+      <p className="mt-3 text-xs font-semibold uppercase tracking-[0.2em] text-white/60">Conversation</p>
+      <p className="mt-1 text-sm text-white/85">{statusLabel}</p>
+      <div className="mt-2 inline-flex max-w-full rounded-full bg-[#1d4ed8]/20 px-3 py-1 text-xs font-medium text-[#93c5fd]">
         {badgeLabel}
       </div>
     </div>

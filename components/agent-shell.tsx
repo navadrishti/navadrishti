@@ -15,24 +15,27 @@ export function MatchHeading({
   description,
   loading = false,
   extra,
+  badge,
 }: {
   title: string
   description?: string
   loading?: boolean
   extra?: ReactNode
+  badge?: ReactNode
 }) {
   return (
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           <Sparkles className="h-4 w-4 shrink-0 text-[#f97316]" />
           <p className="text-sm font-semibold text-[#ea580c]">{title}</p>
+          {badge}
         </div>
         {description ? <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p> : null}
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {extra}
-        {loading ? <Loader2 className="h-4 w-4 animate-spin text-[#f97316]" /> : null}
+        {loading ? <Loader2 className="h-4 w-4 animate-spin text-[#f97316]" aria-label="Loading recommendations" /> : null}
       </div>
     </div>
   )

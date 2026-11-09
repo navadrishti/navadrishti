@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v2 as cloudinary, type UploadApiOptions, type UploadApiResponse } from 'cloudinary';
-import { findAuthUser } from '@/lib/server-auth';
+import { authErrorResponse, getAuthUserFromRequest } from '@/lib/server-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -52,10 +52,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const authUser = findAuthUser(request);
-    if (!authUser) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
+    const authUser = await getAuthUserFromRequest(request);
     const userId = String(authUser.id);
 
     const formData = await request.formData();
@@ -129,6 +126,8 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Upload error:', error);
     
     // Provide more detailed error messages
@@ -160,10 +159,7 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const authUser = findAuthUser(request);
-    if (!authUser) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
+    const authUser = await getAuthUserFromRequest(request);
 
     const { searchParams } = new URL(request.url);
     const publicId = searchParams.get('publicId')?.trim();
@@ -181,6 +177,8 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ success: true }, { status: 200 });
 
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Error deleting image:', error);
     return NextResponse.json({ error: 'Failed to delete image' }, { status: 500 });
   }

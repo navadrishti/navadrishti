@@ -7,9 +7,11 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { ImageCarousel } from '@/components/ui/image-carousel'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { InfoMeter, InfoMeterGrid } from '@/components/info-meter'
 import { VerifiedAccountName } from '@/components/verification-badge'
 import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar'
 import { getInitials, getProviderLabel } from './helpers'
+import type { ListingMeter, ListingStat } from './listing-metrics'
 
 type ListingCardProps = {
   id: number
@@ -23,6 +25,8 @@ type ListingCardProps = {
   statusClassName: string
   categoryLabel: string
   metaLine: string
+  meters?: ListingMeter[]
+  stats?: ListingStat[]
   ownerProfileId?: number
   providerName: string
   providerType: string
@@ -45,6 +49,8 @@ export function ListingCard({
   statusClassName,
   categoryLabel,
   metaLine,
+  meters = [],
+  stats = [],
   ownerProfileId,
   providerName,
   providerType,
@@ -118,6 +124,37 @@ export function ListingCard({
           <p className="min-w-0 truncate text-xs text-gram-muted" title={metaLine}>
             {metaLine}
           </p>
+
+          {meters.length > 0 ? (
+            <InfoMeterGrid className="grid-cols-1 gap-1.5 sm:grid-cols-1 xl:grid-cols-1">
+              {meters.map((meter) => (
+                <InfoMeter
+                  key={`${meter.title}-${meter.value}`}
+                  title={meter.title}
+                  value={meter.value}
+                  detail={meter.detail}
+                  progress={meter.progress}
+                  className="border-gram-border bg-[#F7F8F6] p-2.5"
+                />
+              ))}
+            </InfoMeterGrid>
+          ) : null}
+
+          {stats.length > 0 ? (
+            <ul className="space-y-1.5 rounded-md border border-gram-border bg-[#F7F8F6] px-2.5 py-2">
+              {stats.map((stat) => (
+                <li key={`${stat.label}-${stat.value}`} className="min-w-0">
+                  <div className="flex items-baseline justify-between gap-2 text-xs">
+                    <span className="shrink-0 font-medium uppercase tracking-wide text-slate-500">
+                      {stat.label}
+                    </span>
+                    <span className="truncate font-semibold tabular-nums text-slate-900">{stat.value}</span>
+                  </div>
+                  {stat.detail ? <p className="mt-0.5 text-[11px] text-slate-600">{stat.detail}</p> : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
 
           <div className="mt-auto flex min-w-0 items-center gap-2 border-t border-gram-border pt-2">
             <Link

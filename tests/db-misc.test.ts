@@ -155,7 +155,7 @@ describe('verificationDocuments', () => {
   it('upserts with defaults on the document key', async () => {
     await expect(
       verificationDocuments.upsert({ user_id: 5, actor_type: 'ngo', doc_key: 'csr1', file_url: 'https://f/1' })
-    ).resolves.toEqual({ ok: true })
+    ).resolves.toMatchObject({ ok: true })
     const [upsert] = fake.queries
     expect(upsert.options).toEqual({ onConflict: 'user_id,actor_type,doc_key' })
     expect(upsert.payload).toMatchObject({

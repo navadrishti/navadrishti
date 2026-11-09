@@ -5,6 +5,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast as sonnerToast } from 'sonner';
@@ -14,42 +22,34 @@ import {
   AdminSplitViewSkeleton,
   formatAdminDetailValue,
 } from '@/components/evidence-verification/portal-ui';
+import { formatMeterInr, meterPercent } from '@/components/info-meter';
+import { DashboardStatGrid } from '@/components/dashboard-overview';
+import { Progress } from '@/components/ui/progress';
 import { formatStatusLabel } from '@/lib/format-date';
-import { cn, getErrorMessage } from '@/lib/utils';
-import type { Tables } from '@/lib/database.types';
-import type { AdminUserSummary } from './types';
+import {
+  aggregateAdminPaymentTotals,
+  withAdminPaymentTotalsScope,
+  type ScopedAdminPaymentTotals,
+} from '@/lib/dashboard/admin-payment-totals';
+import { cn, getErrorMessage, parseAmountToInr } from '@/lib/utils';
+import type { AdminPaymentRow } from './types';
 
-type AdminPaymentRow = {
-  id: string;
-  razorpay_payment_id: string;
-  razorpay_order_id?: string | null;
-  amount_inr?: number | string | null;
-  currency?: string | null;
-  payment_status?: string | null;
-  payment_method?: string | null;
-  paid_at?: string | null;
-  created_at?: string | null;
-  payment_kind_label?: string | null;
-  payer?: Pick<AdminUserSummary, 'id' | 'name' | 'email'> | null;
-  payee?: Pick<AdminUserSummary, 'id' | 'name' | 'email'> | null;
-  refunded_inr?: number | null;
-  service_request_id?: number | null;
-  service_request?: {
-    id: number;
-    title: string;
-    status: string | null;
-    request_type: string | null;
-    category: string;
-    requester?: Pick<AdminUserSummary, 'id' | 'name' | 'email'> | null;
-  } | null;
-  refunds?: Tables<'razorpay_refunds'>[];
-  latest_refund_status?: string | null;
-  refundable?: boolean;
-};
+type PaymentFilter = 'all' | 'captured' | 'partially_refunded' | 'refunded' | 'failed' | 'pending';
+
+const PAGE_SIZE = 50;
+
+const FILTERS: { value: PaymentFilter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'captured', label: 'Captured' },
+  { value: 'partially_refunded', label: 'Partially refunded' },
+  { value: 'refunded', label: 'Refunded' },
+  { value: 'failed', label: 'Failed' },
+  { value: 'pending', label: 'Pending' },
+];
 
 const filterButtonClass = (active: boolean) =>
   cn(
-    'inline-flex h-10 w-full items-center justify-center rounded-md border px-3 text-sm font-medium transition-colors',
+    'inline-flex h-10 w-full items-center justify-center rounded-md border px-2 text-xs font-medium transition-colors sm:text-sm',
     active
       ? 'border-udaan-blue bg-udaan-blue text-white'
       : 'border-slate-200 bg-white text-slate-700 hover:border-udaan-blue/40 hover:bg-udaan-blue/[0.04] hover:text-udaan-blue'
@@ -57,73 +57,112 @@ const filterButtonClass = (active: boolean) =>
 
 const statusTone = (value?: string | null) => {
   const normalized = String(value || '').toLowerCase();
-  if (['processed', 'paid', 'approved', 'verified'].includes(normalized)) return 'bg-emerald-100 text-emerald-800';
-  if (['pending', 'in_progress', 'partially_refunded'].includes(normalized)) return 'bg-amber-100 text-amber-800';
+  if (['processed', 'paid', 'approved', 'verified', 'captured'].includes(normalized)) return 'bg-emerald-100 text-emerald-800';
+  if (['pending', 'in_progress', 'partially_refunded', 'initiated', 'authorized', 'created'].includes(normalized)) {
+    return 'bg-amber-100 text-amber-800';
+  }
   if (['failed', 'rejected', 'refunded'].includes(normalized)) return 'bg-red-100 text-red-800';
   return 'bg-slate-100 text-slate-700';
 };
 
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
+
 export function AdminRefundsPanel() {
   const [payments, setPayments] = useState<AdminPaymentRow[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [filter, setFilter] = useState<'all' | 'refundable' | 'refunded'>('all');
+  const [filter, setFilter] = useState<PaymentFilter>('all');
   const [query, setQuery] = useState('');
+  const [offset, setOffset] = useState(0);
+  const debouncedQuery = useDebouncedValue(query, 300);
   const [selectedPayment, setSelectedPayment] = useState<AdminPaymentRow | null>(null);
-  const [refundRequestId, setRefundRequestId] = useState('');
-  const [refundPaymentId, setRefundPaymentId] = useState('');
+  const [refundMode, setRefundMode] = useState<'full' | 'partial'>('full');
   const [refundAmount, setRefundAmount] = useState('');
   const [refundReason, setRefundReason] = useState('admin_refund');
   const [refunding, setRefunding] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [windowTotals, setWindowTotals] = useState<ScopedAdminPaymentTotals | null>(null);
 
   const loadPayments = useCallback(async () => {
     try {
       setLoading(true);
-      const params = new URLSearchParams();
-      if (filter !== 'all') params.set('filter', filter);
-      if (query.trim()) params.set('q', query.trim());
+      const params = new URLSearchParams({
+        filter,
+        limit: String(PAGE_SIZE),
+        offset: String(offset),
+      });
+      if (debouncedQuery.trim()) params.set('q', debouncedQuery.trim());
       const response = await fetch(`/api/admin/payments?${params.toString()}`, { credentials: 'include' });
       const data = await response.json();
       if (!response.ok || !data?.success) throw new Error(readApiError(data, 'Failed to load payments'));
-      setPayments(Array.isArray(data.payments) ? data.payments : []);
+      const nextPayments: AdminPaymentRow[] = Array.isArray(data.payments) ? data.payments : [];
+      setPayments(nextPayments);
+      setWindowTotals((data.totals?.window as ScopedAdminPaymentTotals | undefined) || null);
+      setTotal(Number(data.total || nextPayments.length));
+      setSelectedPayment((current) => {
+        if (!current) return null;
+        return nextPayments.find((row) => row.razorpay_payment_id === current.razorpay_payment_id) || null;
+      });
     } catch (error) {
       sonnerToast.error(getErrorMessage(error) || 'Failed to load payments');
       setPayments([]);
+      setTotal(0);
+      setWindowTotals(null);
     } finally {
       setLoading(false);
     }
-  }, [filter, query]);
+  }, [filter, debouncedQuery, offset]);
 
   useEffect(() => {
     void loadPayments();
   }, [loadPayments]);
 
-  const visiblePayments = useMemo(() => payments, [payments]);
+  useEffect(() => {
+    setOffset(0);
+  }, [filter, debouncedQuery]);
 
   const selectPayment = (payment: AdminPaymentRow) => {
     setSelectedPayment(payment);
-    setRefundPaymentId(payment.razorpay_payment_id || '');
-    setRefundRequestId(payment.service_request_id ? String(payment.service_request_id) : '');
+    setRefundMode('full');
     setRefundAmount('');
     setRefundReason('admin_refund');
+    setConfirmOpen(false);
   };
 
-  const discoverPayment = async (paymentId: string) => {
-    if (!paymentId) return;
-    try {
-      const res = await fetch(`/api/admin/payments/discover?paymentId=${encodeURIComponent(paymentId)}`, { credentials: 'include' });
-      const payload = await res.json();
-      if (res.ok && payload?.success && payload.data) {
-        const { service_request_id } = payload.data;
-        if (service_request_id) setRefundRequestId(String(service_request_id));
-      }
-    } catch {
-      // ignore
+  const remainingInr = useMemo(() => {
+    if (!selectedPayment) return 0;
+    if (selectedPayment.remaining_refundable_inr != null) {
+      return Number(selectedPayment.remaining_refundable_inr);
     }
-  };
+    return Math.max(
+      0,
+      parseAmountToInr(selectedPayment.amount_inr) - Number(selectedPayment.refunded_inr || 0) - Number(selectedPayment.pending_refund_inr || 0)
+    );
+  }, [selectedPayment]);
+
+  const refundAmountInr = useMemo(() => {
+    if (!selectedPayment?.refundable) return 0;
+    if (refundMode === 'full') return remainingInr;
+    return parseAmountToInr(refundAmount);
+  }, [selectedPayment, refundMode, refundAmount, remainingInr]);
+
+  const canSubmitRefund = Boolean(
+    selectedPayment?.refundable &&
+      refundAmountInr > 0 &&
+      refundAmountInr <= remainingInr + 0.0001 &&
+      refundReason.trim()
+  );
 
   const initiateRefund = async () => {
-    if (!refundPaymentId.trim()) {
-      sonnerToast.error('Payment ID is required');
+    if (!selectedPayment || !canSubmitRefund) {
+      sonnerToast.error('Enter a valid refund amount within the remaining balance');
       return;
     }
     try {
@@ -133,18 +172,23 @@ export function AdminRefundsPanel() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          service_request_id: refundRequestId.trim() || null,
-          razorpay_payment_id: refundPaymentId,
-          amount: refundAmount,
-          reason: refundReason,
+          service_request_id: selectedPayment.service_request_id || null,
+          razorpay_payment_id: selectedPayment.razorpay_payment_id,
+          amount: refundMode === 'full' ? 0 : refundAmountInr,
+          reason: refundReason.trim() || 'admin_refund',
         }),
       });
       const data = await response.json();
       if (!response.ok || !data?.success) throw new Error(readApiError(data, 'Failed to initiate refund'));
-      sonnerToast.success(data?.data?.message || 'Refund initiated');
+      const status = String(data?.data?.refund_status || 'pending');
+      sonnerToast.success(
+        status === 'processed'
+          ? data?.data?.message || 'Refund processed successfully'
+          : data?.data?.message || 'Refund initiated. Waiting for provider confirmation.'
+      );
       for (const action of data?.data?.actions || []) sonnerToast.info(action);
       for (const warning of data?.data?.warnings || []) sonnerToast.warning(warning);
-      setSelectedPayment(null);
+      setConfirmOpen(false);
       await loadPayments();
     } catch (error) {
       sonnerToast.error(getErrorMessage(error) || 'Refund failed');
@@ -152,6 +196,20 @@ export function AdminRefundsPanel() {
       setRefunding(false);
     }
   };
+
+  const pageStart = total === 0 ? 0 : offset + 1;
+  const pageEnd = Math.min(offset + PAGE_SIZE, total);
+  const canPrev = offset > 0;
+  const canNext = offset + PAGE_SIZE < total;
+
+  const pageLedger = useMemo(
+    () =>
+      withAdminPaymentTotalsScope(aggregateAdminPaymentTotals(payments), {
+        scope: 'page',
+        total_matching: payments.length,
+      }),
+    [payments]
+  );
 
   if (loading && payments.length === 0) {
     return <AdminSplitViewSkeleton inboxTitleWidth="w-44" detailWithEditor={false} inboxMode="refunds" />;
@@ -167,30 +225,128 @@ export function AdminRefundsPanel() {
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search payment ID, request, payer, payee or type"
+            placeholder="Search payment ID, order ID, payer, NGO, or CSR project"
             className="h-10 border-blue-200 bg-white"
           />
-          <div className="grid grid-cols-3 gap-2">
-            <button type="button" onClick={() => setFilter('all')} className={filterButtonClass(filter === 'all')}>All</button>
-            <button type="button" onClick={() => setFilter('refundable')} className={filterButtonClass(filter === 'refundable')}>Refundable</button>
-            <button type="button" onClick={() => setFilter('refunded')} className={filterButtonClass(filter === 'refunded')}>Refunded</button>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {FILTERS.map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                onClick={() => setFilter(item.value)}
+                className={filterButtonClass(filter === item.value)}
+              >
+                {item.label}
+              </button>
+            ))}
           </div>
-          <Button type="button" className="h-10 w-full bg-udaan-blue text-white hover:bg-udaan-blue/90" onClick={loadPayments} disabled={loading}>
-            {loading ? 'Refreshing...' : 'Refresh payments'}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button type="button" className="h-10 flex-1 bg-udaan-blue text-white hover:bg-udaan-blue/90" onClick={loadPayments} disabled={loading}>
+              {loading ? 'Refreshing...' : 'Refresh payments'}
+            </Button>
+          </div>
+          <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
+            <span>
+              {total === 0 ? 'No payments' : `Showing ${pageStart}–${pageEnd} of ${total}`}
+            </span>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" className="h-8" disabled={!canPrev || loading} onClick={() => setOffset((value) => Math.max(0, value - PAGE_SIZE))}>
+                Previous
+              </Button>
+              <Button type="button" variant="outline" className="h-8" disabled={!canNext || loading} onClick={() => setOffset((value) => value + PAGE_SIZE)}>
+                Next
+              </Button>
+            </div>
+          </div>
+
+          {payments.length > 0 ? (
+            <div className="space-y-3">
+              {windowTotals ? (
+                <DashboardStatGrid
+                  className="xl:grid-cols-3"
+                  items={[
+                    {
+                      label: windowTotals.is_complete_global
+                        ? 'Global captured (complete)'
+                        : 'Window captured',
+                      value: formatMeterInr(windowTotals.captured_amount),
+                      detail: windowTotals.is_complete_global
+                        ? 'All matching rows in fetch window'
+                        : 'Soft-capped window · not page totals',
+                    },
+                    {
+                      label: 'Confirmed refunded (window)',
+                      value: formatMeterInr(windowTotals.confirmed_refunded_amount),
+                      detail: `Net ${formatMeterInr(windowTotals.net_captured_after_refunds)}`,
+                    },
+                    {
+                      label: 'Pending / failed (window)',
+                      value: `${formatMeterInr(windowTotals.pending_refund_amount)} / ${formatMeterInr(windowTotals.failed_refund_amount)}`,
+                      tone: 'muted',
+                    },
+                  ]}
+                />
+              ) : null}
+              <DashboardStatGrid
+                className="xl:grid-cols-4"
+                items={[
+                  {
+                    label: 'Page captured volume',
+                    value: formatMeterInr(pageLedger.captured_amount),
+                    detail: 'This page only',
+                  },
+                  {
+                    label: 'Still refundable',
+                    value: formatMeterInr(pageLedger.remaining_refundable_amount),
+                    detail: `${pageLedger.refundable_payment_count} eligible`,
+                    tone: pageLedger.remaining_refundable_amount > 0 ? 'attention' : 'default',
+                  },
+                  {
+                    label: 'Pending refunds',
+                    value: formatMeterInr(pageLedger.pending_refund_amount),
+                    tone: 'muted',
+                  },
+                  {
+                    label: 'Confirmed refunded (page)',
+                    value: formatMeterInr(pageLedger.confirmed_refunded_amount),
+                    tone: 'muted',
+                  },
+                ]}
+              />
+              {meterPercent(
+                pageLedger.remaining_refundable_amount,
+                pageLedger.captured_amount || pageLedger.remaining_refundable_amount
+              ) != null && pageLedger.captured_amount > 0 ? (
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-3 space-y-2">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+                    <span className="text-slate-600">Refundable share of page captured volume</span>
+                    <span className="font-medium tabular-nums text-slate-900">
+                      {meterPercent(pageLedger.remaining_refundable_amount, pageLedger.captured_amount)}%
+                    </span>
+                  </div>
+                  <Progress
+                    value={
+                      meterPercent(pageLedger.remaining_refundable_amount, pageLedger.captured_amount) ?? 0
+                    }
+                    className="h-1.5"
+                  />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="flex min-h-[14rem] flex-1 flex-col border-t border-slate-100 pt-4">
             {loading ? (
               <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/50 py-10 text-sm text-slate-500">
                 Loading payments...
               </div>
-            ) : visiblePayments.length === 0 ? (
+            ) : payments.length === 0 ? (
               <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/50 py-10 text-center text-sm text-slate-500">
                 No payments found for this filter.
               </div>
             ) : (
               <div className="max-h-[28rem] space-y-3 overflow-y-auto pr-1">
-                {visiblePayments.map((payment) => (
+                {payments.map((payment) => (
                   <button
                     key={`${payment.id}-${payment.razorpay_payment_id}`}
                     type="button"
@@ -210,15 +366,27 @@ export function AdminRefundsPanel() {
                           {payment.service_request_id
                             ? ` • Request #${payment.service_request_id} ${payment.service_request?.title || ''}`
                             : ''}
+                          {payment.csr_project_id ? ` • Project ${payment.csr_project_title || payment.csr_project_id}` : ''}
                         </p>
                       </div>
-                      <Badge className={cn('shrink-0', statusTone(payment.latest_refund_status || payment.payment_status))}>
-                        {formatStatusLabel(payment.latest_refund_status || payment.payment_status || 'unknown')}
-                      </Badge>
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        <Badge className={statusTone(payment.payment_status)}>
+                          {formatStatusLabel(payment.payment_status || 'unknown')}
+                        </Badge>
+                        {payment.latest_refund_status ? (
+                          <Badge className={statusTone(payment.latest_refund_status)}>
+                            Refund {formatStatusLabel(payment.latest_refund_status)}
+                          </Badge>
+                        ) : null}
+                      </div>
                     </div>
                     <p className="mt-2 text-sm text-slate-600">
                       INR {formatAdminDetailValue(payment.amount_inr)} • {payment.payer?.name || 'Unknown payer'}
-                      {payment.refunded_inr ? ` • INR ${payment.refunded_inr} refunded` : ''}
+                      {payment.refundable
+                        ? ` • INR ${formatAdminDetailValue(payment.remaining_refundable_inr)} refundable`
+                        : payment.refunded_inr
+                          ? ` • INR ${formatAdminDetailValue(payment.refunded_inr)} refunded`
+                          : ''}
                     </p>
                   </button>
                 ))}
@@ -230,12 +398,12 @@ export function AdminRefundsPanel() {
 
       <Card className="flex min-h-[36rem] flex-col border-blue-100 bg-white">
         <CardHeader className="border-b border-slate-100 pb-4">
-          <CardTitle className="text-slate-900">Refund controls</CardTitle>
+          <CardTitle className="text-slate-900">Payment detail &amp; refunds</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-1 flex-col gap-4 pt-6">
           {!selectedPayment ? (
             <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/50 p-6 text-center text-sm text-slate-600">
-              Select a payment to review full details and initiate a refund. Only admins can issue refunds.
+              Select a payment to review details, refund history, and eligibility. Only admins can issue refunds.
             </div>
           ) : (
             <div className="flex-1 space-y-5 overflow-y-auto pr-1">
@@ -245,77 +413,127 @@ export function AdminRefundsPanel() {
                     { label: 'Payment ID', value: formatAdminDetailValue(selectedPayment.razorpay_payment_id) },
                     { label: 'Order ID', value: formatAdminDetailValue(selectedPayment.razorpay_order_id) },
                     { label: 'Payment type', value: formatAdminDetailValue(selectedPayment.payment_kind_label) },
-                    { label: 'Amount (INR)', value: formatAdminDetailValue(selectedPayment.amount_inr) },
-                    { label: 'Refunded so far (INR)', value: formatAdminDetailValue(selectedPayment.refunded_inr || 0) },
+                    { label: 'Captured amount (INR)', value: formatAdminDetailValue(selectedPayment.amount_inr) },
+                    { label: 'Refunded (INR)', value: formatAdminDetailValue(selectedPayment.refunded_inr || 0) },
+                    { label: 'Pending refunds (INR)', value: formatAdminDetailValue(selectedPayment.pending_refund_inr || 0) },
+                    { label: 'Remaining refundable (INR)', value: formatAdminDetailValue(selectedPayment.remaining_refundable_inr || 0) },
+                    { label: 'Eligibility', value: formatAdminDetailValue(selectedPayment.eligibility_label || (selectedPayment.refundable ? 'Refundable' : 'Not refundable')) },
                     { label: 'Payment status', value: formatAdminDetailValue(selectedPayment.payment_status) },
-                    { label: 'Refund status', value: formatAdminDetailValue(selectedPayment.latest_refund_status) },
+                    { label: 'Latest refund status', value: formatAdminDetailValue(selectedPayment.latest_refund_status) },
                     { label: 'Paid at', value: formatAdminDetailValue(selectedPayment.paid_at) },
                     { label: 'Paid by', value: formatAdminDetailValue(selectedPayment.payer?.name) },
-                    { label: 'Paid to', value: formatAdminDetailValue(selectedPayment.payee?.name) },
+                    { label: 'Paid to / NGO', value: formatAdminDetailValue(selectedPayment.payee?.name) },
                     { label: 'Service request', value: formatAdminDetailValue(selectedPayment.service_request?.title) },
-                    { label: 'Request status', value: formatAdminDetailValue(selectedPayment.service_request?.status) },
+                    { label: 'CSR project', value: formatAdminDetailValue(selectedPayment.csr_project_title || selectedPayment.csr_project_id) },
+                    { label: 'CSR milestone', value: formatAdminDetailValue(selectedPayment.csr_milestone_title || selectedPayment.csr_milestone_id) },
                   ]}
                 />
               </AdminDetailSection>
 
-              {Array.isArray(selectedPayment.refunds) && selectedPayment.refunds.length > 0 ? (
-                <AdminDetailSection title="Refund history">
-                  <ul className="max-h-40 space-y-2 overflow-auto text-sm">
+              <AdminDetailSection title="Refund history">
+                {Array.isArray(selectedPayment.refunds) && selectedPayment.refunds.length > 0 ? (
+                  <ul className="max-h-48 space-y-2 overflow-auto text-sm">
                     {selectedPayment.refunds.map((refund) => (
-                      <li key={refund.id} className="flex items-center justify-between gap-3 rounded-md border border-slate-100 px-3 py-2">
-                        <span className="min-w-0 truncate text-slate-700">
-                          INR {formatAdminDetailValue(refund.amount_inr)} • {refund.refund_reason || 'refund'} • {formatAdminDetailValue(refund.initiated_at)}
-                        </span>
-                        <Badge className={cn('shrink-0', statusTone(refund.refund_status))}>
-                          {formatStatusLabel(refund.refund_status)}
-                        </Badge>
+                      <li key={refund.id} className="rounded-md border border-slate-100 px-3 py-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-slate-800">
+                              {refund.razorpay_refund_id || refund.id} • INR {formatAdminDetailValue(refund.amount_inr)}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {refund.refund_reason || 'refund'} • initiated {formatAdminDetailValue(refund.initiated_at)}
+                              {refund.initiated_by?.name ? ` • by ${refund.initiated_by.name}` : ''}
+                              {refund.processed_at ? ` • processed ${formatAdminDetailValue(refund.processed_at)}` : ''}
+                            </p>
+                          </div>
+                          <Badge className={cn('shrink-0', statusTone(refund.refund_status))}>
+                            {formatStatusLabel(refund.refund_status)}
+                          </Badge>
+                        </div>
                       </li>
                     ))}
                   </ul>
-                </AdminDetailSection>
-              ) : null}
+                ) : (
+                  <p className="text-sm text-slate-500">No refunds recorded for this payment yet.</p>
+                )}
+              </AdminDetailSection>
 
               <AdminDetailSection title="Initiate refund">
-                <p className="text-xs text-amber-800">
-                  Any captured payment can be refunded in full or in part. Money already sent to the payee is pulled back automatically. Users cannot start refunds themselves.
-                </p>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="space-y-2 md:col-span-2">
-                    <label className="text-sm font-medium text-slate-700">Service Request ID (optional)</label>
-                    <Input value={refundRequestId} onChange={(e) => setRefundRequestId(e.target.value)} placeholder="Only checked when filled in" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700">Payment ID</label>
-                    <Input
-                      value={refundPaymentId}
-                      onChange={(e) => setRefundPaymentId(e.target.value)}
-                      onBlur={(e) => discoverPayment(e.target.value)}
-                      placeholder="pay_xxxxx"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700">Refund amount (optional)</label>
-                    <Input value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} placeholder="Leave blank to refund everything left" />
-                  </div>
-                  <div className="space-y-2 md:col-span-2">
-                    <label className="text-sm font-medium text-slate-700">Refund reason</label>
-                    <Textarea value={refundReason} onChange={(e) => setRefundReason(e.target.value)} rows={3} placeholder="admin_refund" />
-                  </div>
-                </div>
-                <Button
-                  type="button"
-                  variant="destructive"
-                  className="h-10 w-full"
-                  onClick={initiateRefund}
-                  disabled={refunding || !selectedPayment.refundable}
-                >
-                  {refunding ? 'Initiating refund...' : selectedPayment.refundable ? 'Initiate Refund' : 'Fully refunded'}
-                </Button>
+                {selectedPayment.refundable ? (
+                  <>
+                    <p className="text-xs text-amber-800">
+                      Remaining refundable balance: INR {remainingInr.toFixed(2)}. Pending refunds already reduce this balance.
+                      The provider confirms completion asynchronously — a successful request is not the same as a processed refund.
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button type="button" className={filterButtonClass(refundMode === 'full')} onClick={() => { setRefundMode('full'); setRefundAmount(''); }}>
+                        Full refund
+                      </button>
+                      <button type="button" className={filterButtonClass(refundMode === 'partial')} onClick={() => setRefundMode('partial')}>
+                        Partial refund
+                      </button>
+                    </div>
+                    <div className="grid gap-3">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-slate-700">Refund amount (INR)</label>
+                        <Input
+                          value={refundMode === 'full' ? remainingInr.toFixed(2) : refundAmount}
+                          onChange={(e) => setRefundAmount(e.target.value)}
+                          disabled={refundMode === 'full'}
+                          placeholder={`Up to ${remainingInr.toFixed(2)}`}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-slate-700">Reason for refund</label>
+                        <Textarea value={refundReason} onChange={(e) => setRefundReason(e.target.value)} rows={3} placeholder="admin_refund" />
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      className="h-10 w-full"
+                      onClick={() => setConfirmOpen(true)}
+                      disabled={refunding || !canSubmitRefund}
+                    >
+                      Review refund
+                    </Button>
+                  </>
+                ) : (
+                  <p className="text-sm text-slate-600">
+                    {selectedPayment.eligibility_label || 'This payment cannot be refunded.'}
+                  </p>
+                )}
               </AdminDetailSection>
             </div>
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm refund</DialogTitle>
+            <DialogDescription>
+              Refund INR {refundAmountInr.toFixed(2)} for payment {selectedPayment?.razorpay_payment_id}. This uses the existing admin refund workflow and cannot exceed the remaining refundable balance.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 text-sm text-slate-700">
+            <p>Original captured: INR {formatAdminDetailValue(selectedPayment?.amount_inr)}</p>
+            <p>Already refunded: INR {formatAdminDetailValue(selectedPayment?.refunded_inr || 0)}</p>
+            <p>Pending refunds: INR {formatAdminDetailValue(selectedPayment?.pending_refund_inr || 0)}</p>
+            <p>Remaining before this refund: INR {remainingInr.toFixed(2)}</p>
+            <p>Reason: {refundReason.trim() || 'admin_refund'}</p>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setConfirmOpen(false)} disabled={refunding}>
+              Cancel
+            </Button>
+            <Button type="button" variant="destructive" onClick={initiateRefund} disabled={refunding || !canSubmitRefund}>
+              {refunding ? 'Submitting...' : `Confirm INR ${refundAmountInr.toFixed(2)} refund`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

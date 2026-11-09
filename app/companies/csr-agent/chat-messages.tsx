@@ -158,7 +158,7 @@ export function ChatMessageList({
           <div className="flex justify-start gap-3">
             <AssistantAvatar />
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 shadow-sm">
-              <Loader2 className="h-5 w-5 animate-spin text-slate-500" />
+              <Loader2 className="h-5 w-5 animate-spin text-[#1d4ed8]" />
             </div>
           </div>
         )}

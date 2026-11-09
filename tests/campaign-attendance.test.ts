@@ -81,12 +81,19 @@ describe('campaign day counts', () => {
     expect(getInclusiveDayCount(start, end)).toBe(expected)
   })
 
-  it('counts elapsed days up to today or the end date', () => {
-    const reference = new Date(2026, 0, 5, 15)
+  it('counts elapsed days up to today or the end date in IST', () => {
+    const reference = new Date('2026-01-05T09:30:00Z') // 15:00 IST
     expect(getElapsedCampaignDays('2026-01-01', '2026-01-10', reference)).toBe(5)
     expect(getElapsedCampaignDays('2026-01-01', '2026-01-03', reference)).toBe(3)
     expect(getElapsedCampaignDays('2026-02-01', '2026-02-10', reference)).toBe(0)
     expect(getElapsedCampaignDays('2026-01-01', null, reference)).toBe(0)
+  })
+
+  it('uses India calendar day near UTC midnight so today marks stay daily', () => {
+    // 2026-01-05 00:30 IST = 2026-01-04 19:00 UTC
+    const justAfterIstMidnight = new Date('2026-01-04T19:00:00Z')
+    expect(getElapsedCampaignDays('2026-01-01', '2026-01-10', justAfterIstMidnight)).toBe(5)
+    expect(listElapsedCampaignDates('2026-01-01', '2026-01-10', justAfterIstMidnight).at(-1)).toBe('2026-01-05')
   })
 
   it('lists every inclusive campaign day from start through end', () => {
@@ -94,7 +101,7 @@ describe('campaign day counts', () => {
     expect(dates).toHaveLength(93)
     expect(dates[0]).toBe('2026-07-01')
     expect(dates.at(-1)).toBe('2026-10-01')
-    expect(listElapsedCampaignDates('2026-07-01', '2026-10-01', new Date(2026, 6, 3, 12))).toEqual([
+    expect(listElapsedCampaignDates('2026-07-01', '2026-10-01', new Date('2026-07-03T06:30:00Z'))).toEqual([
       '2026-07-01',
       '2026-07-02',
       '2026-07-03',

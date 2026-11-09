@@ -49,6 +49,25 @@ export const getOfferRequestBucket = (request: Pick<OfferRequestItem, 'status' |
   return 'pending';
 };
 
+/** API allows completed only from accepted — match that gate in the owner UI. */
+export function canCompleteOfferRequest(
+  request: Pick<OfferRequestItem, 'status'> | { status?: string | null }
+): boolean {
+  return String(request.status || '').trim().toLowerCase() === 'accepted';
+}
+
+export type OfferRequestDecisionStatus = 'accepted' | 'rejected' | 'completed';
+
+export function offerRequestAssignedAfterStatus(status: OfferRequestDecisionStatus): boolean {
+  return status === 'accepted' || status === 'completed';
+}
+
+export function offerRequestStatusSuccessMessage(status: OfferRequestDecisionStatus): string {
+  if (status === 'accepted') return 'Request accepted and offer assigned';
+  if (status === 'completed') return 'Offer fulfilment marked as completed';
+  return 'Request rejected';
+}
+
 function applicationStatusToRequestStatus(status: string): OfferRequestItem['status'] {
   const normalized = String(status || '').toLowerCase();
   if (normalized === 'in_progress') return 'active';

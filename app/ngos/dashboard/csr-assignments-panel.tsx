@@ -2,7 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CampaignVolunteerAssignmentCard } from '@/components/campaign-volunteer-assignment-card';
+import { NgoParticipationCard } from './ngo-participation-card';
 import { CampaignAssignmentDetails } from './campaign-assignment-details';
 import { CsrProjectCard } from './csr-project-card';
 import { LeadInvitationsPanel } from './lead-invitations-panel';
@@ -39,16 +39,26 @@ export function CsrAssignmentsPanel({ data, actions, groups, tab, onTabChange }:
   } = groups;
 
   const renderProject = (project: NgoCsrProject, variant: 'ongoing' | 'completed') => (
+    project.financial_access !== true ? (
+      <NgoParticipationCard key={project.id} lookup={{ projectId: project.id }} title={project.title} location={project.region} status={project.project_status}
+        role={project.ngo_role === 'participant' ? 'participant' : 'unconfirmed'}
+        assignment={[...ongoingVolunteerAssignments, ...completedVolunteerAssignments].find((item) => item.campaign_id === project.campaign_id)}
+        schedule={{ start: project.schedule_start, end: project.schedule_end, campaignStatus: project.campaign_status }} />
+    ) : (
     <CsrProjectCard
       key={project.id}
       project={project}
       variant={variant}
       evidence={data.projectEvidenceById[project.id]}
       loadingEvidence={data.loadingEvidenceProjectId === project.id}
-      submittingEvidence={data.submittingEvidenceProjectId === project.id}
       onViewEvidence={data.fetchProjectEvidenceTimeline}
-      onSubmitEvidence={variant === 'ongoing' ? data.submitProjectEvidence : undefined}
+      hideOps={variant === 'ongoing' && project.financial_access === true &&
+        ongoingLeadAssignments.some((assignment) => assignment.campaign_id === project.campaign_id) &&
+        ongoingProjects.find((candidate) =>
+          candidate.campaign_id === project.campaign_id && candidate.financial_access === true
+        )?.id === project.id}
     />
+    )
   );
 
   return (
@@ -56,7 +66,10 @@ export function CsrAssignmentsPanel({ data, actions, groups, tab, onTabChange }:
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-medium">Assignments</h3>
-          <p className="text-sm text-muted-foreground">Invitations, ongoing work, and completed CSR where you are assigned as lead NGO or volunteer.</p>
+          <p className="text-sm text-muted-foreground">
+            Lead NGO assignments are CSR projects you implement (monitor evidence on the platform; field officers submit from GRAM).
+            Participating NGOs see their own participation and project progress separately.
+          </p>
         </div>
         <Button
           variant="outline"
@@ -116,12 +129,19 @@ export function CsrAssignmentsPanel({ data, actions, groups, tab, onTabChange }:
                       roleLabel="Lead NGO"
                       capabilityRentals={data.csrCapabilityRentals}
                       onRentalUpdated={data.fetchCsrCapabilityRentals}
+                      project={ongoingProjects.find((project) =>
+                        project.campaign_id === assignment.campaign_id && project.financial_access === true
+                      )}
                     />
                   </div>
                 ))}
                 {ongoingVolunteerAssignments.map((assignment) => (
-                  <CampaignVolunteerAssignmentCard
+                  <NgoParticipationCard
                     key={`campaign-volunteer-${assignment.id}`}
+                    lookup={{ campaignId: assignment.campaign_id }}
+                    title={assignment.campaign_title}
+                    location={assignment.campaign_location}
+                    status={assignment.campaign_status}
                     assignment={assignment}
                   />
                 ))}
@@ -149,8 +169,12 @@ export function CsrAssignmentsPanel({ data, actions, groups, tab, onTabChange }:
                   </div>
                 ))}
                 {completedVolunteerAssignments.map((assignment) => (
-                  <CampaignVolunteerAssignmentCard
+                  <NgoParticipationCard
                     key={`campaign-volunteer-completed-${assignment.id}`}
+                    lookup={{ campaignId: assignment.campaign_id }}
+                    title={assignment.campaign_title}
+                    location={assignment.campaign_location}
+                    status={assignment.campaign_status}
                     assignment={assignment}
                   />
                 ))}

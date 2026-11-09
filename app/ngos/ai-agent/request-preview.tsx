@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { VerifiedAccountName } from "@/components/verification-badge"
 import { MatchHeading, MATCH_CARD_CLASS, MATCH_PANEL_CLASS, MATCH_SCORE_CLASS } from "@/components/agent-shell"
+import { SuggestionDisclaimer, SuggestionSourceBadge } from "@/components/agent-guidance"
 import { AGENT_NAMES } from "@/lib/ai-agent-sessions"
 import {
   type NeedIntakeData,
@@ -57,11 +58,15 @@ function GeneratedNeedCard({
 
       <div className={`mt-3 ${MATCH_PANEL_CLASS}`}>
         <MatchHeading
-          title={`${AGENT_NAMES.atlas} matches`}
+          title={`${AGENT_NAMES.pulse} matches`}
           description="Applications are sent to the selected offers when you publish."
           loading={offersLoading}
+          badge={<SuggestionSourceBadge source="pulse" />}
           extra={<span className="text-xs font-medium text-slate-500">{selectedIds.length} selected</span>}
         />
+        <SuggestionDisclaimer>
+          These are scored marketplace suggestions. They become real applications only after you confirm publish.
+        </SuggestionDisclaimer>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Button
@@ -269,15 +274,22 @@ export function RequestPreview({
 
               <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
-                  <p className="flex items-center gap-2 text-sm font-semibold text-slate-950">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                    {publishedProjectId ? 'Published' : 'Draft complete'}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {publishedProjectId
-                      ? 'This project is live. Start a new session to draft another request.'
-                      : 'Review the details above, then publish when you are ready.'}
-                  </p>
+                  <div className="space-y-1">
+                    {publishedProjectId ? (
+                      <SuggestionSourceBadge source="platform-record" />
+                    ) : (
+                      <SuggestionSourceBadge source="guided-draft" />
+                    )}
+                    <p className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                      {publishedProjectId ? 'Published' : 'Draft complete'}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {publishedProjectId
+                        ? 'This listing is live on the marketplace. Start a new session to draft another request.'
+                        : 'Review the guided draft above. Publish only after you confirm the details are correct.'}
+                    </p>
+                  </div>
                 </div>
                 {publishedProjectId ? (
                   <Button asChild variant="outline" className="shrink-0">
@@ -290,7 +302,11 @@ export function RequestPreview({
                     onClick={onPublish}
                     disabled={publishingDraft}
                   >
-                    {publishingDraft ? 'Publishing...' : intakePath === 'need' ? 'Publish Need' : 'Publish Project'}
+                    {publishingDraft
+                      ? 'Publishing...'
+                      : intakePath === 'need'
+                        ? 'Review and publish need'
+                        : 'Review and publish project'}
                   </Button>
                 )}
               </div>

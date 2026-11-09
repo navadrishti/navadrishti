@@ -1,5 +1,6 @@
 import { readApiError } from '@/lib/user-facing-error'
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { openRazorpayCheckout } from '@/lib/razorpay-checkout';
 import { getErrorMessage } from '@/lib/utils';
 import { isAttendanceEntry } from './helpers';
@@ -28,8 +29,11 @@ export function usePanelPayments({
   onPaid: () => Promise<void>;
 }) {
   const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null);
+  const checkoutInFlight = useRef(false);
 
   const runCheckout = async (flow: CheckoutFlow) => {
+    if (checkoutInFlight.current) return;
+    checkoutInFlight.current = true;
     setActionLoadingKey(flow.loadingKey);
     setPanelMessage('');
 
@@ -38,27 +42,42 @@ export function usePanelPayments({
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: flow.createOrderBody === undefined ? undefined : JSON.stringify(flow.createOrderBody),
+        body:
+          flow.createOrderBody === undefined ? '{}' : JSON.stringify(flow.createOrderBody),
       });
 
-      const orderPayload = await orderRes.json();
-      if (!orderRes.ok || !orderPayload?.success) {
-        setPanelMessage(readApiError(orderPayload, flow.messages.createOrderFailed));
+      let orderPayload: { success?: boolean; data?: Record<string, unknown>; error?: string; message?: string };
+      try {
+        orderPayload = await orderRes.json();
+      } catch {
+        toast.error(
+          `${flow.messages.createOrderFailed} (HTTP ${orderRes.status}). Response was not valid JSON.`
+        );
         return;
       }
 
-      const order = orderPayload.data;
-      if (!order?.paymentRequired) {
-        setPanelMessage(order?.message || 'No payment is due.');
+      if (!orderRes.ok || !orderPayload?.success) {
+        toast.error(readApiError(orderPayload, flow.messages.createOrderFailed));
+        return;
+      }
+
+      const order = orderPayload.data || {};
+      if (!order.paymentRequired) {
+        toast.info(String(order.message || 'No payment is due.'));
         await onPaid();
         return;
       }
 
+      if (!order.orderId || !order.keyId) {
+        toast.error('Payment order was created incompletely. Please retry.');
+        return;
+      }
+
       await openRazorpayCheckout({
-        keyId: order.keyId,
-        orderId: order.orderId,
+        keyId: String(order.keyId),
+        orderId: String(order.orderId),
         amountInr: Number(order.totalCharge || order.amount),
-        currency: order.currency || 'INR',
+        currency: String(order.currency || 'INR'),
         description: flow.description(order),
         themeColor: '#F47B20',
         onSuccess: async (response) => {
@@ -70,22 +89,28 @@ export function usePanelPayments({
           });
           const verifyPayload = await verifyRes.json();
           if (!verifyRes.ok || !verifyPayload?.success) {
-            setPanelMessage(readApiError(verifyPayload, flow.messages.verifyFailed));
+            toast.error(readApiError(verifyPayload, flow.messages.verifyFailed));
             return;
           }
 
-          setPanelMessage(
-            (flow.preferServerMessage && verifyPayload?.data?.message) || flow.messages.success
-          );
+          const successMessage =
+            flow.preferServerMessage && typeof verifyPayload?.data?.message === 'string'
+              ? verifyPayload.data.message
+              : flow.messages.success
+          toast.success(successMessage);
           await onPaid();
         },
         onFailure: (error) => {
-          setPanelMessage(error.description || error.reason || flow.messages.failed);
+          toast.error(error.description || error.reason || flow.messages.failed);
+        },
+        onDismiss: () => {
+          toast.info('Payment checkout closed before completion. No payment was recorded.');
         },
       });
     } catch (error) {
-      setPanelMessage(getErrorMessage(error) || flow.messages.failed);
+      toast.error(getErrorMessage(error) || flow.messages.failed);
     } finally {
+      checkoutInFlight.current = false;
       setActionLoadingKey(null);
     }
   };

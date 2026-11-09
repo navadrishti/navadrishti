@@ -81,6 +81,7 @@ export function CapabilityOffersSection({
             emptyDescription="Publish capability offers for NGOs to discover and apply."
             canCreate={canListCapabilities}
             createBlockedHref={payoutHref}
+            onOffersChanged={data.fetchServiceOffers}
           />
           {data.csrCapabilityRentals.filter((row) => row.role === 'provider').map((row) => {
             const rental = row.rental || {};

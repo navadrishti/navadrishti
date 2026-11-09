@@ -9,11 +9,8 @@ application-side type contract. Neither generated types nor a checked-in schema
 capture proves what is currently deployed. The live target catalog is
 authoritative for that target.
 
-No database was accessed for this guide. Treat [`database/reference/`](../database/reference)
-and [`database/exports/`](../database/exports) as captured snapshots, and
-[`database/proposed/`](../database/proposed) as proposals—not current live
-state, approved changes or executable migrations. SQL packs under [`sql/`](../sql)
-must be read and reviewed file by file.
+No database was accessed for this guide. SQL packs under [`sql/`](../sql) are
+versioned change sets and must be read and reviewed file by file before use.
 
 ## Schema domains and key relationships
 
@@ -70,9 +67,5 @@ and rollback requirements, and post-change validation before applying anything.
 Do not run a full schema export as an import or copy user data between
 environments. Preserve Supabase-managed schemas and objects.
 
-The retained [production go-live checklist](./PRODUCTION_GO_LIVE_CHECKLIST.md)
-and the tagged
-[Company Employee rollout readiness report](../database/audit/company-employee-rollout-readiness.md)
-are operational records, not authorization to change a database. The report
-states that employee rollout is not approved and that no live database was
-checked.
+Database changes require explicit review and authorization; repository SQL is
+not evidence of current live state or permission to apply a change.

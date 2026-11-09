@@ -40,7 +40,8 @@ export default function ServiceOfferDetailPage() {
     refreshApplication
   } = useServiceOffer(offerId)
 
-  const canApplyToOffer = !!user && user.id !== offer?.creator_id && user.user_type === 'ngo'
+  const canApplyToOffer =
+    Boolean(user && offer && Number(user.id) !== Number(offer.creator_id) && user.user_type === 'ngo')
   const canShowRespondTab = !isAuthenticated || canApplyToOffer
   const payerVerified = isCaVerifiedAccount(user?.verification_status)
 

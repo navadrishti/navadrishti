@@ -1,4 +1,5 @@
 'use client'
+import { toast } from 'sonner'
 
 import { readApiError } from '@/lib/user-facing-error'
 import { useState, type FormEvent } from 'react'
@@ -9,7 +10,6 @@ import { ArrowLeft } from 'lucide-react'
 import { Header } from '@/components/header'
 import ProtectedRoute from '@/components/protected-route'
 import { useAuth } from '@/lib/auth-context'
-import { useToast } from '@/hooks/use-toast'
 import { dashboardProfilePayoutHref, usePayoutConnection } from '@/hooks/use-payout-connection'
 
 import { Button } from '@/components/ui/button'
@@ -21,9 +21,7 @@ import { ngoHasLegalEntityTag } from '@/lib/service-offers'
 
 export default function CreateServiceOfferPage() {
   const router = useRouter()
-  const { user, token } = useAuth()
-  const { toast } = useToast()
-  const { loading: payoutLoading, connected: payoutConnected } = usePayoutConnection(Boolean(user))
+  const { user, token } = useAuth()  const { loading: payoutLoading, connected: payoutConnected } = usePayoutConnection(Boolean(user))
 
   const [loading, setLoading] = useState(false)
   const form = useServiceOfferForm(token)
@@ -32,13 +30,13 @@ export default function CreateServiceOfferPage() {
     e.preventDefault()
 
     if (!token) {
-      toast({ title: 'Authentication Error', description: 'Please log in to continue.', variant: 'destructive' })
+      toast.error('Authentication Error', { description: 'Please log in to continue.' })
       return
     }
 
     const validationError = validateServiceOfferForm(form.formData)
     if (validationError) {
-      toast({ title: 'Validation Error', description: validationError, variant: 'destructive' })
+      toast.error('Validation Error', { description: validationError })
       return
     }
 
@@ -59,14 +57,14 @@ export default function CreateServiceOfferPage() {
       const data = await response.json()
 
       if (response.ok && data?.success) {
-        toast({ title: 'Capability Offer Created', description: data.data?.message || 'Offer submitted successfully.' })
+        toast.success('Capability Offer Created', { description: data.data?.message || 'Offer submitted successfully.' })
         router.push('/service-offers?view=my-offers')
         return
       }
 
-      toast({ title: 'Error', description: readApiError(data, 'Failed to create service offer'), variant: 'destructive' })
+      toast.error('Error', { description: readApiError(data, 'Failed to create service offer') })
     } catch {
-      toast({ title: 'Error', description: 'Unexpected error while creating offer', variant: 'destructive' })
+      toast.error('Error', { description: 'Unexpected error while creating offer' })
     } finally {
       setLoading(false)
     }

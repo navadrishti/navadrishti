@@ -1,4 +1,5 @@
 import Razorpay from 'razorpay';
+import { computeRefundEligibility } from '@/lib/admin-payment-refund-eligibility';
 import { db, supabase } from '@/lib/db';
 import type { Json } from '@/lib/database.types';
 import { recordCapturedPaymentFromProvider } from '@/lib/razorpay/payment-records';
@@ -130,8 +131,22 @@ export async function processAdminRefund(input: ProcessAdminRefundInput) {
 
   const amountPaise = Number(providerPayment.amount || 0) || Math.round(parseAmountToInr(paymentRow.amount_inr) * 100);
   const alreadyRefundedPaise = Number(providerPayment.amount_refunded || 0);
-  const remainingPaise = Math.max(0, amountPaise - alreadyRefundedPaise);
   const paidInr = amountPaise / 100;
+
+  const { data: ledgerRefunds, error: ledgerError } = await supabase
+    .from('razorpay_refunds')
+    .select('amount_inr, amount_paise, refund_status')
+    .eq('payment_id', paymentRow.id);
+  if (ledgerError) throw ledgerError;
+
+  const eligibility = computeRefundEligibility({
+    paymentStatus: paymentRow.payment_status || providerStatus,
+    capturedAmountInr: paymentRow.amount_inr,
+    capturedAmountPaise: amountPaise,
+    refunds: ledgerRefunds || [],
+    providerAmountRefundedPaise: alreadyRefundedPaise,
+  });
+  const remainingPaise = eligibility.remaining_refundable_paise;
 
   const baseResult = {
     payment_id: refundPaymentId,
@@ -158,7 +173,14 @@ export async function processAdminRefund(input: ProcessAdminRefundInput) {
     };
   }
 
-  const refundPaise = requestedRefundInr > 0 ? Math.min(Math.round(requestedRefundInr * 100), remainingPaise) : remainingPaise;
+  const requestedPaise = requestedRefundInr > 0 ? Math.round(requestedRefundInr * 100) : remainingPaise;
+  if (requestedPaise > remainingPaise) {
+    throw new AdminRefundError(
+      `Refund amount exceeds the remaining refundable balance of INR ${eligibility.remaining_refundable_inr.toFixed(2)}`,
+      400
+    );
+  }
+  const refundPaise = requestedPaise;
   const refundInr = refundPaise / 100;
 
   const refund = await razorpay.payments.refund(refundPaymentId, {

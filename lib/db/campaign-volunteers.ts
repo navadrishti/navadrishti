@@ -89,7 +89,19 @@ export async function buildCampaignVolunteerAttendanceSummary(
 
   if (error || !campaign) return null
 
-  const applications = filterVolunteerApplicationsExcludingLeadNgo(campaign)
+  const allApplications = filterVolunteerApplicationsExcludingLeadNgo(campaign)
+  const applicantIds = [...new Set(allApplications.map((application) => Number(application.user_id)).filter((id) => id > 0))]
+  const { data: applicants, error: applicantsError } = applicantIds.length
+    ? await supabase.from('users').select('id, user_type').in('id', applicantIds)
+    : { data: [], error: null }
+  if (applicantsError) throw applicantsError
+  if ((applicants || []).length < applicantIds.length) {
+    console.warn('Campaign attendance skipped registrations with unresolved user accounts')
+  }
+  const individualIds = new Set((applicants || [])
+    .filter((user) => String(user.user_type || '').toLowerCase() === 'individual')
+    .map((user) => Number(user.id)))
+  const applications = allApplications.filter((application) => individualIds.has(Number(application.user_id)))
   const projectDays = getInclusiveDayCount(campaign.start_date, campaign.end_date)
   const elapsedDays = getElapsedCampaignDays(campaign.start_date, campaign.end_date)
 
@@ -98,7 +110,10 @@ export async function buildCampaignVolunteerAttendanceSummary(
     .select('id, assignee_user_id, target_type, target_id, meta, status')
     .eq('target_id', campaignId)
 
-  const assignments = (assignmentRows || []).filter((row) => isCampaignVolunteerAssignment(row))
+  const individualUserIds = new Set(applications.map((application) => Number(application.user_id)))
+  const assignments = (assignmentRows || []).filter(
+    (row) => isCampaignVolunteerAssignment(row) && individualUserIds.has(Number(row.assignee_user_id))
+  )
   const assignmentByUser = new Map<number, (typeof assignments)[number]>()
   for (const row of assignments) {
     assignmentByUser.set(Number(row.assignee_user_id), row)

@@ -2,6 +2,7 @@ import { after, NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 import { syncServiceOfferEmbedding } from '@/lib/embeddings'
 import { getTokenClaims } from '@/lib/auth'
+import { authErrorResponse } from '@/lib/server-auth'
 import { hydrateOfferRequestMeta } from '@/lib/offer-requests'
 import {
   buildSelectedNeedSummary,
@@ -13,6 +14,7 @@ import {
   type CapabilityOfferUsageRecord,
 } from '@/lib/service-offers'
 import { assertCapabilityPublisher, capabilityPublishGateResponse } from '@/lib/service-offers/publish-assert'
+import { emitOfferCreatedAudit } from '@/lib/service-offers/marketplace-events'
 import { isMerchantRazorpayPayoutActive } from '@/lib/razorpay-route'
 import {
   buildOfferCapabilityRow,
@@ -131,8 +133,7 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
 
     if (view === 'all' || !view) {
-      // Keep this aligned with dashboard Listed: unused active offers stay in the
-      // catalog. Rejected / unlisted / in-use rows are dropped in JS below.
+      // Public catalog: operationally active offers. Discovery ignores admin_status / is_listed.
       query = query.eq('status', 'active')
     } else if (view === 'my-responses') {
       query = query.in('id', responseOfferIds || [])
@@ -378,7 +379,7 @@ export async function GET(request: NextRequest) {
 
         filteredOffers.forEach((offer) => {
           const offerCounts = counts[offer.id] || { total: 0, accepted: 0, pending: 0, usage: [] }
-          const isOwner = authenticatedUserId !== null && offer.creator_id === authenticatedUserId
+          const isOwner = authenticatedUserId !== null && Number(offer.creator_id) === Number(authenticatedUserId)
           const myApplication = myApplications.get(offer.id) || null
           offer.applications_count = offerCounts.total
           offer.pending_applications = offerCounts.pending
@@ -403,10 +404,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (view === 'all' || !view) {
-      filteredOffers = filteredOffers.filter((offer) =>
-        isCapabilityOfferAvailableForListing(offer)
-        && String(offer.admin_status || '').toLowerCase() !== 'rejected'
-      )
+      filteredOffers = filteredOffers.filter((offer) => isCapabilityOfferAvailableForListing(offer))
     }
 
     filteredOffers = filteredOffers.map((offer) => ({
@@ -416,6 +414,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: filteredOffers })
   } catch (error) {
+    const auth = authErrorResponse(error)
+    if (auth) return auth
     console.error('Failed to fetch service offers', error)
     return NextResponse.json({ error: 'Failed to fetch service offers' }, { status: 500 })
   }
@@ -461,11 +461,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: toUserFacingError(validationError) }, { status: 400 })
     }
 
+    // Immediate publication — no admin approval or listing toggle workflow.
     const offerData = {
       ...buildOfferRow(body),
       creator_id: userId,
       status: 'active',
-      admin_status: 'approved',
       is_listed: true,
     }
 
@@ -510,6 +510,12 @@ export async function POST(request: NextRequest) {
       syncServiceOfferEmbedding(offer.id).catch((err) => console.error(`Failed to embed offer ${offer.id}:`, err))
     )
 
+    await emitOfferCreatedAudit({
+      offerId: offer.id,
+      offerTitle: String(body.title || offerData.title || ''),
+      actorUserId: userId,
+    })
+
     const responseData: { id: number; message: string; warning?: string; capability_id?: number } = {
       id: offer.id,
       message: 'Capability offer created successfully'
@@ -528,6 +534,8 @@ export async function POST(request: NextRequest) {
       data: responseData
     }, { status: 201 })
   } catch (error) {
+    const auth = authErrorResponse(error)
+    if (auth) return auth
     console.error('Service offer create error:', error)
     return NextResponse.json({ error: getErrorMessage(error) || 'Could not create this offer. Please try again.' }, { status: 500 })
   }

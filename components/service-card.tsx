@@ -11,6 +11,7 @@ import {
   parseImages,
   parseRequirements,
 } from './service-card/helpers'
+import { getNeedListingPresentation, getOfferListingPresentation } from './service-card/listing-metrics'
 import type { RequestProjectContext, ServiceCardProps } from './service-card/types'
 
 export { YourCapabilityOfferCard } from './service-card/your-capability-offer-card'
@@ -31,11 +32,23 @@ export function ServiceCard({
   providerType = 'ngo',
   verified,
   created_at,
+  updated_at,
   urgency_level,
   timeline,
   deadline,
   requirements,
   project,
+  current_amount,
+  target_amount,
+  remaining_amount,
+  current_quantity,
+  target_quantity,
+  remaining_quantity,
+  request_type,
+  estimated_budget,
+  volunteers_needed,
+  accepted_volunteers_count,
+  volunteers_count,
   price_amount,
   price_type,
   price_description,
@@ -45,6 +58,11 @@ export function ServiceCard({
   offer_type,
   amount,
   capacity,
+  quantity,
+  item,
+  duration,
+  applications_count,
+  pending_applications,
   currentTime,
   type,
   onDelete,
@@ -74,10 +92,7 @@ export function ServiceCard({
     const requirementsData = parseRequirements(requirements)
     const projectContext: RequestProjectContext | null = project || requirementsData?.project?.project || null
     const projectCategory = String(requirementsData?.project_category || projectContext?.category || category || '').trim()
-    const projectExpectedBeneficiaries = Number(projectContext?.expected_beneficiaries || 0)
-    const beneficiaryCount = projectExpectedBeneficiaries > 0
-      ? projectExpectedBeneficiaries
-      : Number(requirementsData?.beneficiary_count || 0)
+    const beneficiaryCount = Number(requirementsData?.beneficiary_count || 0)
     const requestDeadline = projectContext?.valid_until || deadline || timeline || requirementsData?.timeline
     const liveUrgency = isHydrated
     ? getRequestUrgencyLevel({
@@ -88,10 +103,37 @@ export function ServiceCard({
         })
       : null
     const urgency = String(liveUrgency || urgency_level || 'medium')
+    const needPresentation = getNeedListingPresentation({
+      request_type,
+      category,
+      requirements,
+      target_amount,
+      current_amount,
+      remaining_amount,
+      target_quantity,
+      current_quantity,
+      remaining_quantity,
+      volunteers_needed,
+      accepted_volunteers_count,
+      volunteers_count,
+      estimated_budget,
+      status,
+      created_at,
+      updated_at,
+      deadline: requestDeadline,
+      timeline,
+    })
     const metaLine = [
       location ? String(location) : 'Not specified',
       formatPostedDate(created_at),
-      beneficiaryCount > 0 ? String(beneficiaryCount) : 'Not specified',
+      beneficiaryCount > 0 ? `${beneficiaryCount} beneficiaries` : null,
+      ...needPresentation.contextBits.filter((bit) => {
+        // Avoid repeating posted date already shown above.
+        if (bit.startsWith('Updated ') && formatPostedDate(created_at) && bit.includes(formatPostedDate(created_at))) {
+          return Boolean(updated_at && updated_at !== created_at)
+        }
+        return true
+      }),
     ]
       .filter(Boolean)
       .join(' · ')
@@ -106,6 +148,8 @@ export function ServiceCard({
         statusClassName={getUrgencyBadgeClass(urgency)}
         categoryLabel={projectCategory || category || 'Need'}
         metaLine={metaLine}
+        meters={needPresentation.meters}
+        stats={needPresentation.stats}
       />
     )
   }
@@ -120,11 +164,26 @@ export function ServiceCard({
     transaction_type,
     wage_info,
   })
-  const offerMetaLine = [location || 'Not set', offerPriceLabel, capacityLimit ? String(capacityLimit) : '']
+  const offerPresentation = getOfferListingPresentation({
+    quantity,
+    capacity,
+    applications_count,
+    pending_applications,
+    created_at,
+    updated_at,
+    item,
+    duration,
+  })
+  const offerMetaLine = [
+    location || 'Not set',
+    offerPriceLabel,
+    capacityLimit && !quantity ? String(capacityLimit) : null,
+    ...offerPresentation.contextBits,
+  ]
     .filter(Boolean)
     .join(' · ')
 
-    return (
+  return (
     <ListingCard
       {...sharedProps}
       basePath="/service-offers"
@@ -134,6 +193,8 @@ export function ServiceCard({
       statusClassName={getOfferStatusBadgeClass(status)}
       categoryLabel={String(offerType || category || 'Offer')}
       metaLine={offerMetaLine}
+      meters={offerPresentation.meters}
+      stats={offerPresentation.stats}
     />
   )
 }

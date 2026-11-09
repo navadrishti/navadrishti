@@ -156,6 +156,9 @@ describe('buildCampaignTracking', () => {
       ['Ravi', 'absent', 2, 8],
       ['Meera', 'absent', 0, 10],
     ])
+    // Past check-ins do not keep the daily tag as attended — only today's entry does.
+    expect(tracking?.attendance?.volunteers.find((row) => row.name === 'Ravi')?.last_attendance_at).toBe('2026-10-03')
+    expect(tracking?.attendance?.as_of).toBe('2026-10-10')
     expect(tracking?.attendance?.volunteers.some((row) => row.user_id === 9)).toBe(false)
     expect(tracking?.attendance?.capabilities.map((row) => [row.title, row.today, row.on_site, row.returned_to_owner, row.return_delivered_at])).toEqual([
       ['Water tank', 'absent', false, false, null],
@@ -208,7 +211,7 @@ describe('buildCampaignTracking', () => {
     })
   })
 
-  it('counts every start-to-end day for volunteers, NGOs and capabilities', async () => {
+  it('counts individual and capability attendance without treating an NGO as a daily volunteer', async () => {
     const longCampaign = {
       ...campaign,
       status: 'completed',
@@ -261,10 +264,11 @@ describe('buildCampaignTracking', () => {
     expect(tracking?.attendance?.volunteer_days.at(-1)).toMatchObject({ date: '2026-10-01', present_people: 0, expected_people: 1, due: true })
     expect(tracking?.attendance?.ngo_days.find((day) => day.date === '2026-09-18')).toEqual({
       date: '2026-09-18',
-      present_people: 1,
-      expected_people: 1,
+      present_people: 0,
+      expected_people: 0,
       due: true,
     })
+    expect(tracking?.attendance?.volunteers.some((row) => row.user_id === 24)).toBe(false)
     expect(tracking?.attendance?.capability_days.at(-1)).toEqual({
       date: '2026-10-01',
       present_people: 1,
@@ -300,6 +304,22 @@ describe('buildCampaignTracking', () => {
     expect(tracking?.attendance?.volunteers.map((row) => row.name)).toEqual(['Ravi', 'Meera'])
     expect(tracking?.attendance?.ngo_days.every((day) => day.expected_people === 0)).toBe(true)
     expect(tracking?.volunteers.enrolled).toBe(2)
+  })
+
+  it('marks volunteer Attended only for today IST, otherwise Absent', async () => {
+    respond({
+      service_attendance_entries: [
+        { assignment_id: 'a1', attendance_date: '2026-10-02', units: 4 },
+        { assignment_id: 'a1', attendance_date: '2026-10-10', units: 4 },
+        { assignment_id: 'a2', attendance_date: '2026-10-09', units: 1 },
+      ],
+    })
+    const tracking = (await buildCampaignTracking([campaign], reference)).get('c1')
+    expect(tracking?.attendance?.as_of).toBe('2026-10-10')
+    expect(tracking?.attendance?.volunteers.map((row) => [row.name, row.today, row.last_attendance_at])).toEqual([
+      ['Ravi', 'present', '2026-10-10'],
+      ['Meera', 'absent', '2026-10-09'],
+    ])
   })
 
   it('only counts confirmed milestone payments and present attendance', async () => {

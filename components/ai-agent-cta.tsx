@@ -185,7 +185,7 @@ export function AIAgentCTA() {
             </span>
             <span className="min-w-0 text-left">
               <span className="block text-sm font-semibold leading-none text-udaan-navy">{aiAgentCta.title}</span>
-              <span className="mt-1 block text-xs text-slate-600 sm:max-w-[220px] sm:truncate">
+              <span className="mt-1 block max-w-[220px] truncate text-xs text-slate-600">
                 {aiAgentCta.description}
               </span>
             </span>

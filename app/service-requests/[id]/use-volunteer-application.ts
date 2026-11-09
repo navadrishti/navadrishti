@@ -1,10 +1,10 @@
 'use client'
+import { toast } from 'sonner'
 
 import { readApiError } from '@/lib/user-facing-error'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
-import { useToast } from '@/hooks/use-toast'
 import { getErrorMessage } from '@/lib/utils'
 import { uploadReceiptFile } from './helpers'
 import type { VolunteerApplication } from './types'
@@ -29,9 +29,7 @@ export function useVolunteerApplication({
   checkExistingApplication,
 }: UseVolunteerApplicationOptions) {
   const router = useRouter()
-  const { user, token } = useAuth()
-  const { toast } = useToast()
-  const [applying, setApplying] = useState(false)
+  const { user, token } = useAuth()  const [applying, setApplying] = useState(false)
   const [applicationMessage, setApplicationMessage] = useState('')
   const [applicationFulfillmentAmount, setApplicationFulfillmentAmount] = useState('')
   const [applicationFulfillmentQuantity, setApplicationFulfillmentQuantity] = useState('')
@@ -41,57 +39,34 @@ export function useVolunteerApplication({
 
   const handleApply = async () => {
     if (!isAuthenticated || !user) {
-      toast({
-        title: 'Authentication Required',
-        description: 'Please log in to apply for this need',
-        variant: 'destructive'
-      })
+      toast.error('Authentication Required', { description: 'Please log in to apply for this need' })
       router.push('/login')
       return
     }
 
     if (user.user_type === 'ngo') {
-      toast({
-        title: 'Invalid User Type',
-        description: 'NGOs create needs. Individuals can volunteer, and companies can fulfill via CSR.',
-        variant: 'destructive'
-      })
+      toast.error('Invalid User Type', { description: 'NGOs create needs. Individuals volunteer to fulfill them.' })
       return
     }
 
     if (user.user_type === 'company') {
-      toast({
-        title: 'Use CSR Fulfillment',
-        description: 'Companies fulfill requests through CSR projects. Open your dashboard to continue.',
-      })
-      router.push(`/companies/dashboard?tab=service-requests&requestId=${requestId}`)
+      toast.success('Needs are for individuals', { description: 'Companies fulfill through CSR projects, not marketplace needs.' })
+      router.push('/companies/dashboard')
       return
     }
 
     if (isFinancialRequest && !applicationFulfillmentAmount.trim()) {
-      toast({
-        title: 'Fulfillment amount required',
-        description: 'Enter how much you can contribute for this financial need.',
-        variant: 'destructive'
-      })
+      toast.error('Fulfillment amount required', { description: 'Enter how much you can contribute for this financial need.' })
       return
     }
 
     if (isSkillServiceNeed && !applicationFulfillmentAmount.trim()) {
-      toast({
-        title: 'Daily rate required',
-        description: 'Enter your quoted INR rate per day for this skill/service need.',
-        variant: 'destructive'
-      })
+      toast.error('Daily rate required', { description: 'Enter your quoted INR rate per day for this skill/service need.' })
       return
     }
 
     if (!isFinancialRequest && !isSkillServiceNeed && !applicationFulfillmentQuantity.trim()) {
-      toast({
-        title: 'Fulfillment quantity required',
-        description: 'Enter how much you can fulfill for this need.',
-        variant: 'destructive'
-      })
+      toast.error('Fulfillment quantity required', { description: 'Enter how much you can fulfill for this need.' })
       return
     }
 
@@ -118,20 +93,13 @@ export function useVolunteerApplication({
           setApplicationMessage('')
           setApplicationFulfillmentAmount('')
           setApplicationFulfillmentQuantity('')
-          toast({
-            title: 'Application Submitted',
-            description: "Your application has been submitted successfully. You can view your applications in the 'Invitations' tab.",
-          })
+          toast.success('Application Submitted', { description: "Your application has been submitted successfully. You can view your applications in the 'Invitations' tab." })
 
           setTimeout(() => {
             router.push(user.user_type === 'ngo' ? '/ngos/dashboard' : '/individuals/dashboard')
           }, 2000)
         } else {
-          toast({
-            title: 'Application Failed',
-            description: readApiError(result, 'Failed to submit application'),
-            variant: 'destructive'
-          })
+          toast.error('Application Failed', { description: readApiError(result, 'Failed to submit application') })
         }
       } else {
         const error = await response.json()
@@ -141,29 +109,17 @@ export function useVolunteerApplication({
           const verificationMessage = typeof error.message === 'string' && error.message.trim()
             ? error.message
             : 'Please complete account verification before applying for volunteer opportunities.'
-          toast({
-            title: 'Verification Required',
-            description: verificationMessage,
-            variant: 'destructive'
-          })
+          toast.error('Verification Required', { description: verificationMessage })
           setTimeout(() => {
             router.push('/verification')
           }, 3000)
         } else {
-          toast({
-            title: 'Application Failed',
-            description: errorMsg,
-            variant: 'destructive'
-          })
+          toast.error('Application Failed', { description: errorMsg })
         }
       }
     } catch (error) {
       console.error('Error applying:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to submit application',
-        variant: 'destructive'
-      })
+      toast.error('Error', { description: 'Failed to submit application' })
     } finally {
       setApplying(false)
     }
@@ -193,16 +149,16 @@ export function useVolunteerApplication({
 
       const data = await response.json()
       if (!response.ok || !data.success) {
-        toast({ title: 'Update failed', description: readApiError(data, 'Could not mark completion'), variant: 'destructive' })
+        toast.error('Update failed', { description: readApiError(data, 'Could not mark completion') })
         return
       }
 
       setUserApplication(data.data)
-      toast({ title: 'Done', description: 'Your fulfillment has been marked as done.' })
+      toast.success('Done', { description: 'Your fulfillment has been marked as done.' })
       fetchRequestDetails()
       checkExistingApplication()
     } catch (error) {
-      toast({ title: 'Update failed', description: getErrorMessage(error) || 'Could not mark completion', variant: 'destructive' })
+      toast.error('Update failed', { description: getErrorMessage(error) || 'Could not mark completion' })
     }
   }
 

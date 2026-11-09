@@ -369,6 +369,7 @@ describe('admin refunds', () => {
       if (query.table === 'razorpay_payments' && query.op === 'select') {
         return { data: options.payment === undefined ? paymentRow : options.payment }
       }
+      if (query.table === 'razorpay_refunds' && query.op === 'select') return { data: [] }
       if (query.table === 'razorpay_refunds' && query.op === 'update' && hasCall(query, 'select')) return { data: [{ id: 'r1' }] }
       return undefined
     })
@@ -405,6 +406,8 @@ describe('admin refunds', () => {
   })
 
   it('requires Razorpay credentials', async () => {
+    vi.stubEnv('RAZORPAY_KEY_SECRET', '')
+    vi.stubEnv('NEXT_PUBLIC_RAZORPAY_KEY_ID', '')
     useSupabase()
     await expect(refund()).rejects.toThrow('Refund payments are not configured')
   })
@@ -435,9 +438,15 @@ describe('admin refunds', () => {
     expect(mocks.razorpay.payments.refund).not.toHaveBeenCalled()
   })
 
-  it('refunds only what is left after earlier partial refunds', async () => {
+  it('rejects a refund that exceeds the remaining refundable balance', async () => {
     setup({ refundedPaise: 50000 })
-    await refund({ requestedRefundInr: 5000 })
+    await expect(refund({ requestedRefundInr: 5000 })).rejects.toThrow('exceeds the remaining refundable balance')
+    expect(mocks.razorpay.payments.refund).not.toHaveBeenCalled()
+  })
+
+  it('refunds only what is left after earlier partial refunds when amount fits', async () => {
+    setup({ refundedPaise: 50000 })
+    await refund({ requestedRefundInr: 559 })
     expect(mocks.razorpay.payments.refund).toHaveBeenLastCalledWith('pay_1', expect.objectContaining({ amount: 55900 }))
   })
 

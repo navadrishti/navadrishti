@@ -32,10 +32,10 @@ export async function GET(request: NextRequest) {
     if (
       error instanceof Error &&
       [
-        'Company CA authentication required',
+        'Evidence Verifier authentication required',
         'Invalid company CA token',
-        'Company CA identity not found',
-        'Company CA identity is not active',
+        'Evidence Verifier identity not found',
+        'Evidence Verifier identity is not active',
       ].includes(error.message)
     ) {
       return NextResponse.json({ success: false, error: error.message }, { status: 401 })

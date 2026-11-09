@@ -19,6 +19,7 @@ type YourCapabilitiesPanelProps = {
   createBlockedHref?: string
   createBlockedLabel?: string
   createBlockedMessage?: string
+  onOffersChanged?: () => void | Promise<void>
 }
 
 export function YourCapabilitiesPanel({

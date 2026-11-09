@@ -6,8 +6,10 @@ import { POST as verifyPayment } from '@/app/api/milestones/[id]/payments/verify
 import { POST as reviewMilestone } from '@/app/api/milestones/[id]/review/route'
 import { POST as submitEvidence } from '@/app/api/milestones/[id]/evidence/route'
 import { processAdminRefund } from '@/lib/admin-refund'
-import { argOf, eqValue, fakeAdjustProgress, hasCall, supabaseFake, type FakeQuery, type FakeResult } from './support/supabase-fake'
+import { argOf, callsOf, eqValue, fakeAdjustProgress, hasCall, supabaseFake, type FakeQuery, type FakeResult } from './support/supabase-fake'
 import { jsonRequest, razorpaySignature, tokenFor } from './support/requests'
+import { setLiveUserTypeOverlay } from '@/lib/auth/session'
+import { overlayLiveUserType } from '@/lib/server-auth'
 
 const mocks = vi.hoisted(() => ({
   adjustProgress: vi.fn(),
@@ -50,7 +52,7 @@ vi.mock('@/lib/server-auth', async (importOriginal) => ({
 const webhookSecret = 'whsec_test'
 const keySecret = 'rzp_secret'
 const context = { params: Promise.resolve({ id: 'm1' }) }
-const project = { id: 'p1', company_user_id: 13, ngo_user_id: 12 }
+const project = { id: 'p1', company_user_id: 13, ngo_user_id: 12, campaign_id: 'c1', campaigns: { lead_ngo_user_id: 12 } }
 const milestoneNotes = {
   payment_kind: 'csr_milestone',
   milestone_id: 'm1',
@@ -60,12 +62,20 @@ const milestoneNotes = {
 }
 
 function respond(handler: (query: FakeQuery) => FakeResult | undefined) {
-  supabaseFake.reset(handler)
+  supabaseFake.reset((query) => {
+    if (query.table === 'users' && query.columns === 'account_status, locked_until, profile_data, user_type, verification_status') {
+      const id = Number(eqValue(query, 'id'))
+      return { data: { id, user_type: id === 12 ? 'ngo' : 'company', account_status: 'active', verification_status: 'verified', profile_data: {} } }
+    }
+    if (['company_ca_identities', 'ngo_field_officer_identities', 'company_employee_identities'].includes(query.table) && eqValue(query, 'user_id') !== undefined) return { data: null }
+    return handler(query)
+  })
 }
 
 const writes = (table: string, op: 'insert' | 'update' | 'upsert') => supabaseFake.find(table, op)
 
 beforeEach(() => {
+  setLiveUserTypeOverlay((claims, pathname) => overlayLiveUserType(claims, pathname))
   vi.stubEnv('RAZORPAY_WEBHOOK_SECRET', webhookSecret)
   vi.stubEnv('RAZORPAY_KEY_SECRET', keySecret)
   vi.stubEnv('NEXT_PUBLIC_RAZORPAY_KEY_ID', 'rzp_key')
@@ -158,7 +168,8 @@ describe('Razorpay webhook milestone payments', () => {
       payment_status: 'confirmed',
     })
     expect(argOf(writes('csr_project_milestones', 'update')[0], 'update')).toMatchObject({ status: 'completed' })
-    expect(argOf(writes('csr_projects', 'update')[0], 'update')).toMatchObject({ funds_utilized: 1000, progress_percentage: 100 })
+    expect(argOf(writes('csr_projects', 'update')[0], 'update')).toMatchObject({ progress_percentage: 100 })
+    expect(argOf(writes('csr_projects', 'update')[0], 'update')).not.toHaveProperty('funds_utilized')
     const statusUpdate = writes('provider_webhook_events', 'update').at(-1)
     expect(argOf(statusUpdate, 'update')).toMatchObject({ processing_status: 'processed' })
   })
@@ -221,6 +232,25 @@ describe('Razorpay webhook refunds', () => {
     expect(argOf(writes('provider_webhook_events', 'update').at(-1), 'update')).toMatchObject({ processing_status: 'processed' })
   })
 
+  it('keeps the milestone completed on a partial CSR milestone refund', async () => {
+    refundDb({ service_request_id: null, order_notes: milestoneNotes })
+    const response = await webhookPost(
+      webhookRequest(
+        refundEvent('refund.processed', 'processed', { amount: 25000, refunded: 25000 }),
+        'evt_r1_partial'
+      )
+    )
+    expect(response.status).toBe(200)
+    expect(argOf(writes('razorpay_payments', 'update')[0], 'update')).toMatchObject({
+      payment_status: 'partially_refunded',
+    })
+    expect(writes('csr_payment_confirmations', 'update')).toHaveLength(0)
+    expect(writes('csr_project_milestones', 'update')).toHaveLength(0)
+    expect(argOf(writes('provider_webhook_events', 'update').at(-1), 'update')).toMatchObject({
+      processing_status: 'processed',
+    })
+  })
+
   it('fails and leaves the webhook retryable when the refund ledger cannot store a null request id', async () => {
     refundDb({ service_request_id: null, order_notes: milestoneNotes }, { recordError: { code: '23502', message: 'null value' } })
     const response = await webhookPost(webhookRequest(refundEvent('refund.processed', 'processed'), 'evt_r1b'))
@@ -260,6 +290,54 @@ describe('Razorpay webhook refunds', () => {
     await webhookPost(webhookRequest(refundEvent('refund.processed', 'processed', { amount: 20000, refunded: 60000 }), 'evt_r6'))
     expect(argOf(writes('razorpay_payments', 'update')[0], 'update')).toMatchObject({ payment_status: 'partially_refunded' })
   })
+
+  it('keeps domain state unchanged on refund.pending, then reverses once on refund.processed', async () => {
+    refundDb({ service_request_id: 12, order_notes: contributionNotes })
+    await webhookPost(webhookRequest(refundEvent('refund.pending', 'pending', { refunded: 0 }), 'evt_pending'))
+    expect(mocks.adjustProgress).not.toHaveBeenCalled()
+    expect(argOf(writes('razorpay_refunds', 'update').at(-1), 'update')).toMatchObject({ refund_status: 'pending' })
+
+    mocks.adjustProgress.mockClear()
+    supabaseFake.reset(() => undefined)
+    refundDb({ service_request_id: 12, order_notes: contributionNotes })
+    await webhookPost(webhookRequest(refundEvent('refund.processed', 'processed'), 'evt_processed'))
+    expect(mocks.adjustProgress).toHaveBeenCalledTimes(1)
+    expect(argOf(writes('razorpay_refunds', 'update').at(-1), 'update')).toMatchObject({ refund_status: 'processed' })
+  })
+
+  it('ignores a late refund.failed after the refund was already processed', async () => {
+    refundDb({ service_request_id: 12, order_notes: contributionNotes }, { firstToProcess: false })
+    await webhookPost(webhookRequest(refundEvent('refund.failed', 'failed', { refunded: 105900 }), 'evt_late_fail'))
+    expect(mocks.adjustProgress).not.toHaveBeenCalled()
+    // settleRefundStatus(failed) updates only rows that are not already processed.
+    expect(callsOf(writes('razorpay_refunds', 'update').at(-1), 'neq')[0]).toEqual(['refund_status', 'processed'])
+  })
+
+  it('reprocesses a previously failed event id instead of treating it as a duplicate', async () => {
+    respond((query) => {
+      if (query.table === 'provider_webhook_events' && query.op === 'select') {
+        return { data: { id: 'evt_row', processing_status: 'failed' } }
+      }
+      if (query.table === 'provider_webhook_events' && query.op === 'update') return { data: { id: 'evt_row' } }
+      if (query.table === 'razorpay_payments' && query.op === 'select') return { data: { id: 9, order_id: 44, amount_inr: 1059 } }
+      if (query.table === 'razorpay_payment_orders') {
+        return { data: { id: 44, payer_user_id: 7, order_status: 'paid', service_request_id: 12, order_notes: contributionNotes } }
+      }
+      if (query.table === 'razorpay_refunds' && query.op === 'update') return { data: [{ id: 'r1' }] }
+      return undefined
+    })
+    mocks.db.serviceRequests.getById.mockResolvedValue({
+      id: 12,
+      current_amount: 5000,
+      target_amount: 10000,
+      status: 'in_progress',
+      requirements: {},
+    })
+    const response = await webhookPost(webhookRequest(refundEvent('refund.processed', 'processed'), 'evt_retry'))
+    expect(response.status).toBe(200)
+    expect(writes('provider_webhook_events', 'insert')).toHaveLength(0)
+    expect(argOf(writes('provider_webhook_events', 'update').at(-1), 'update')).toMatchObject({ processing_status: 'processed' })
+  })
 })
 
 describe('milestone payment verify', () => {
@@ -273,6 +351,9 @@ describe('milestone payment verify', () => {
       }
       if (query.table === 'csr_project_milestones' && query.op === 'select') return { data: [{ id: 'm1', status: 'completed' }] }
       if (query.table === 'csr_projects') return { data: project }
+      if (query.table === 'company_ca_project_assignments') {
+        return { data: { id: 'asg_1', company_user_id: project.company_user_id } }
+      }
       if (query.table === 'razorpay_payment_orders' && query.op === 'upsert') return { data: { id: 'ord_row' } }
       if (query.table === 'csr_payment_confirmations' && query.op === 'select' && eqValue(query, 'milestone_id')) {
         confirmedLookups += 1
@@ -343,6 +424,9 @@ describe('milestone review', () => {
       }
       if (query.table === 'csr_project_milestones' && query.op === 'update') return { data: overrides.claimed ?? [{ id: 'm1' }] }
       if (query.table === 'csr_projects') return { data: project }
+      if (query.table === 'company_ca_project_assignments') {
+        return { data: { id: 'asg_1', company_user_id: project.company_user_id } }
+      }
       if (query.table === 'csr_milestone_evidence') return { data: overrides.evidence === undefined ? { id: 'ev_1' } : overrides.evidence }
       if (query.table === 'csr_milestone_reviews') return reviewInserts.shift() ?? { data: { id: 'rv_1' } }
       return undefined
@@ -432,6 +516,33 @@ describe('milestone evidence submission', () => {
     expect(writes('csr_milestone_evidence', 'insert')).toHaveLength(0)
     expect(writes('csr_project_milestones', 'update')).toHaveLength(0)
   })
+
+  it('rejects evidence when the previous milestone is approved but not paid', async () => {
+    respond((query) => {
+      if (query.table === 'csr_project_milestones' && query.op === 'select' && eqValue(query, 'id')) {
+        return { data: { id: 'm2', project_id: 'p1', status: 'pending', milestone_order: 2 } }
+      }
+      if (query.table === 'csr_project_milestones' && query.op === 'select') {
+        return {
+          data: [
+            { id: 'm1', status: 'approved', milestone_order: 1 },
+            { id: 'm2', status: 'pending', milestone_order: 2 },
+          ],
+        }
+      }
+      if (query.table === 'csr_projects') return { data: project }
+      return undefined
+    })
+    const response = await submitEvidence(
+      jsonRequest('http://localhost/api/milestones/m2/evidence', {
+        token: tokenFor(12, 'ngo'),
+        body: { device_id: 'dev_1', captured_at: '2026-09-01T00:00:00Z' },
+      }),
+      { params: Promise.resolve({ id: 'm2' }) }
+    )
+    expect(response.status).toBe(409)
+    expect(writes('csr_milestone_evidence', 'insert')).toHaveLength(0)
+  })
 })
 
 describe('admin refund recording', () => {
@@ -448,6 +559,7 @@ describe('admin refund recording', () => {
     mocks.razorpay.payments.refund.mockResolvedValue({ id: 'rfnd_1', status: 'processed' })
     respond((query) => {
       if (query.table === 'razorpay_payments' && query.op === 'select') return { data: paymentRow }
+      if (query.table === 'razorpay_refunds' && query.op === 'select') return { data: [] }
       if (query.table === 'razorpay_refunds' && query.op === 'update' && hasCall(query, 'select')) {
         return { data: firstToProcess ? [{ id: 'r1' }] : [] }
       }

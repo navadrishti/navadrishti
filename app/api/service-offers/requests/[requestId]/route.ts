@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adjustServiceRequestProgress, supabase } from '@/lib/db';
 import { getTokenClaims } from '@/lib/auth';
+import { authErrorResponse } from '@/lib/server-auth';
 import { isCapabilityRentalTransaction, resolveCapabilityRentalRate } from '@/lib/service-offers';
+import { emitOfferMarketplaceEvent } from '@/lib/service-offers/marketplace-events';
 import { loadAssignmentOutstanding } from '@/lib/engagement-settlement';
 import { parseJsonObject } from '@/lib/utils';
 import type { TablesUpdate } from '@/lib/database.types';
@@ -46,7 +48,7 @@ export async function PUT(
 
     const { data: targetRequest, error: targetRequestError } = await supabase
       .from('service_clients')
-      .select('id, service_offer_id, response_meta, status, client_id, service_request_id, proposed_amount, billing_cycle, payment_mode, expires_at, accepted_at, assigned_at')
+      .select('id, service_offer_id, response_meta, status, client_id, service_request_id, proposed_amount, fulfilled_amount, fulfilled_quantity, billing_cycle, payment_mode, expires_at, accepted_at, assigned_at')
       .eq('id', parsedRequestId)
       .single();
 
@@ -56,7 +58,7 @@ export async function PUT(
 
     const { data: offer, error: offerError } = await supabase
       .from('service_offers')
-      .select('id, creator_id, valid_until, transaction_type, price_amount, unit_rate, offer_details')
+      .select('id, creator_id, title, valid_until, transaction_type, price_amount, unit_rate, offer_details')
       .eq('id', targetRequest.service_offer_id)
       .single();
 
@@ -129,6 +131,19 @@ export async function PUT(
     }
 
     const nowIso = new Date().toISOString()
+    // Operational fulfilment credited to the Need (never proposed_*).
+    const persistedFulfilledAmount =
+      status === 'completed'
+        ? (fulfilled_amount !== null && fulfilled_amount !== undefined
+            ? fulfilled_amount
+            : Number(targetRequest.fulfilled_amount || 0) || 0)
+        : null
+    const persistedFulfilledQuantity =
+      status === 'completed'
+        ? (fulfilled_quantity !== null && fulfilled_quantity !== undefined
+            ? fulfilled_quantity
+            : Number(targetRequest.fulfilled_quantity || 0) || 0)
+        : null
 
     const updatePayload: TablesUpdate<'service_clients'> = {
       response_meta: {
@@ -155,11 +170,11 @@ export async function PUT(
         ...currentMeta,
         isAssigned: true,
         fulfillment_note: completion_note || currentMeta.fulfillment_note || null,
-        fulfilled_amount: fulfilled_amount ?? currentMeta.fulfilled_amount ?? null,
-        fulfilled_quantity: fulfilled_quantity ?? currentMeta.fulfilled_quantity ?? null
+        fulfilled_amount: persistedFulfilledAmount,
+        fulfilled_quantity: persistedFulfilledQuantity
       }
-      updatePayload.fulfilled_amount = fulfilled_amount
-      updatePayload.fulfilled_quantity = fulfilled_quantity
+      updatePayload.fulfilled_amount = persistedFulfilledAmount
+      updatePayload.fulfilled_quantity = persistedFulfilledQuantity
     }
 
     const { data: claimedRequest, error: updateError } = await supabase
@@ -207,7 +222,7 @@ export async function PUT(
     if (status === 'accepted') {
       const { data: otherRequests, error: otherRequestsError } = await supabase
         .from('service_clients')
-        .select('id, response_meta')
+        .select('id, client_id, response_meta')
         .eq('service_offer_id', targetRequest.service_offer_id)
         .neq('id', parsedRequestId)
         .eq('status', 'pending');
@@ -221,7 +236,7 @@ export async function PUT(
           ? otherRequest.response_meta
           : {};
 
-        const { error: rejectError } = await supabase
+        const { data: rejectedOther, error: rejectError } = await supabase
           .from('service_clients')
           .update({
             status: 'rejected',
@@ -232,10 +247,24 @@ export async function PUT(
             updated_at: new Date().toISOString()
           })
           .eq('id', otherRequest.id)
-          .eq('service_offer_id', targetRequest.service_offer_id);
+          .eq('service_offer_id', targetRequest.service_offer_id)
+          .eq('status', 'pending')
+          .select('id, client_id')
+          .maybeSingle();
 
         if (rejectError) {
           return NextResponse.json({ error: 'Failed to update other applications' }, { status: 500 });
+        }
+        if (rejectedOther?.id && Number(rejectedOther.client_id) > 0) {
+          await emitOfferMarketplaceEvent({
+            eventType: 'offer_request_rejected',
+            applicationId: Number(rejectedOther.id),
+            offerId: Number(offer.id),
+            offerTitle: String(offer.title || ''),
+            actorUserId: ownerId,
+            recipientUserId: Number(rejectedOther.client_id),
+            relatedUserId: ownerId,
+          })
         }
       }
 
@@ -339,47 +368,124 @@ export async function PUT(
     if (status === 'completed') {
       const linkedServiceRequestId = Number(currentMeta.service_request_id || targetRequest.service_request_id || 0) || null;
       if (linkedServiceRequestId) {
-        const { data: serviceRequest } = await supabase
-          .from('service_requests')
-          .select('id, status, current_amount, current_quantity, target_amount, target_quantity, remaining_amount, remaining_quantity, project_id')
-          .eq('id', linkedServiceRequestId)
-          .single();
+        const alreadyCreditedByPayment = currentMeta.payment_status === 'paid'
+        const amountDelta = alreadyCreditedByPayment ? 0 : Number(persistedFulfilledAmount || 0)
+        const quantityDelta = Number(persistedFulfilledQuantity || 0)
 
-        if (serviceRequest) {
-          const alreadyCreditedByPayment = currentMeta.payment_status === 'paid'
+        try {
+          // Re-read after service_clients.completed_at write. Trigger no longer mutates Need progress.
+          const { data: serviceRequest, error: needReadError } = await supabase
+            .from('service_requests')
+            .select('id, status, current_amount, current_quantity, target_amount, target_quantity, remaining_amount, remaining_quantity, project_id')
+            .eq('id', linkedServiceRequestId)
+            .single();
+          if (needReadError) throw needReadError
+          if (!serviceRequest) throw new Error('Linked service request not found')
+
           const targetAmount = Number(serviceRequest.target_amount || 0)
           const targetQuantity = Number(serviceRequest.target_quantity || 0)
           const progress = await adjustServiceRequestProgress(
             serviceRequest,
-            {
-              amount: alreadyCreditedByPayment ? 0 : Number(fulfilled_amount || 0),
-              quantity: Number(fulfilled_quantity || 0),
-            },
+            { amount: amountDelta, quantity: quantityDelta },
             { targetAmount, targetQuantity }
           )
+
+          const { data: latestNeed, error: latestNeedError } = await supabase
+            .from('service_requests')
+            .select('id, status, current_amount, current_quantity, target_amount, target_quantity, project_id')
+            .eq('id', linkedServiceRequestId)
+            .single()
+          if (latestNeedError) throw latestNeedError
+
+          const finalNeed = latestNeed || progress
           const isFullyMet =
-            (targetAmount > 0 && Number(progress.current_amount || 0) >= targetAmount) ||
-            (targetQuantity > 0 && Number(progress.current_quantity || 0) >= targetQuantity)
-          const requestStatus = String(progress.status || '').toLowerCase()
+            (targetAmount > 0 && Number(finalNeed.current_amount || 0) >= targetAmount) ||
+            (targetQuantity > 0 && Number(finalNeed.current_quantity || 0) >= targetQuantity)
+          const requestStatus = String(finalNeed.status || '').toLowerCase()
           const isOpenRequest = ['active', 'in_progress'].includes(requestStatus)
 
           if (isFullyMet && isOpenRequest) {
-            await supabase
+            const { error: fulfillError } = await supabase
               .from('service_requests')
               .update({ is_fulfilled: true, completed_at: nowIso, status: 'completed', updated_at: nowIso })
               .eq('id', linkedServiceRequestId)
+            if (fulfillError) throw fulfillError
           }
 
           if (isFullyMet && isOpenRequest && serviceRequest.project_id) {
-            await supabase
+            const { error: projectError } = await supabase
               .from('service_request_projects')
               .update({
                 csr_project_available_for_csr: false,
                 updated_at: nowIso
               })
               .eq('id', serviceRequest.project_id)
+            if (projectError) throw projectError
           }
+        } catch (progressError) {
+          console.error('Offer completion progress failed; compensating request status:', progressError)
+          const { error: compensateError } = await supabase
+            .from('service_clients')
+            .update({
+              status: 'accepted',
+              completed_at: null,
+              fulfilled_amount: targetRequest.fulfilled_amount ?? null,
+              fulfilled_quantity: targetRequest.fulfilled_quantity ?? null,
+              response_meta: currentMeta,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', parsedRequestId)
+            .eq('service_offer_id', targetRequest.service_offer_id)
+            .eq('status', 'completed')
+          if (compensateError) {
+            console.error('Failed to compensate service_clients after progress error:', compensateError)
+          }
+          if (liveAssignment) {
+            await supabase
+              .from('service_engagement_assignments')
+              .update({ status: 'active', completed_at: null, updated_at: new Date().toISOString() })
+              .eq('id', liveAssignment.id)
+              .eq('status', 'completed')
+          }
+          return NextResponse.json({ error: 'Failed to update need progress for this completion.' }, { status: 500 });
         }
+      }
+    }
+
+    const requesterId = Number(targetRequest.client_id || 0)
+    const offerTitle = String(offer.title || '')
+    if (status === 'accepted' && requesterId > 0) {
+      await emitOfferMarketplaceEvent({
+        eventType: 'offer_request_accepted',
+        applicationId: parsedRequestId,
+        offerId: Number(offer.id),
+        offerTitle,
+        actorUserId: ownerId,
+        recipientUserId: requesterId,
+        relatedUserId: ownerId,
+      })
+    } else if (status === 'rejected' && requesterId > 0) {
+      await emitOfferMarketplaceEvent({
+        eventType: 'offer_request_rejected',
+        applicationId: parsedRequestId,
+        offerId: Number(offer.id),
+        offerTitle,
+        actorUserId: ownerId,
+        recipientUserId: requesterId,
+        relatedUserId: ownerId,
+      })
+    } else if (status === 'completed') {
+      const parties = [ownerId, requesterId].filter((id, index, all) => id > 0 && all.indexOf(id) === index)
+      for (const recipientUserId of parties) {
+        await emitOfferMarketplaceEvent({
+          eventType: 'offer_fulfilment_completed',
+          applicationId: parsedRequestId,
+          offerId: Number(offer.id),
+          offerTitle,
+          actorUserId: ownerId,
+          recipientUserId,
+          relatedUserId: recipientUserId === ownerId ? requesterId : ownerId,
+        })
       }
     }
 
@@ -393,6 +499,8 @@ export async function PUT(
       }
     });
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Error updating request status:', error);
     return NextResponse.json({ error: 'Failed to update request status' }, { status: 500 });
   }

@@ -10,6 +10,8 @@ import { redactCampaignForViewer } from '@/lib/campaign-public-view'
 import { updateCampaignDb } from '@/lib/csr-agent/campaign/drafts'
 import { updateCsrCapabilityRentalStatus } from '@/lib/csr-agent/campaign/rental-store'
 import { linkCsrCapabilityRentalTracking, loadCampaignRentalByOffer } from '@/lib/csr-agent/campaign'
+import { setLiveUserTypeOverlay } from '@/lib/auth/session'
+import { overlayLiveUserType } from '@/lib/server-auth'
 import { jsonRequest, tokenFor } from './support/requests'
 import { eqValue, hasCall, supabaseFake, type FakeQuery, type FakeResult } from './support/supabase-fake'
 import { rental, type Row } from './support/csr-campaign-fixtures'
@@ -35,18 +37,32 @@ vi.mock('@/lib/csr-agent/campaign', async (importOriginal) => ({
 }))
 
 const CAMPAIGN_ID = '6f1d7a4e-2b3c-4d5e-8f90-1234567890ab'
+const EVIDENCE_VERIFIER_IDENTITY_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
 const privateImpact = {
   csr_agent_session_id: 'session-secret',
   lead_ngo_invites: [{ ngo_id: 6, name: 'Seva', email: 'seva@example.org', status: 'accepted' }],
+  evidence_verifier_identity_id: EVIDENCE_VERIFIER_IDENTITY_ID,
 }
 
 function respondWith(handler: (query: FakeQuery) => FakeResult | undefined) {
   supabaseFake.reset()
-  supabaseFake.respondWith(handler)
+  supabaseFake.respondWith((query) => {
+    if (query.table === 'users' && query.columns?.includes('account_status')) {
+      const id = Number(eqValue(query, 'id'))
+      const userType = id === 3 ? 'company' : id === 30 ? 'individual' : 'ngo'
+      return { data: { id, user_type: userType, verification_status: 'verified', account_status: 'active', profile_data: {} } }
+    }
+    if (['company_ca_identities', 'ngo_field_officer_identities', 'company_employee_identities'].includes(query.table) &&
+        eqValue(query, 'user_id') !== undefined) {
+      return { data: null }
+    }
+    return handler(query)
+  })
 }
 
 beforeEach(() => {
   supabaseFake.reset()
+  setLiveUserTypeOverlay((claims, pathname) => overlayLiveUserType(claims, pathname))
   vi.spyOn(console, 'error').mockImplementation(() => {})
   vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
@@ -191,6 +207,80 @@ describe('POST /api/campaigns/[id]/volunteer', () => {
     expect(supabaseFake.find('campaigns', 'update')).toHaveLength(0)
   })
 
+  it('blocks the lead NGO from applying as a volunteer on its own campaign', async () => {
+    respondWith((query) => {
+      if (query.table === 'campaigns') {
+        return { data: { ...baseCampaign, lead_ngo_user_id: 6 } }
+      }
+      return {}
+    })
+    const response = await volunteer(
+      jsonRequest('http://localhost/api/campaigns/c1/volunteer', {
+        token: tokenFor(6, 'ngo'),
+        method: 'POST',
+      }),
+      { params: Promise.resolve({ id: 'c1' }) }
+    )
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({
+      error: expect.stringMatching(/Lead NGOs coordinate/i),
+    })
+    expect(supabaseFake.find('campaigns', 'update')).toHaveLength(0)
+  })
+
+  it('stores the NGO declared participant capacity on volunteer apply', async () => {
+    const ngoUser = {
+      ...verifiedUser,
+      id: 40,
+      user_type: 'ngo',
+      ngo_volunteer_capacity: 12,
+    }
+    respondWith((query) => {
+      if (query.table === 'users') return { data: ngoUser }
+      if (query.table !== 'campaigns') return {}
+      if (query.op === 'update') {
+        return {
+          data: [
+            {
+              ...baseCampaign,
+              impact_metrics: {
+                ...baseCampaign.impact_metrics,
+                volunteer_requirement: 20,
+                volunteer_applications: [
+                  { user_id: 1, capacity: 1 },
+                  { user_id: 40, user_type: 'ngo', capacity: 12 },
+                ],
+              },
+            },
+          ],
+        }
+      }
+      if (hasCall(query, 'neq', 'id')) return { data: [] }
+      return {
+        data: {
+          ...baseCampaign,
+          impact_metrics: { ...baseCampaign.impact_metrics, volunteer_requirement: 20 },
+        },
+      }
+    })
+
+    const response = await volunteer(
+      jsonRequest('http://localhost/api/campaigns/c1/volunteer', {
+        token: tokenFor(40, 'ngo'),
+        method: 'POST',
+      }),
+      { params: Promise.resolve({ id: 'c1' }) }
+    )
+    expect(response.status).toBe(200)
+    const [update] = supabaseFake.find('campaigns', 'update')
+    const applications = (update.payload as { impact_metrics: { volunteer_applications: Row[] } })
+      .impact_metrics.volunteer_applications
+    const ngoApp = applications.find((row) => Number(row.user_id) === 40)
+    expect(ngoApp).toMatchObject({ user_type: 'ngo', capacity: 12 })
+    const body = await response.json()
+    expect(body.data.capacity).toBe(12)
+  })
+
   it('writes with an updated_at guard and redacts the response', async () => {
     useCampaigns([baseCampaign], [{ data: [{ ...baseCampaign, updated_at: 'T2' }] }])
     const response = await apply()
@@ -199,7 +289,7 @@ describe('POST /api/campaigns/[id]/volunteer', () => {
     expect(eqValue(update, 'updated_at')).toBe('T1')
     const { data } = await response.json()
     expect(data.campaign.impact_metrics).not.toHaveProperty('csr_agent_session_id')
-    expect(data.campaign.impact_metrics.lead_ngo_invites[0]).not.toHaveProperty('email')
+    expect(data.campaign.impact_metrics.lead_ngo_invites).toEqual([])
   })
 
   it('re-reads after a lost race and enforces the volunteer limit on the fresh row', async () => {
@@ -246,9 +336,75 @@ describe('POST /api/csr-agent/publish-campaign', () => {
     }
     updateResult = null
     respondWith((query) => {
-      if (query.table !== 'campaigns') return {}
-      if (query.op === 'update') return updateResult ?? { data: { ...existing, ...(query.payload as Row) } }
-      return { data: existing }
+      if (query.table === 'campaigns') {
+        const rpcDone = supabaseFake.find('publish_campaign_with_project', 'rpc').length > 0
+        if (rpcDone) {
+          return {
+            data: {
+              ...existing,
+              status: 'active',
+              title: 'Wells',
+              category: 'Water',
+              location: 'Pune',
+            },
+          }
+        }
+        return { data: existing }
+      }
+      if (query.table === 'publish_campaign_with_project' && query.op === 'rpc') {
+        if (updateResult?.data === null) {
+          return { data: { ok: false, error_code: 'invalid_state', error: 'Only draft campaigns can be published' } }
+        }
+        return {
+          data: {
+            ok: true,
+            outcome: 'published',
+            project_id: 'bbbbbbbb-1111-2222-3333-444444444444',
+            created: true,
+            repaired: false,
+            milestones_created: 0,
+            campaign_id: CAMPAIGN_ID,
+            campaign_status: 'active',
+          },
+        }
+      }
+      if (query.table === 'company_ca_identities') {
+        return {
+          data: {
+            id: EVIDENCE_VERIFIER_IDENTITY_ID,
+            user_id: 22,
+            company_user_id: 3,
+            status: 'active',
+            permissions: { can_review_evidence: true },
+          },
+        }
+      }
+      if (query.table === 'csr_projects') {
+        return {
+          data: {
+            id: 'bbbbbbbb-1111-2222-3333-444444444444',
+            company_user_id: 3,
+            project_status: 'active',
+            title: 'Wells',
+          },
+        }
+      }
+      if (query.table === 'company_ca_project_assignments') {
+        if (query.op === 'select') {
+          return {
+            data: {
+              id: 'cccccccc-dddd-eeee-ffff-000000000001',
+              status: 'active',
+              company_ca_identity_id: EVIDENCE_VERIFIER_IDENTITY_ID,
+              project_id: 'bbbbbbbb-1111-2222-3333-444444444444',
+              company_user_id: 3,
+            },
+          }
+        }
+        return { data: { id: 'cccccccc-dddd-eeee-ffff-000000000001', status: 'active' } }
+      }
+      if (query.table === 'csr_audit_log') return { data: null }
+      return {}
     })
   })
 
@@ -270,7 +426,7 @@ describe('POST /api/csr-agent/publish-campaign', () => {
       },
     })
     expect(response.status).toBe(200)
-    const impact = (supabaseFake.find('campaigns', 'update')[0].payload as { impact_metrics: Row }).impact_metrics
+    const impact = (supabaseFake.find('publish_campaign_with_project', 'rpc')[0].payload as { p_impact_metrics: Row }).p_impact_metrics
     expect(impact.beneficiaries).toBe(80)
     expect(impact.csr_agent_session_id).toBe('session-secret')
     expect(impact.lead_ngo_invites).toEqual(privateImpact.lead_ngo_invites)
@@ -287,7 +443,7 @@ describe('POST /api/csr-agent/publish-campaign', () => {
     const response = await publish({ ...base, ...overrides })
     expect(response.status).toBe(400)
     expect((await response.json()).error).toMatch(error)
-    expect(supabaseFake.find('campaigns', 'update')).toHaveLength(0)
+    expect(supabaseFake.find('publish_campaign_with_project', 'rpc')).toHaveLength(0)
   })
 
   it('tolerates one rupee of rounding', async () => {
@@ -299,13 +455,12 @@ describe('POST /api/csr-agent/publish-campaign', () => {
     expect(response.status).toBe(200)
   })
 
-  it('only publishes rows that are still drafts', async () => {
+  it('surfaces RPC invalid_state when the campaign is no longer draft', async () => {
     updateResult = { data: null }
     const response = await publish(base)
     expect(response.status).toBe(409)
-    const [update] = supabaseFake.find('campaigns', 'update')
-    expect(eqValue(update, 'status')).toBe('draft')
-    expect(supabaseFake.find('csr_audit_log', 'insert')).toHaveLength(0)
+    expect((await response.json()).error).toMatch(/Only draft campaigns can be published/)
+    expect(supabaseFake.find('campaigns', 'update')).toHaveLength(0)
   })
 })
 
@@ -319,7 +474,8 @@ describe('campaign draft updates', () => {
     await updateCampaignDb(CAMPAIGN_ID, 3, { impact_metrics: { beneficiaries: 50, duration: '3 months' } })
     const [update] = supabaseFake.find('campaigns', 'update')
     expect((update.payload as { impact_metrics: Row }).impact_metrics).toEqual({ ...stored, beneficiaries: 50, duration: '3 months' })
-    expect(eqValue(update, 'status')).toBe('draft')
+    const statusIn = update.calls.find((entry) => entry[0] === 'in' && entry[1] === 'status')
+    expect(statusIn?.[2]).toEqual(['draft', 'active'])
     expect(eqValue(update, 'updated_at')).toBe('T1')
   })
 
@@ -328,7 +484,7 @@ describe('campaign draft updates', () => {
     await expect(updateCampaignDb(CAMPAIGN_ID, 3, { impact_metrics: { beneficiaries: 5, duration: '' } })).rejects.toThrow('concurrently')
   })
 
-  it.each(['pending', 'active', 'completed'])('PUT refuses to edit a %s campaign with 409', async (status) => {
+  it.each(['pending', 'completed'])('PUT refuses to edit a %s campaign with 409', async (status) => {
     respondWith((query) => (query.table === 'campaigns' ? { data: { status } } : {}))
     const request = new NextRequest('http://localhost/api/csr-agent/update-campaign', {
       method: 'PUT',
@@ -338,6 +494,53 @@ describe('campaign draft updates', () => {
     const response = await updateCampaign(request)
     expect(response.status).toBe(409)
     expect(supabaseFake.find('campaigns', 'update')).toHaveLength(0)
+  })
+
+  it('returns success when an active campaign is updated', async () => {
+    respondWith((query) => {
+      if (query.op === 'update') return { data: { id: CAMPAIGN_ID, title: 'Urban Micro-Forest', status: 'active' } }
+      return {
+        data: {
+          status: 'active',
+          impact_metrics: { lead_ngo_invites: [{ ngo_id: 6, status: 'accepted' }] },
+          updated_at: 'T1',
+          lead_ngo_user_id: 6,
+          end_date: '2031-03-12',
+        },
+      }
+    })
+    const response = await updateCampaign(
+      new NextRequest('http://localhost/api/csr-agent/update-campaign', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${tokenFor(3, 'company')}` },
+        body: JSON.stringify({
+          campaign_id: CAMPAIGN_ID,
+          company_id: 3,
+          campaign: {
+            title: 'Urban Micro-Forest',
+            description: 'Directly implementing micro-forests across Greater Noida neighborhoods.',
+            category: 'Environment',
+            location: 'Greater Noida, Uttar Pradesh',
+            budget_inr: 500000,
+            schedule_vii: 'Environment',
+            start_date: '2030-12-12',
+            end_date: '2031-03-12',
+            impact_metrics: {
+              beneficiaries: 500,
+              duration: '3 months',
+              volunteer_requirement: '10000',
+              city: 'Greater Noida',
+              state: 'Uttar Pradesh',
+            },
+            milestones: [
+              { title: 'Planting', description: 'Site prep and planting', duration_weeks: 4, budget_allocated: 200000, deliverables: [] },
+            ],
+          },
+        }),
+      })
+    )
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ success: true, data: { id: CAMPAIGN_ID, status: 'active' } })
   })
 
   it('returns success when a draft campaign is updated', async () => {

@@ -23,6 +23,9 @@ import { useNgoDashboardActions } from './use-ngo-dashboard-actions';
 import { CapabilityOffersSection } from './capability-offers-section';
 import { NeedsSection } from './needs-section';
 import { CsrProjectsSection } from './csr-projects-section';
+import { NgoOverviewSection } from './overview-section';
+import { FieldOfficersTab } from './field-officers/field-officers-tab';
+import { useFieldOfficers } from './field-officers/use-field-officers';
 import type {
   CapabilityOffersSubTab,
   CsrProjectsSectionTab,
@@ -32,7 +35,9 @@ import type {
 } from './types';
 
 const sidebarItems = [
+  { value: 'overview', label: 'Overview' },
   { value: 'profile', label: 'Profile' },
+  { value: 'field-officers', label: 'Field Officers' },
   { value: 'service-offers', label: 'Capability Offers' },
   { value: 'service-requests', label: 'My Needs' },
   { value: 'csr-projects', label: 'My Projects' },
@@ -44,7 +49,7 @@ function NGODashboardContent() {
   const { user } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const activeTab = searchParams.get('tab') || 'profile';
+  const activeTab = searchParams.get('tab') || 'overview';
 
   const [capabilityOffersTab, setCapabilityOffersTab] = useState<CapabilityOffersSubTab>('your-capabilities');
   const [offerRequestsTab, setOfferRequestsTab] = useState<OfferRequestsSubTab>('pending');
@@ -59,6 +64,7 @@ function NGODashboardContent() {
   });
 
   const allVerified = isFullyVerifiedAccount(user);
+  const fieldOfficers = useFieldOfficers(user?.id, activeTab === 'field-officers', allVerified);
   const [acceptsPayments, setAcceptsPayments] = useState<boolean | null>(null);
   const [payoutDetailsSaved, setPayoutDetailsSaved] = useState<boolean | null>(null);
   const { connected: payoutConnected } = usePayoutConnection(Boolean(user));
@@ -139,7 +145,7 @@ function NGODashboardContent() {
                                 <div>
                 <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
                 <p className="text-gray-500 mt-1">
-                  Manage your NGO capability offers, service requests, and CSR projects
+                  Organisation overview, project tracking, marketplace activity, and payments
                 </p>
                                 </div>
                                 </div>
@@ -176,9 +182,21 @@ function NGODashboardContent() {
                   window.history.replaceState(null, '', `/ngos/dashboard?tab=${value}`);
                   router.replace(`/ngos/dashboard?tab=${value}`, { scroll: false });
                 }} className="w-full">
+                  <TabsContent value="overview" className="mt-4 space-y-4">
+                    <NgoOverviewSection
+                      data={data}
+                      onNavigate={navigateToTab}
+                      canListCapabilities={canListCapabilities}
+                    />
+                  </TabsContent>
+
                   <TabsContent value="profile" className="mt-4 space-y-4">
                     <ProfileDashboardTab />
                           </TabsContent>
+
+                  <TabsContent value="field-officers" className="mt-4 space-y-4">
+                    <FieldOfficersTab fo={fieldOfficers} />
+                  </TabsContent>
 
                   <TabsContent value="service-offers" className="mt-4 space-y-4">
                     <CapabilityOffersSection
@@ -197,7 +215,7 @@ function NGODashboardContent() {
                     <NeedsSection
                       ongoingNeeds={data.ongoingNeeds}
                       historyNeeds={data.historyNeeds}
-                      loading={data.loadingData}
+                      loading={data.loadingNeeds || data.loadingData}
                       tab={trackingTab}
                       onTabChange={setTrackingTab}
                       onNeedUpdated={data.fetchServiceRequests}

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { findAuthUser } from '@/lib/server-auth';
+import { authErrorResponse, findAuthUser, getAuthUserFromRequest } from '@/lib/server-auth';
 import { parseJsonObject, toSearchPattern } from '@/lib/utils';
 import {
   getCaComplianceTagExpiry,
@@ -18,7 +18,7 @@ const tokenize = (value: string) =>
 
 export async function GET(request: NextRequest) {
   try {
-    const signedIn = Boolean(findAuthUser(request, { allowCookie: true }));
+    const signedIn = findAuthUser(request) ? Boolean(await getAuthUserFromRequest(request)) : false;
     const { searchParams } = new URL(request.url);
     const qStr = toSearchPattern(searchParams.get('q'));
     const q = qStr.slice(1, -1);
@@ -85,6 +85,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: ranked.slice(0, limit) });
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('NGO list error:', error);
     return NextResponse.json({ error: 'Failed to list NGOs' }, { status: 500 });
   }

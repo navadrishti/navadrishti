@@ -3,6 +3,7 @@
 import { readApiError } from '@/lib/user-facing-error'
 import { useEffect, useEffectEvent, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -18,19 +19,26 @@ import {
   EvidenceQueueItem,
   EvidenceSectionCard,
 } from '@/components/evidence-verification/portal-ui';
+import { resolveFieldOfficerNotes } from '@/lib/evidence-field-notes';
 import { formatStatusLabel } from '@/lib/format-date';
-import { finalizeConsoleLogout, formatInr } from '@/lib/utils';
+import { finalizeConsoleLogout, formatInr, parseJsonObject } from '@/lib/utils';
 import type { CompanyCAContext, MilestoneDetail, MilestoneEvidence } from '../../types';
 
 function hasEvidenceDetails(ev: MilestoneEvidence) {
   return Boolean(
-    ev.description ||
+    resolveFieldOfficerNotes(ev) ||
       ev.captured_at ||
       ev.gps_lat ||
       ev.gps_long ||
       (Array.isArray(ev.media) && ev.media.length > 0) ||
       (Array.isArray(ev.documents) && ev.documents.length > 0)
   );
+}
+
+function officerNameFromEvidence(ev: MilestoneEvidence): string | null {
+  const summary = parseJsonObject(ev.evidence_summary);
+  const name = summary.beneficiary_name;
+  return typeof name === 'string' && name.trim() ? name.trim() : null;
 }
 
 export default function ReviewDetailPage() {
@@ -67,7 +75,7 @@ export default function ReviewDetailPage() {
         return;
       }
 
-      setContext(verifyPayload.company_ca);
+      setContext(verifyPayload.evidence_verifier || verifyPayload.company_ca);
 
       const milestoneResponse = await fetch(`/api/milestones/${milestoneId}`, {
         credentials: 'include',
@@ -110,17 +118,17 @@ export default function ReviewDetailPage() {
 
       const payload = await response.json();
       if (!response.ok || !payload?.success) {
-        setPanelMessage(readApiError(payload, `Failed to ${decision} evidence.`));
+        toast.error(readApiError(payload, `Failed to ${decision} evidence.`));
         return;
       }
 
       setDecided(true);
-      setPanelMessage(`Evidence ${decision} successfully.`);
+      toast.success(`Evidence ${decision} successfully.`);
       setTimeout(() => {
         router.push('/evidence-verification');
       }, 2000);
     } catch (error) {
-      setPanelMessage(`Failed to ${decision} evidence.`);
+      toast.error(`Failed to ${decision} evidence.`);
       console.error(error);
     } finally {
       setActionLoading(null);
@@ -215,74 +223,88 @@ export default function ReviewDetailPage() {
           </div>
           {reviewData.description ? (
             <div className="mt-4">
-              <EvidenceDetailField label="Description">{reviewData.description}</EvidenceDetailField>
+              <EvidenceDetailField label="Milestone brief" preserveWhitespace>
+                {reviewData.description}
+              </EvidenceDetailField>
             </div>
           ) : null}
         </EvidenceSectionCard>
 
-        <EvidenceSectionCard title="Submitted Evidence" description="Review all evidence files and details">
+        <EvidenceSectionCard
+          title="Submitted Evidence"
+          description="Field Officer notes and media from GRAM. Reviewer comments are entered separately below."
+        >
           {evidence.length === 0 ? (
             <p className="text-sm text-slate-600">No evidence files submitted.</p>
           ) : (
             <div className="space-y-3">
-              {evidence.map((ev, idx) => (
-                <EvidenceQueueItem
-                  key={ev.id || idx}
-                  title={`Evidence #${idx + 1}`}
-                  meta={
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {ev.description ? (
-                        <EvidenceDetailField label="Description">{ev.description}</EvidenceDetailField>
-                      ) : null}
-                      {ev.captured_at ? (
-                        <EvidenceDetailField label="Captured At">{formatDateTime(ev.captured_at)}</EvidenceDetailField>
-                      ) : null}
-                      {ev.gps_lat || ev.gps_long ? (
-                        <EvidenceDetailField label="GPS Location">
-                          {ev.gps_lat || 'N/A'}, {ev.gps_long || 'N/A'}
+              {evidence.map((ev, idx) => {
+                const fieldNotes = resolveFieldOfficerNotes(ev);
+                const officerName = officerNameFromEvidence(ev);
+                return (
+                  <EvidenceQueueItem
+                    key={ev.id || idx}
+                    title={`Evidence #${idx + 1}`}
+                    meta={
+                      <div className="space-y-3">
+                        <EvidenceDetailField label="Field Notes" preserveWhitespace>
+                          {fieldNotes || 'No notes provided'}
                         </EvidenceDetailField>
-                      ) : null}
-                      {Array.isArray(ev.media) && ev.media.length > 0 ? (
-                        <EvidenceDetailField label="Media Files">
-                          <div className="space-y-1">
-                            {ev.media.map((media) => (
-                              <a
-                                key={media.id}
-                                href={media.media_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="block break-all text-blue-700 underline"
-                              >
-                                {media.file_name || media.media_url}
-                              </a>
-                            ))}
-                          </div>
-                        </EvidenceDetailField>
-                      ) : null}
-                      {Array.isArray(ev.documents) && ev.documents.length > 0 ? (
-                        <EvidenceDetailField label="Documents">
-                          <div className="space-y-1">
-                            {ev.documents.map((doc) => (
-                              <a
-                                key={doc.id}
-                                href={doc.document_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="block break-all text-blue-700 underline"
-                              >
-                                {doc.file_name || doc.document_url}
-                              </a>
-                            ))}
-                          </div>
-                        </EvidenceDetailField>
-                      ) : null}
-                      {!hasEvidenceDetails(ev) ? (
-                        <p className="text-sm text-slate-500">No details were captured with this submission.</p>
-                      ) : null}
-                    </div>
-                  }
-                />
-              ))}
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {officerName ? (
+                            <EvidenceDetailField label="Officer name">{officerName}</EvidenceDetailField>
+                          ) : null}
+                          {ev.captured_at ? (
+                            <EvidenceDetailField label="Captured At">{formatDateTime(ev.captured_at)}</EvidenceDetailField>
+                          ) : null}
+                          {ev.gps_lat || ev.gps_long ? (
+                            <EvidenceDetailField label="GPS Location">
+                              {ev.gps_lat || 'N/A'}, {ev.gps_long || 'N/A'}
+                            </EvidenceDetailField>
+                          ) : null}
+                          {Array.isArray(ev.media) && ev.media.length > 0 ? (
+                            <EvidenceDetailField label="Media Files">
+                              <div className="space-y-1">
+                                {ev.media.map((media) => (
+                                  <a
+                                    key={media.id}
+                                    href={media.media_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="block break-all text-blue-700 underline"
+                                  >
+                                    {media.file_name || media.media_url}
+                                  </a>
+                                ))}
+                              </div>
+                            </EvidenceDetailField>
+                          ) : null}
+                          {Array.isArray(ev.documents) && ev.documents.length > 0 ? (
+                            <EvidenceDetailField label="Documents">
+                              <div className="space-y-1">
+                                {ev.documents.map((doc) => (
+                                  <a
+                                    key={doc.id}
+                                    href={doc.document_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="block break-all text-blue-700 underline"
+                                  >
+                                    {doc.file_name || doc.document_url}
+                                  </a>
+                                ))}
+                              </div>
+                            </EvidenceDetailField>
+                          ) : null}
+                          {!hasEvidenceDetails(ev) ? (
+                            <p className="text-sm text-slate-500">No details were captured with this submission.</p>
+                          ) : null}
+                        </div>
+                      </div>
+                    }
+                  />
+                );
+              })}
             </div>
           )}
         </EvidenceSectionCard>
@@ -290,9 +312,9 @@ export default function ReviewDetailPage() {
         <EvidenceSectionCard title="Decision" description="Approve or reject this milestone's evidence">
           <div className="space-y-4">
             <div className="grid gap-2">
-              <label className="text-sm font-medium text-slate-600">Comments</label>
+              <label className="text-sm font-medium text-slate-600">Reviewer comments</label>
               <Textarea
-                placeholder="Add comments for your decision..."
+                placeholder="Add reviewer comments for your decision (separate from Field Officer notes)..."
                 value={comments}
                 onChange={(e) => setComments(e.target.value)}
                 rows={4}

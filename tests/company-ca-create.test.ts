@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { POST as createCompanyCa } from '@/app/api/evidence-verification/accounts/route'
 import { createSupabaseFake } from './support/supabase-fake'
+import './support/install-test-auth'
 
 const mocks = vi.hoisted(() => ({
   from: vi.fn(),

@@ -1,13 +1,12 @@
 'use client';
+import { toast } from 'sonner'
 
 import { readApiError } from '@/lib/user-facing-error'
 import { clientAuthFetchInit } from '@/lib/client-session';
 import { useState } from 'react';
-import { useToast } from '@/hooks/use-toast';
 import type { CompanyDashboardData } from './use-company-dashboard-data';
 
 export function useCsrProjectActions(data: CompanyDashboardData, allVerified: boolean) {
-  const { toast } = useToast();
   const [applyingProjectId, setApplyingProjectId] = useState<string | null>(null);
   const [projectApplicationNote, setProjectApplicationNote] = useState('');
   const [inviteSearchByProject, setInviteSearchByProject] = useState<Record<string, string>>({});
@@ -19,25 +18,17 @@ export function useCsrProjectActions(data: CompanyDashboardData, allVerified: bo
       const ownerNgoId = Number(assignment?.lead_ngo_id || 0);
       const selectedLeadId = Number(assignment?.selected_lead_ngo_id || 0);
       if (selectedLeadId > 0 && selectedLeadId !== ownerNgoId) {
-        toast({
-          title: 'Lead already assigned',
-          description: 'A lead NGO is already selected for this project.',
-          variant: 'destructive',
-        });
+        toast.error('Lead already assigned', { description: 'A lead NGO is already selected for this project.' });
         return;
       }
       if (ngoIds.some((ngoId) => ngoId === ownerNgoId)) {
-        toast({
-          title: 'Cannot invite owner',
-          description: 'The NGO that owns this project cannot also be the implementing lead.',
-          variant: 'destructive',
-        });
+        toast.error('Cannot invite owner', { description: 'The NGO that owns this project cannot also be the implementing lead.' });
         return;
       }
 
       setInvitingProjectId(projectId);
       if (ngoIds.length === 0) {
-        toast({ title: 'Select NGO', description: 'Choose at least one NGO to invite.', variant: 'destructive' });
+        toast.error('Select NGO', { description: 'Choose at least one NGO to invite.' });
         return;
       }
 
@@ -54,14 +45,14 @@ export function useCsrProjectActions(data: CompanyDashboardData, allVerified: bo
 
       const payload = await response.json();
       if (!response.ok || !payload?.success) {
-        toast({ title: 'Invite failed', description: readApiError(payload, 'Could not send invitations'), variant: 'destructive' });
+        toast.error('Invite failed', { description: readApiError(payload, 'Could not send invitations') });
         return;
       }
 
-      toast({ title: 'Invites sent', description: payload?.data?.message || 'Lead NGO invitations sent.' });
+      toast.success('Invites sent', { description: payload?.data?.message || 'Lead NGO invitations sent.' });
       data.fetchCSRTrackingAssignments();
     } catch {
-      toast({ title: 'Invite failed', description: 'Could not send invitations', variant: 'destructive' });
+      toast.error('Invite failed', { description: 'Could not send invitations' });
     } finally {
       setInvitingProjectId(null);
     }
@@ -78,15 +69,15 @@ export function useCsrProjectActions(data: CompanyDashboardData, allVerified: bo
 
       const payload = await response.json().catch(() => null);
       if (!response.ok || !payload?.success) {
-        toast({ title: 'Could not remove invite', description: readApiError(payload, 'Please try again.'), variant: 'destructive' });
+        toast.error('Could not remove invite', { description: readApiError(payload, 'Please try again.') });
         data.fetchCSRTrackingAssignments();
         return;
       }
 
-      toast({ title: 'Invite removed', description: payload?.data?.message || 'Lead NGO invite removed.' });
+      toast.success('Invite removed', { description: payload?.data?.message || 'Lead NGO invite removed.' });
       data.fetchCSRTrackingAssignments();
     } catch {
-      toast({ title: 'Could not remove invite', description: 'Please try again.', variant: 'destructive' });
+      toast.error('Could not remove invite', { description: 'Please try again.' });
     } finally {
       setInvitingProjectId(null);
     }
@@ -94,11 +85,7 @@ export function useCsrProjectActions(data: CompanyDashboardData, allVerified: bo
 
   const applyToProjectOpportunity = async (projectId: string) => {
     if (!allVerified) {
-      toast({
-        title: 'Verification required',
-        description: 'Complete email, phone, and document verification before applying for takeover.',
-        variant: 'destructive',
-      });
+      toast.error('Verification required', { description: 'Complete email, phone, and document verification before applying for takeover.' });
       return;
     }
 
@@ -116,29 +103,23 @@ export function useCsrProjectActions(data: CompanyDashboardData, allVerified: bo
 
       const payload = await response.json();
       if (response.status === 409 && /already applied/i.test(String(payload?.error || ''))) {
-        toast({
-          title: 'Already applied',
-          description: readApiError(payload, 'Your existing takeover application is on this project.'),
-        });
+        toast.success('Already applied', { description: readApiError(payload, 'Your existing takeover application is on this project.') });
         data.fetchProjectOpportunities();
         data.fetchCSRTrackingAssignments();
         return;
       }
       if (!response.ok || !payload?.success) {
-        toast({ title: 'Application failed', description: readApiError(payload, 'Could not apply for project'), variant: 'destructive' });
+        toast.error('Application failed', { description: readApiError(payload, 'Could not apply for project') });
         return;
       }
 
-      toast({
-        title: 'Application submitted',
-        description: payload?.data?.message || 'Sent to NGO for review.'
-      });
+      toast.success('Application submitted', { description: payload?.data?.message || 'Sent to NGO for review.' });
 
       setProjectApplicationNote('');
       data.fetchProjectOpportunities();
       data.fetchCSRTrackingAssignments();
     } catch {
-      toast({ title: 'Application failed', description: 'Could not apply for project', variant: 'destructive' });
+      toast.error('Application failed', { description: 'Could not apply for project' });
     } finally {
       setApplyingProjectId(null);
     }

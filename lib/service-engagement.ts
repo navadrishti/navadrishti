@@ -116,8 +116,6 @@ export function calculatePaymentProgress(paidAmount: number, totalAmount: number
   return Math.max(0, Math.min(100, Math.round((Math.max(paid, 0) / total) * 100)))
 }
 
-/* ───────── CSR capability rental (material dispatch + fines) ───────── */
-
 export const CSR_OUTBOUND_DISPATCH_DAYS = 5
 export const CSR_RETURN_DISPATCH_DAYS = 2
 export const CSR_FINE_CLEARANCE_DAYS = 10
@@ -152,6 +150,33 @@ export type CsrCapabilityDeliveryLeg = {
     location: string | null
     details: string | null
   }>
+  /**
+   * Explicit confirmed freight only. Delhivery create `total_amount` is package value — never store it here.
+   * Quotes belong in quoted_freight_inr and are excluded from the CSR expense ledger.
+   */
+  confirmed_freight_inr?: number | null
+  confirmed_charge_inr?: number | null
+  quoted_freight_inr?: number | null
+  refunded_freight_inr?: number | null
+  freight_payment_status?: 'unpaid' | 'paid' | 'refunded' | 'waived' | null
+  freight_paid_at?: string | null
+  provider_charges?: {
+    confirmed?: boolean
+    amount_inr?: number | null
+    freight_inr?: number | null
+  } | null
+  /** Compact booking response summary for freight audit (not full payload). */
+  provider_booking_raw?: Record<string, unknown> | null
+  /** Freight-named evidence extracted from tracking, when present. */
+  provider_tracking_freight_evidence?: Record<string, unknown> | null
+  freight_capture?: {
+    confirmed_source?: string | null
+    quoted_source?: string | null
+    charged_weight?: number | null
+    saw_non_freight_amounts?: boolean
+    evidence?: Record<string, unknown> | null
+    captured_at?: string | null
+  } | null
 }
 
 export type CsrCapabilityRentalRecord = {

@@ -145,7 +145,6 @@ export default function SettingsPage() {
   
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [passwordError, setPasswordError] = useState('');
-  const [passwordSuccess, setPasswordSuccess] = useState('');
   
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -167,26 +166,25 @@ export default function SettingsPage() {
     e.preventDefault();
     
     setPasswordError('');
-    setPasswordSuccess('');
-    
+
     // Validation
     if (!currentPassword || !newPassword || !confirmPassword) {
       setPasswordError('Please fill in all password fields');
       return;
     }
-    
+
     if (newPassword.length < 8) {
       setPasswordError('New password must be at least 8 characters long');
       return;
     }
-    
+
     if (newPassword !== confirmPassword) {
       setPasswordError('New passwords do not match');
       return;
     }
-    
+
     setPasswordLoading(true);
-    
+
     try {
       const response = await fetch('/api/auth/change-password', {
         method: 'POST',
@@ -199,11 +197,11 @@ export default function SettingsPage() {
           newPassword
         })
       });
-      
+
       const data = await response.json();
-      
+
       if (response.ok) {
-        setPasswordSuccess('Password changed successfully!');
+        toast.success('Password changed successfully!');
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
@@ -332,13 +330,7 @@ export default function SettingsPage() {
                       <AlertDescription>{passwordError}</AlertDescription>
                     </Alert>
                   )}
-                  
-                  {passwordSuccess && (
-                    <Alert>
-                      <AlertDescription className="text-green-600">{passwordSuccess}</AlertDescription>
-                    </Alert>
-                  )}
-                  
+
                   <div className="space-y-2">
                     <Label>Current Password</Label>
                     <Input 

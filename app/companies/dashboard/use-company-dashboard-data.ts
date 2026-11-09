@@ -199,6 +199,7 @@ const response = await fetch('/api/service-offers/requests', {
   return {
     serviceOffers,
     loadingServiceOffers,
+    fetchServiceOffers,
     offerRequests,
     setOfferRequests,
     loadingOfferRequests,

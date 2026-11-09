@@ -63,10 +63,10 @@ const TABS: { label: string; value: FilterStatus }[] = [
   { label: 'History', value: 'history' },
 ];
 
-const QUEUE_ITEM_HEIGHT = 'h-[6.5rem]';
-const QUEUE_LIST_HEIGHT = 'h-[20.5rem]';
+const QUEUE_ITEM_HEIGHT = 'h-[8rem]';
+const QUEUE_LIST_HEIGHT = 'h-[25rem]';
 const QUEUE_ITEM_CLASS =
-  `${QUEUE_ITEM_HEIGHT} shrink-0 cursor-pointer overflow-hidden rounded-lg border border-slate-100 bg-white p-3`;
+  `${QUEUE_ITEM_HEIGHT} shrink-0 cursor-pointer rounded-lg border border-slate-100 bg-white p-3`;
 
 function ColumnCard({
   title,

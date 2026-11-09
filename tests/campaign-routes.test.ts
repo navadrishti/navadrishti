@@ -6,8 +6,10 @@ import { POST as acceptLead } from '@/app/api/campaigns/accept-lead/route'
 import { POST as declineLead } from '@/app/api/campaigns/decline-lead/route'
 import { DELETE as deleteCampaign, GET as getCampaign } from '@/app/api/campaigns/[id]/route'
 import { POST as volunteer } from '@/app/api/campaigns/[id]/volunteer/route'
-import { ngoUserIsCsrEligible } from '@/lib/server-auth'
+import { ngoUserIsCsrEligible, overlayLiveUserType } from '@/lib/server-auth'
+import { setLiveUserTypeOverlay } from '@/lib/auth/session'
 
+vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db', async () => {
   const { supabaseFake: fake } = await import('./support/supabase-fake')
   return { supabase: fake.client, ensureCampaignVolunteerAssignment: async () => undefined }
@@ -32,6 +34,18 @@ function respond(query: FakeQuery) {
     return { data: campaign }
   }
   if (query.table === 'users') {
+    if (query.columns?.includes('account_status')) {
+      return {
+        data: {
+          id: eqValue(query, 'id'),
+          user_type: Number(eqValue(query, 'id')) === 10 ? 'company' :
+            Number(eqValue(query, 'id')) === 30 ? 'individual' : 'ngo',
+          verification_status: 'verified',
+          account_status: 'active',
+          profile_data: {},
+        },
+      }
+    }
     return {
       data: {
         id: eqValue(query, 'id'),
@@ -60,6 +74,7 @@ const draftCampaign = (overrides: Campaign = {}): Campaign => ({
 })
 
 beforeEach(() => {
+  setLiveUserTypeOverlay((claims, pathname) => overlayLiveUserType(claims, pathname))
   campaign = null
   claimed = true
   supabaseFake.reset()
@@ -276,19 +291,24 @@ describe('GET /api/campaigns/[id]', () => {
     const rental = { id: 'c1:7', service_offer_id: 7, payment_status: 'paid', razorpay_order_id: 'order_1', razorpay_payment_id: 'pay_1', outbound_delivery: { tracking_id: 'AWB1' } }
     const invite = { ngo_id: 5, name: 'Green Earth', email: 'green@example.org', status: 'invited' }
     const withPrivateDetails = () =>
-      draftCampaign({ status: 'active', impact_metrics: { csr_capability_rentals: [rental], lead_ngo_invites: [invite], volunteer_count: 3 } })
+      draftCampaign({ status: 'active', budget_inr: 1000, impact_metrics: {
+        csr_capability_rentals: [rental], lead_ngo_invites: [invite],
+        volunteer_applications: [{ user_id: 5, capacity: 2 }, { user_id: 9, capacity: 1 }],
+      } })
 
     it.each([
       ['anonymous visitors', undefined],
       ['an invited NGO', tokenFor(5, 'ngo')],
       ['another company', tokenFor(11, 'company')],
-    ])('hides payment references and invitee emails from %s', async (_label, token) => {
+    ])('hides rental and other NGO participation details from %s', async (_label, token) => {
       campaign = withPrivateDetails()
       const { data } = await (await get({ token })).json()
-      expect(data.impact_metrics.csr_capability_rentals).toEqual([
-        { id: 'c1:7', service_offer_id: 7, payment_status: 'paid', outbound_delivery: { tracking_id: 'AWB1' } },
-      ])
-      expect(data.impact_metrics.lead_ngo_invites).toEqual([{ ngo_id: 5, name: 'Green Earth', status: 'invited' }])
+      expect(data.impact_metrics).not.toHaveProperty('csr_capability_rentals')
+      expect(data.budget_inr).toBe(1000)
+      expect(data.impact_metrics.volunteer_applications).toEqual(token === undefined ? [] :
+        _label === 'an invited NGO' ? [{ user_id: 5 }] : [])
+      expect(data.impact_metrics.lead_ngo_invites).toEqual(_label === 'an invited NGO' ?
+        [{ ngo_id: 5, name: 'Green Earth', status: 'invited' }] : [])
       expect(data.impact_metrics.volunteer_count).toBe(3)
     })
 

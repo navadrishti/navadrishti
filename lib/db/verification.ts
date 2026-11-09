@@ -83,7 +83,9 @@ export const individualVerifications = {
 }
 
 export const verificationDocuments = {
-  async upsert(row: VerificationDocumentRow): Promise<{ ok: boolean; error?: string }> {
+  async upsert(
+    row: VerificationDocumentRow
+  ): Promise<{ ok: boolean; error?: string; row?: VerificationDocumentRow }> {
     try {
       const payload = {
         user_id: row.user_id,
@@ -100,12 +102,16 @@ export const verificationDocuments = {
         updated_at: new Date().toISOString(),
       }
 
-      const { error } = await supabase.from('verification_documents').upsert(payload, {
-        onConflict: 'user_id,actor_type,doc_key',
-      })
+      const { data, error } = await supabase
+        .from('verification_documents')
+        .upsert(payload, {
+          onConflict: 'user_id,actor_type,doc_key',
+        })
+        .select('id, user_id, actor_type, doc_key, file_url, doc_number, valid_until, status, uploaded_at, reviewed_at, reviewed_by_platform_ca_id, metadata')
+        .single()
 
       if (error) return { ok: false, error: error.message }
-      return { ok: true }
+      return { ok: true, row: data as VerificationDocumentRow }
     } catch (error) {
       return { ok: false, error: getErrorMessage(error) }
     }
@@ -125,7 +131,7 @@ export const verificationDocuments = {
     }
   },
 
-  /** Sync uploaded document URLs into verification_documents (profile_data remains a mirror). */
+  /** Sync uploaded document URLs / ndkyc refs into verification_documents (profile_data remains a mirror). */
   async syncActorDocuments(options: {
     userId: number
     actorType: VerificationActorType
@@ -134,10 +140,12 @@ export const verificationDocuments = {
     expiries?: Record<string, string | null | undefined> | null
     status?: string
   }): Promise<void> {
+    const { parseKycDocumentRef } = await import('@/lib/kyc/document-refs')
     const docs = options.documents || {}
     for (const [docKey, fileUrl] of Object.entries(docs)) {
       const url = String(fileUrl || '').trim()
       if (!docKey || !url) continue
+      const ref = parseKycDocumentRef(url)
       await verificationDocuments.upsert({
         user_id: options.userId,
         actor_type: options.actorType,
@@ -146,6 +154,14 @@ export const verificationDocuments = {
         doc_number: options.numbers?.[docKey] ? String(options.numbers[docKey]) : null,
         valid_until: options.expiries?.[docKey] ? String(options.expiries[docKey]) : null,
         status: options.status || 'uploaded',
+        metadata: ref
+          ? {
+              public_id: ref.publicId,
+              resource_type: ref.resourceType,
+              delivery_type: ref.deliveryType,
+              kyc_storage: ref.deliveryType === 'authenticated' ? 'authenticated' : 'legacy_upload',
+            }
+          : { kyc_storage: 'legacy_url' },
       })
     }
   },

@@ -7,12 +7,14 @@ import ProtectedRoute from '@/components/protected-route';
 import { Header } from '@/components/header';
 import { Card, CardContent } from '@/components/ui/card';
 import { ProfileDashboardTab } from '@/components/profile-dashboard-tab';
+import { PaymentHistoryPanel } from '@/components/payment-history-panel';
 import { DashboardBodyLayout, DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
 import { DashboardPageSkeleton } from '@/components/ui/skeleton';
 import { dashboardProfilePayoutHref, usePayoutConnection } from '@/hooks/use-payout-connection';
 import { CapabilityOffersSection } from './capability-offers-section';
 import { NgoRequestsSection } from './ngo-requests-section';
 import { CsrCampaignsSection } from './csr-campaigns-section';
+import { IndividualOverviewSection } from './overview-section';
 import { useIndividualDashboardData } from './use-individual-dashboard-data';
 import { useOfferRequestActions } from './use-offer-request-actions';
 import type { CapabilityOffersSubTab, CsrCampaignsSubTab, ProgressSubTab } from './types';
@@ -24,7 +26,7 @@ function IndividualDashboardContent() {
   const canListCapabilities = payoutConnected === true;
   const payoutHref = dashboardProfilePayoutHref('individual');
   const searchParams = useSearchParams();
-  const requestedTab = searchParams.get('tab') || 'profile';
+  const requestedTab = searchParams.get('tab') || 'overview';
   const activeTab =
     requestedTab === 'services-hired' || requestedTab === 'service-requests'
       ? 'ngo-requests'
@@ -36,10 +38,12 @@ function IndividualDashboardContent() {
   const [myApplicationsTab, setMyApplicationsTab] = useState<ProgressSubTab>('in-progress');
   const [csrCampaignsTab, setCsrCampaignsTab] = useState<CsrCampaignsSubTab>('ongoing');
   const sidebarItems = [
+    { value: 'overview', label: 'Overview' },
     { value: 'profile', label: 'Profile' },
     { value: 'capability-offers', label: 'Capability Offers' },
     { value: 'ngo-requests', label: 'NGO Requests' },
     { value: 'csr-campaigns', label: 'CSR Campaigns' },
+    { value: 'payments', label: 'Payments' },
   ];
 
   const navigateToTab = (value: string) => {
@@ -75,14 +79,16 @@ function IndividualDashboardContent() {
               <div>
                 <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
                 <p className="text-gray-500 mt-1">
-                  Manage NGO needs you fulfill, CSR campaign volunteering, and your capability offers
+                  Overview of your activity, then detailed workspaces for offers, needs, volunteering, and payments
                 </p>
               </div>
             </div>
 
             <Card>
                   <CardContent className="pt-6">
-                    {activeTab === 'profile' ? (
+                    {activeTab === 'overview' ? (
+                      <IndividualOverviewSection data={data} onNavigate={navigateToTab} />
+                    ) : activeTab === 'profile' ? (
                       <ProfileDashboardTab />
                     ) : activeTab === 'capability-offers' ? (
                   <CapabilityOffersSection
@@ -99,6 +105,21 @@ function IndividualDashboardContent() {
                   <NgoRequestsSection data={data} tab={myApplicationsTab} onTabChange={setMyApplicationsTab} />
                 ) : activeTab === 'csr-campaigns' ? (
                   <CsrCampaignsSection data={data} tab={csrCampaignsTab} onTabChange={setCsrCampaignsTab} />
+                ) : activeTab === 'payments' ? (
+                  <div className="space-y-6">
+                    <PaymentHistoryPanel
+                      role="received"
+                      title="Payments received"
+                      description="Settlements and capability payments credited to your account. Pending payments stay pending until Razorpay confirms capture."
+                      emptyMessage="No received payments recorded yet."
+                    />
+                    <PaymentHistoryPanel
+                      role="sent"
+                      title="Payments sent"
+                      description="Amounts you paid on GRAM (for example when hiring a capability). Status labels match the payment ledger."
+                      emptyMessage="No outbound payments recorded yet."
+                    />
+                  </div>
                     ) : null}
                   </CardContent>
                 </Card>

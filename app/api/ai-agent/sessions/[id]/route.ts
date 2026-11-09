@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { deleteAgentSessionForUser } from '@/lib/db'
-import { findAuthUser } from '@/lib/server-auth'
+import { authErrorResponse, getAuthUserFromRequest } from '@/lib/server-auth'
 
 type AgentKind = 'csr' | 'ngo'
 
@@ -14,10 +14,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const userId = findAuthUser(request, { allowCookie: true })?.id
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const userId = (await getAuthUserFromRequest(request)).id
 
     const { id: sessionId } = await params
     const { searchParams } = new URL(request.url)
@@ -42,6 +39,8 @@ export async function DELETE(
           : 'Conversation deleted.',
     })
   } catch (error: unknown) {
+    const auth = authErrorResponse(error)
+    if (auth) return auth
     const message = error instanceof Error ? error.message : 'Failed to delete session'
     const status = message === 'Session not found' ? 404 : 500
     console.error('Failed to delete AI agent session', error)

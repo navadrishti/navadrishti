@@ -50,7 +50,7 @@ not required to start the main application.
 
 Company Employee implementation and cross-instance behavior are **not approved
 for rollout** by the retained
-[readiness assessment](../database/audit/company-employee-rollout-readiness.md).
+the relevant implementation and authorization boundaries.
 No live database or external provider was checked for this documentation pass.
 
 ## Partial, external and planned work
@@ -58,7 +58,8 @@ No live database or external provider was checked for this documentation pass.
 Several user journeys depend on external configuration or components outside
 this repository; document and verify each service independently before
 launching it. No authoritative product roadmap is represented by the source
-tree. SQL under `database/proposed/` is proposal material, not a product
+tree. SQL under `sql/` is versioned migration material and must be reviewed
+before execution; it is not applied automatically.
 commitment or an approved database change.
 
 ## Primary guides

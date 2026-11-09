@@ -11,7 +11,13 @@ export type CsrProjectSummary = Tables<'csr_projects'> & {
   completed_milestones_count: number;
   next_milestone: Milestone | null;
   deadline_at: string | null;
-  confirmed_funds: number;
+  confirmed_funds: number | null;
+  confirmed_funds_available?: boolean;
+  refunds_reconciled?: boolean;
+  gross_confirmed_funds?: number;
+  confirmed_refund_funds?: number;
+  pending_payment_funds?: number;
+  approved_awaiting_payment_funds?: number;
 };
 
 type ProjectTimelineEntry = {
@@ -28,7 +34,9 @@ export type ProjectTimeline = {
   summary: {
     total_milestones: number;
     completed_milestones: number;
-    confirmed_funds: number;
+    confirmed_funds: number | null;
+    confirmed_funds_available?: boolean;
+    refunds_reconciled?: boolean;
     next_milestone: Milestone | null;
   };
   timeline: ProjectTimelineEntry[];

@@ -6,7 +6,9 @@ import { takenInShowsWorkTracking } from '@/components/csr-tracking-project-deta
 import type { CompanyDashboardData } from '@/app/companies/dashboard/use-company-dashboard-data'
 import type { CsrProjectActions } from '@/app/companies/dashboard/use-csr-project-actions'
 
-vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }))
+vi.mock('sonner', () => ({
+  toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
+}))
 
 const data = {
   projectOpportunities: [{
@@ -100,8 +102,11 @@ describe('company CSR projects tab', () => {
 
     await userEvent.click(screen.getByRole('tab', { name: 'History (1)' }))
     expect(screen.getByText('Finished well repair')).toBeInTheDocument()
-    expect(screen.getByText('Currently')).toBeInTheDocument()
+    expect(screen.getByText('Assignment: Completed')).toBeInTheDocument()
+    expect(screen.getByText('Project: Completed')).toBeInTheDocument()
     expect(screen.queryByText('Invite Lead NGOs')).not.toBeInTheDocument()
+    // "Currently:" is draft-campaign copy on Made by company — not takeover history.
+    expect(screen.queryByText('Currently:')).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('tab', { name: 'Made by company (1)' }))
 

@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
 import { formatDisplayDate, formatCampaignLeadLifecycleLabel, type CampaignLeadLifecycle } from '@/lib/format-date'
 import { cn } from '@/lib/utils'
 import { VerifiedAccountName } from '@/components/verification-badge'
@@ -68,6 +69,15 @@ export function CampaignVolunteerAssignmentCard({
 }: {
   assignment: CampaignVolunteerAssignmentItem
 }) {
+  const daysPresent =
+    assignment.attendance_summary?.days_attended ?? assignment.attendance_summary?.total_entries ?? 0
+  const lifecycleProgress =
+    assignment.lifecycle === 'completed'
+      ? 100
+      : assignment.lifecycle === 'started'
+        ? Math.min(90, 40 + Number(daysPresent) * 8)
+        : 20
+
   return (
     <div className="rounded-md border bg-white p-4">
       <div className="space-y-3">
@@ -75,7 +85,7 @@ export function CampaignVolunteerAssignmentCard({
           <div className="min-w-0">
             <p className="font-semibold text-slate-900">{assignment.campaign_title}</p>
             <p className="flex flex-wrap items-center gap-1 text-sm text-slate-600">
-              <span>Volunteer •</span>
+              <span>Volunteer organisation / individual •</span>
               <VerifiedAccountName
                 name={assignment.company_name || 'Company'}
                 status={assignment.company_verification_status}
@@ -105,35 +115,49 @@ export function CampaignVolunteerAssignmentCard({
           <p className="text-sm text-muted-foreground line-clamp-3">{assignment.campaign_description}</p>
         ) : null}
 
-        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm md:grid-cols-3">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Category</p>
-            <p className="font-medium text-slate-800">{assignment.campaign_category || 'Not set'}</p>
+        <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50/80 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Assignment progress</p>
+            <p className="text-xs tabular-nums text-slate-600">{lifecycleProgress}%</p>
           </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Location</p>
-            <p className="font-medium text-slate-800">{assignment.campaign_location || 'Not set'}</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Timeline</p>
-            <p className="font-medium text-slate-800">
-              {formatDisplayDate(assignment.start_date) || 'Start TBD'} →{' '}
-              {formatDisplayDate(assignment.end_date) || 'End TBD'}
+          <Progress value={lifecycleProgress} className="h-1.5" />
+          <p className="text-xs text-slate-600">
+            {assignment.lifecycle === 'yet_to_start'
+              ? 'Campaign has not started yet. Attendance unlocks when the campaign window begins.'
+              : assignment.lifecycle === 'started'
+                ? 'Campaign is live. Mark sealed present days in the GRAM App.'
+                : 'Campaign assignment is complete.'}
+          </p>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Campaign schedule</p>
+            <p className="mt-1 font-medium text-slate-900">
+              {formatDisplayDate(assignment.start_date) || 'Start TBD'} → {formatDisplayDate(assignment.end_date) || 'End TBD'}
+            </p>
+            <p className="mt-1 text-xs text-slate-600">
+              {assignment.campaign_category || 'Category not set'} · {assignment.campaign_location || 'Location not set'}
+            </p>
+            <p className="mt-2 text-xs text-slate-600">
+              Status: {formatCampaignLeadLifecycleLabel(assignment.lifecycle)}. Attendance is recorded in the GRAM App.
             </p>
           </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Days attended</p>
-            <p className="font-medium text-slate-800">
-              {assignment.attendance_summary?.days_attended ?? assignment.attendance_summary?.total_entries ?? 0}
+          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Attendance</p>
+            <p className="mt-1 font-medium tabular-nums text-slate-900">
+              {daysPresent} day(s) marked present
             </p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Last check-in</p>
-            <p className="font-medium text-slate-800">
-              {formatDisplayDate(assignment.attendance_summary?.last_attendance_at) || 'None yet'}
+            <p className="mt-1 text-xs text-slate-600">
+              Declared participants {Math.max(1, Number(assignment.volunteer_capacity) || 1)} · last check-in{' '}
+              {formatDisplayDate(assignment.attendance_summary?.last_attendance_at) || 'none yet'} · sealed
+              present days only
             </p>
           </div>
         </div>
+        <p className="text-xs text-muted-foreground">
+          Organisation volunteers check in once per day for the declared headcount in GRAM — team members do not need individual accounts.
+        </p>
 
         <div className="flex flex-wrap gap-2 pt-1">
           <Button asChild variant="outline" size="sm">

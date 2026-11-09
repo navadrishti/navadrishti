@@ -3,6 +3,13 @@
 import { useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { InfoMeter, InfoMeterGrid, formatMeterInr, meterPercent } from '@/components/info-meter';
+import {
+  DashboardActionCentre,
+  DashboardActivityFeed,
+  DashboardSectionCard,
+  DashboardStatGrid,
+} from '@/components/dashboard-overview';
 import { formatStatusLabel } from '@/lib/format-date';
 import { statusTone } from './helpers';
 import type { HealthData, OverviewData } from './types';
@@ -30,20 +37,6 @@ function HealthCheck({ label, value, description }: {
   );
 }
 
-function KpiCard({ label, value, detail }: {
-  label: string;
-  value: number;
-  detail: string;
-}) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-3 text-3xl font-bold tracking-tight text-slate-950">{value.toLocaleString('en-IN')}</p>
-      <p className="mt-1 text-xs text-slate-500">{detail}</p>
-    </div>
-  );
-}
-
 type ActivitySource = {
   id?: number | string;
   ticket_id?: string;
@@ -66,6 +59,9 @@ export function OverviewPanel({
   offerCount,
   requestCount,
   projectCount,
+  campaignCount = 0,
+  ticketCount = 0,
+  onNavigate,
 }: {
   overview: OverviewData | null;
   health: HealthData | null;
@@ -73,15 +69,20 @@ export function OverviewPanel({
   offerCount: number;
   requestCount: number;
   projectCount: number;
+  campaignCount?: number;
+  ticketCount?: number;
+  onNavigate?: (tab: string) => void;
 }) {
   const stats = overview?.summary || {};
   const counts = overview?.counts || {};
-  const liveOffers = counts.offers_by_status?.approved || 0;
-  const removedOffers = counts.offers_by_status?.rejected || 0;
+  const liveOffers = counts.offers_by_status?.active || 0;
+  const removedOffers = count(counts.offers_by_status, ['inactive', 'completed', 'cancelled', 'paused']);
   const openTickets = count(counts.tickets_by_status, ['open', 'in_progress']);
   const pendingVerification = count(counts.users_by_verification, ['pending', 'unverified']);
   const activeRequests = count(counts.requests_by_status, ['open', 'active', 'in_progress', 'pending']);
   const activeProjects = count(counts.projects_by_status, ['open', 'active', 'in_progress', 'pending']);
+  const usersByType = counts.users_by_type || {};
+  const paymentTotals = overview?.payment_totals || null;
 
   const recentActivities = useMemo(() => {
     const recent = overview?.recent;
@@ -117,37 +118,101 @@ export function OverviewPanel({
 
     return activities
       .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, 5);
+      .slice(0, 8);
   }, [overview]);
+
+  const actions = [
+    {
+      id: 'verification',
+      title: `${pendingVerification} user(s) pending or unverified`,
+      detail: 'Open People to review verification and re-verification queues.',
+      onClick: onNavigate ? () => onNavigate('users') : undefined,
+      tone: pendingVerification > 0 ? ('attention' as const) : ('default' as const),
+    },
+    {
+      id: 'support',
+      title: `${openTickets} support ticket(s) open`,
+      detail: 'Open and in-progress conversations.',
+      onClick: onNavigate ? () => onNavigate('support') : undefined,
+      tone: openTickets > 0 ? ('attention' as const) : ('default' as const),
+    },
+    {
+      id: 'marketplace',
+      title: `${liveOffers} live offers · ${activeRequests} active needs`,
+      detail: 'Marketplace activity from the platform overview aggregates.',
+      onClick: onNavigate ? () => onNavigate('offers') : undefined,
+    },
+    {
+      id: 'refunds',
+      title: 'Payments and refunds',
+      detail: 'Page list is not a global platform total',
+      onClick: onNavigate ? () => onNavigate('refunds') : undefined,
+    },
+  ];
 
   return (
     <div className="mt-0 h-full min-h-0 space-y-6 overflow-y-auto pr-1">
       <div className="flex flex-col gap-1">
         <p className="text-sm font-semibold text-slate-600">Operations overview</p>
         <h2 className="text-2xl font-bold tracking-tight text-slate-950">Platform at a glance</h2>
-        <p className="text-sm text-slate-600">The numbers and checks below show what needs attention right now.</p>
+        <p className="text-sm text-slate-600">
+          Global aggregates below come from `/api/admin/overview`. List panels may be capped (for example 200 rows) and are not substituted as platform totals.
+        </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Users" value={stats.total_users ?? userCount} detail={`${counts.users_by_verification?.verified || 0} verified`} />
-        <KpiCard label="Offers" value={stats.total_offers ?? offerCount} detail={`${liveOffers} live in catalog`} />
-        <KpiCard label="Requests" value={stats.total_requests ?? requestCount} detail={`${activeRequests} active`} />
-        <KpiCard label="Projects" value={stats.total_projects ?? projectCount} detail={`${activeProjects} active`} />
-      </div>
+      <InfoMeterGrid className="xl:grid-cols-4">
+        <InfoMeter
+          title="Users"
+          value={`${(stats.total_users ?? userCount).toLocaleString('en-IN')}`}
+          progress={meterPercent(counts.users_by_verification?.verified || 0, stats.total_users ?? userCount)}
+          detail={`${counts.users_by_verification?.verified || 0} verified · ${pendingVerification} still pending or unverified`}
+        />
+        <InfoMeter
+          title="Capability offers"
+          value={`${(stats.total_offers ?? offerCount).toLocaleString('en-IN')}`}
+          progress={meterPercent(liveOffers, stats.total_offers ?? offerCount)}
+          detail={`${liveOffers} live · ${removedOffers} inactive/archived`}
+        />
+        <InfoMeter
+          title="Needs / requests"
+          value={`${(stats.total_requests ?? requestCount).toLocaleString('en-IN')}`}
+          progress={meterPercent(activeRequests, stats.total_requests ?? requestCount)}
+          detail={`${activeRequests} currently active`}
+        />
+        <InfoMeter
+          title="CSR projects"
+          value={`${(stats.total_projects ?? projectCount).toLocaleString('en-IN')}`}
+          progress={meterPercent(activeProjects, stats.total_projects ?? projectCount)}
+          detail={`${activeProjects} currently active`}
+        />
+      </InfoMeterGrid>
+
+      <DashboardSectionCard
+        title="Users by role"
+        description="From the overview aggregate of all users, not the capped People panel list."
+      >
+        <DashboardStatGrid
+          className="xl:grid-cols-4"
+          items={[
+            { label: 'Individuals', value: Number(usersByType.individual || 0).toLocaleString('en-IN') },
+            { label: 'NGOs', value: Number(usersByType.ngo || 0).toLocaleString('en-IN') },
+            { label: 'Companies', value: Number(usersByType.company || 0).toLocaleString('en-IN') },
+            {
+              label: 'Admins / other',
+              value: Number((usersByType.admin || 0) + (usersByType.unknown || 0)).toLocaleString('en-IN'),
+              detail: 'Includes admin and unclassified rows from the aggregate',
+            },
+          ]}
+        />
+      </DashboardSectionCard>
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card className="min-w-0 border-slate-200 bg-white text-slate-900 shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-slate-900">Action queue</CardTitle>
-            <p className="text-sm text-slate-600">Items that may need an administrator’s attention.</p>
-          </CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4"><p className="text-2xl font-bold text-slate-900">{removedOffers}</p><p className="mt-1 text-sm font-medium text-slate-900">Offers removed from catalog</p><p className="mt-1 text-xs text-slate-600">Capabilities pulled from the marketplace by admin.</p></div>
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4"><p className="text-2xl font-bold text-slate-900">{pendingVerification}</p><p className="mt-1 text-sm font-medium text-slate-900">Verification follow-ups</p><p className="mt-1 text-xs text-slate-600">Users not yet fully verified.</p></div>
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4"><p className="text-2xl font-bold text-slate-900">{openTickets}</p><p className="mt-1 text-sm font-medium text-slate-900">Support tickets open</p><p className="mt-1 text-xs text-slate-600">Open and in-progress conversations.</p></div>
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4"><p className="text-2xl font-bold text-slate-900">{counts.users_by_verification?.verified || 0}</p><p className="mt-1 text-sm font-medium text-slate-900">Verified users</p><p className="mt-1 text-xs text-slate-600">Accounts ready to participate.</p></div>
-          </CardContent>
-        </Card>
+        <DashboardSectionCard
+          title="Action centre"
+          description="Items that may need an administrator’s attention."
+        >
+          <DashboardActionCentre items={actions} />
+        </DashboardSectionCard>
 
         <Card className="min-w-0 border-slate-200 bg-white text-slate-900 shadow-sm">
           <CardHeader className="pb-3">
@@ -164,32 +229,124 @@ export function OverviewPanel({
 
       <div className="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
         <Card className="min-w-0 border-slate-200 bg-white text-slate-900 shadow-sm">
-          <CardHeader className="pb-3"><CardTitle className="text-slate-900">Status distribution</CardTitle></CardHeader>
+          <CardHeader className="pb-3"><CardTitle className="text-slate-900">Marketplace and CSR status</CardTitle></CardHeader>
           <CardContent className="space-y-3 text-sm">
             {[
               ['Offers live', liveOffers, 'live'],
               ['Requests active', activeRequests, 'in_progress'],
               ['Projects active', activeProjects, 'in_progress'],
+              ['Campaigns loaded in panel', campaignCount, 'healthy'],
               ['Tickets resolved or closed', count(counts.tickets_by_status, ['resolved', 'closed']), 'healthy'],
+              ['Support tickets (overview total)', stats.total_support_tickets ?? ticketCount, 'in_progress'],
             ].map(([label, value, tone]) => (
-              <div key={label} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <span className="text-slate-700">{label}</span><Badge className={`${badgeClassName} ${statusTone(String(tone))}`}>{Number(value).toLocaleString('en-IN')}</Badge>
+              <div key={String(label)} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <span className="text-slate-700">{label}</span>
+                <Badge className={`${badgeClassName} ${statusTone(String(tone))}`}>{Number(value).toLocaleString('en-IN')}</Badge>
               </div>
             ))}
+            <p className="text-xs text-slate-500">
+              Campaign count above is from the loaded campaigns panel list and is labelled as such.
+            </p>
           </CardContent>
         </Card>
-        <Card className="min-w-0 border-slate-200 bg-white text-slate-900 shadow-sm">
-          <CardHeader className="pb-3"><CardTitle className="text-slate-900">Recent activity</CardTitle><p className="text-sm text-slate-600">Latest requests, projects, and support events.</p></CardHeader>
-          <CardContent className="space-y-2">
-            {recentActivities.length === 0 ? <p className="text-sm text-slate-500">No recent activity yet.</p> : recentActivities.map((activity) => (
-              <div key={activity.id} className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-slate-900">{activity.title}</p><p className="mt-0.5 line-clamp-1 text-xs text-slate-600">{activity.detail}</p></div>
-                <span className="shrink-0 whitespace-nowrap text-[10px] text-slate-500">{new Date(activity.timestamp).toLocaleString('en-IN')}</span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+        <DashboardSectionCard title="Recent platform activity" description="Latest requests, projects, and support events from the overview feed.">
+          <DashboardActivityFeed
+            items={recentActivities.map((activity) => ({
+              id: activity.id,
+              title: activity.title,
+              detail: activity.detail,
+              at: activity.timestamp,
+            }))}
+          />
+        </DashboardSectionCard>
       </div>
+
+      <DashboardSectionCard
+        title="Payments & refunds (overview aggregate)"
+        description={
+          paymentTotals
+            ? paymentTotals.is_complete_global
+              ? 'Complete platform totals from the overview payment query.'
+              : `Fetched-window totals (cap ${paymentTotals.window_cap ?? 'n/a'}) — not claimed as unbounded global if the platform exceeds the cap. Open Payments & Refunds for page-scoped figures.`
+            : 'Payment totals unavailable in this overview payload.'
+        }
+        action={
+          onNavigate ? (
+            <button
+              type="button"
+              className="text-sm font-medium text-udaan-blue hover:underline"
+              onClick={() => onNavigate('refunds')}
+            >
+              Open Payments & Refunds
+            </button>
+          ) : undefined
+        }
+      >
+        {paymentTotals ? (
+          <DashboardStatGrid
+            className="xl:grid-cols-3"
+            items={[
+              {
+                label: 'Captured',
+                value: formatMeterInr(paymentTotals.captured_amount),
+                detail: `${paymentTotals.payment_count} payment row(s) · scope ${paymentTotals.scope}`,
+              },
+              {
+                label: 'Confirmed refunded',
+                value: formatMeterInr(paymentTotals.confirmed_refunded_amount),
+                detail: 'Processed refunds only',
+              },
+              {
+                label: 'Net captured after refunds',
+                value: formatMeterInr(paymentTotals.net_captured_after_refunds),
+              },
+              {
+                label: 'Pending refunds',
+                value: formatMeterInr(paymentTotals.pending_refund_amount),
+                tone: paymentTotals.pending_refund_amount > 0 ? 'attention' : 'default',
+              },
+              {
+                label: 'Failed refunds',
+                value: formatMeterInr(paymentTotals.failed_refund_amount),
+                tone: 'muted',
+              },
+              {
+                label: 'Remaining refundable',
+                value: formatMeterInr(paymentTotals.remaining_refundable_amount),
+                detail: `${paymentTotals.refundable_payment_count} eligible · duplicates skipped ${paymentTotals.duplicate_refunds_skipped}`,
+              },
+            ]}
+          />
+        ) : (
+          <p className="text-sm text-slate-500">No payment aggregate returned by `/api/admin/overview`.</p>
+        )}
+      </DashboardSectionCard>
+
+      {onNavigate ? (
+        <DashboardSectionCard title="Quick navigation" description="Jump to the admin workspace that matches the queue above.">
+          <div className="flex flex-wrap gap-2">
+            {[
+              ['users', 'People'],
+              ['offers', 'Offers'],
+              ['requests', 'Requests'],
+              ['projects', 'Projects'],
+              ['campaigns', 'Campaigns'],
+              ['support', 'Support'],
+              ['refunds', 'Payments & Refunds'],
+              ['ca-credentials', 'CA Credentials'],
+            ].map(([tab, label]) => (
+              <button
+                key={tab}
+                type="button"
+                className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:border-udaan-blue/40"
+                onClick={() => onNavigate(tab)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </DashboardSectionCard>
+      ) : null}
     </div>
   );
 }

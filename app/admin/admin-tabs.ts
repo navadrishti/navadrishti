@@ -22,7 +22,7 @@ export const ADMIN_SIDEBAR_ITEMS = [
   { value: 'requests', label: 'Requests' },
   { value: 'campaigns', label: 'CSR Campaigns' },
   { value: 'support', label: 'Support' },
-  { value: 'refunds', label: 'Refunds' },
+  { value: 'refunds', label: 'Payments & Refunds' },
   { value: 'ca-credentials', label: 'CA Credentials' },
 ];
 

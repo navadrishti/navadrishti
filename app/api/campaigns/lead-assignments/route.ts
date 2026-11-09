@@ -14,8 +14,22 @@ import {
 } from '@/lib/csr-agent/campaign'
 import { getErrorMessage, parseJsonObject } from '@/lib/utils'
 import type { Tables } from '@/lib/database.types'
+import { isProjectFinancialLead } from '@/lib/csr-agent/project-financial-access'
 
 type CompanySummary = Pick<Tables<'users'>, 'id' | 'name' | 'email' | 'verification_status'>
+
+async function authorizedLeadCampaigns(campaignIds: string[], userId: number) {
+  if (!campaignIds.length) return new Set<string>()
+  const { data: projects, error } = await supabase
+    .from('csr_projects')
+    .select('campaign_id, ngo_user_id, campaigns(lead_ngo_user_id)')
+    .in('campaign_id', campaignIds)
+  if (error) throw error
+  return new Set(campaignIds.filter((campaignId) => {
+    const linked = (projects || []).filter((project) => project.campaign_id === campaignId)
+    return linked.length > 0 && linked.every((project) => isProjectFinancialLead(project, userId))
+  }))
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,7 +39,12 @@ export async function GET(request: NextRequest) {
     const rentalsOnly = request.nextUrl.searchParams.get('rentals') === '1'
     if (rentalsOnly) {
       const rentals = await listCsrCapabilityRentalsForUser(Number(user.id))
-      return NextResponse.json({ success: true, data: rentals })
+      const campaignIds = [...new Set(rentals.filter((rental) => rental.role === 'lead_ngo').map((rental) => rental.campaign_id))]
+      const authorized = await authorizedLeadCampaigns(campaignIds, user.id)
+      return NextResponse.json({
+        success: true,
+        data: rentals.filter((rental) => rental.role !== 'lead_ngo' || authorized.has(rental.campaign_id)),
+      })
     }
 
     assertUserType(user, ['ngo'])
@@ -108,6 +127,13 @@ export async function POST(request: NextRequest) {
 
     const { rental } = await loadCampaignRentalByOffer(campaignId, offerId)
     assertCsrCapabilityDeliveryAccess({ userId: Number(user.id), rental, leg })
+    if (Number(rental.lead_ngo_user_id) === user.id &&
+      Number(rental.company_user_id) !== user.id) {
+      const authorized = await authorizedLeadCampaigns([campaignId], user.id)
+      if (!authorized.has(campaignId)) {
+        return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+      }
+    }
 
     if (action === 'capability_rental_link_tracking') {
       const trackingId = String(body?.tracking_id || body?.trackingId || '').trim()

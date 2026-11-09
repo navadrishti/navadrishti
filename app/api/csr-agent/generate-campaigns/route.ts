@@ -5,41 +5,49 @@ import {
   generateCampaignsInputSchema,
   type Campaign,
 } from "@/lib/csr-agent/llm";
+import {
+  enforceCsrGenerateAbuseLimit,
+  resolveOwnedCompanyId,
+} from "@/lib/csr-agent/generate-access";
 import type { CapabilityMatch } from "@/lib/csr-agent/find-service-offers";
-import { findAuthUser } from "@/lib/server-auth";
+import { authErrorResponse, getAuthUserFromRequest } from "@/lib/server-auth";
 import { zodIssuesToUserMessage } from "@/lib/user-facing-error";
-
-/* ───────────────── TYPES ───────────────── */
 
 type CampaignResponse =
   | { success: true;  data: Campaign[]; recommendations: CapabilityMatch[]; recommendationMessage: string; degraded?: boolean; warning?: string }
   | { success: false; error: string; details?: unknown };
-
-/* ───────────────── ROUTES ───────────────── */
 
 export async function GET() {
   return NextResponse.json({ status: "ok" });
 }
 
 export async function POST(request: NextRequest) {
-  const user = findAuthUser(request, { allowCookie: true });
-  if (!user) {
-    return NextResponse.json<CampaignResponse>(
-      { success: false, error: "Company login required" },
-      { status: 401 }
-    );
-  }
-  if (user.user_type !== "company") {
-    return NextResponse.json<CampaignResponse>(
-      { success: false, error: "Only companies can generate campaigns" },
-      { status: 403 }
-    );
-  }
-
   try {
+    const user = await getAuthUserFromRequest(request);
+    if (user.user_type !== "company") {
+      return NextResponse.json<CampaignResponse>(
+        { success: false, error: "Only companies can generate campaigns" },
+        { status: 403 }
+      );
+    }
+
+    const abuseLimited = await enforceCsrGenerateAbuseLimit(user.id);
+    if (abuseLimited) return abuseLimited;
+
     const body = await request.json();
 
-    const validation = generateCampaignsInputSchema.safeParse(body);
+    const ownership = resolveOwnedCompanyId(user, body?.company_id);
+    if (!ownership.ok) {
+      return NextResponse.json<CampaignResponse>(
+        { success: false, error: ownership.error },
+        { status: ownership.status }
+      );
+    }
+
+    const validation = generateCampaignsInputSchema.safeParse({
+      ...body,
+      company_id: ownership.companyId,
+    });
 
     if (!validation.success) {
       return NextResponse.json<CampaignResponse>(
@@ -51,10 +59,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Recommendations are now independent of the LLM. If the caller provides
-    // a `recommendations` array in the request body, we'll echo it back in the
-    // response. Do NOT perform server-side matching here to keep concerns
-    // separated and avoid unexpected DB calls from the LLM flow.
+    // Recommendations are independent of drafting. Echo caller-provided matches only.
     const recommendations: CapabilityMatch[] = Array.isArray(body.recommendations)
       ? body.recommendations
       : [];
@@ -66,8 +71,6 @@ export async function POST(request: NextRequest) {
     try {
       campaigns = await generateCampaigns(validation.data);
     } catch (err) {
-      console.error("LLM error:", err);
-
       const message = err instanceof Error ? err.message : "LLM call failed";
       const canFallback =
         message.includes("currently unavailable") ||
@@ -77,7 +80,7 @@ export async function POST(request: NextRequest) {
         message.includes("Failed to parse LLM response") ||
         message.includes("Gemini API 400") ||
         message.includes("Gemini request timed out") ||
-        message.includes("Invalid LLM response")
+        message.includes("Invalid LLM response");
 
       if (!canFallback) {
         const status = message.includes(" 429:") ? 429 : 502;
@@ -89,12 +92,12 @@ export async function POST(request: NextRequest) {
 
       campaigns = buildFallbackCampaigns(validation.data);
       degraded = true;
-      warning = "Generated fallback drafts because the AI model is currently unavailable."
+      warning = "Generated fallback drafts because the AI model is currently unavailable.";
     }
 
     return NextResponse.json<CampaignResponse>({
       success: true,
-      data:    campaigns,
+      data: campaigns,
       recommendations,
       degraded,
       warning: degraded ? warning : undefined,
@@ -103,7 +106,9 @@ export async function POST(request: NextRequest) {
         : "No strong capability matches were found for this CSR request.",
     });
   } catch (error) {
-    console.error("generate-campaigns error:", error);
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
+    console.error("generate-campaigns error:", error instanceof Error ? error.name : "error");
     return NextResponse.json<CampaignResponse>(
       { success: false, error: "Internal server error" },
       { status: 500 }

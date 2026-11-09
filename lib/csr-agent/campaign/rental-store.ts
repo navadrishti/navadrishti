@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/db";
+import type { Json } from "@/lib/database.types";
 import { parseJsonObject } from "@/lib/utils";
 import {
   parseCsrCapabilityRentals,
@@ -27,7 +28,7 @@ export async function saveCampaignRentals(campaignId: string, companyId: number,
       impact_metrics: {
         ...impact,
         csr_capability_rentals: rentals,
-      },
+      } as Json,
     })
     .eq("id", campaignId)
     .eq("company_id", companyId);

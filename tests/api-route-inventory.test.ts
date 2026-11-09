@@ -35,7 +35,9 @@ const AUTH_PATTERN = new RegExp(
     'getGovernmentAdminFromRequest',
     'getEvidenceApproverContext',
     'getTokenClaims',
+    'resolveProjectOpsActor',
     'withAuth',
+    'assertCanAccessVerificationDocument',
   ].join('|')})\\b`
 )
 

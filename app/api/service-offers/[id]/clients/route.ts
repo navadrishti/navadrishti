@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
 import { getTokenClaims } from '@/lib/auth';
-import { resolveEffectiveVerificationStatus } from '@/lib/server-auth';
+import { authErrorResponse, resolveEffectiveVerificationStatus } from '@/lib/server-auth';
 import { parseJsonObject } from '@/lib/utils';
 import { isOfferExpired, getCapabilityNeedRequestTypes, isCapabilityRentalTransaction, dedupeSelectedNeedSummaries, isCapabilityOfferOpenForApplications, CAPABILITY_NGO_LEGAL_ENTITY_REQUIRED_MESSAGE, ngoHasLegalEntityTag } from '@/lib/service-offers';
+import { emitOfferMarketplaceEvent } from '@/lib/service-offers/marketplace-events';
 import type { Tables } from '@/lib/database.types';
 
 function parseNeedIds(value: unknown): number[] {
@@ -98,6 +99,8 @@ export async function GET(
     });
 
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Error fetching clients:', error);
     return NextResponse.json(
       { error: 'Failed to fetch clients' },
@@ -293,9 +296,26 @@ export async function POST(
       throw insertError;
     }
 
+    const ownerId = Number(offer.creator_id ?? offer.ngo_id ?? 0)
+    const applicantName = String((result as { client?: { name?: string | null } | null })?.client?.name || user.name || '').trim() || null
+    if (ownerId > 0 && result?.id) {
+      await emitOfferMarketplaceEvent({
+        eventType: 'offer_request_submitted',
+        applicationId: Number(result.id),
+        offerId,
+        offerTitle: String(offer.title || ''),
+        actorUserId: clientId,
+        actorDisplayName: applicantName,
+        recipientUserId: ownerId,
+        relatedUserId: clientId,
+      })
+    }
+
     return NextResponse.json(result, { status: 201 });
 
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Error creating client application:', error);
     return NextResponse.json(
       { error: 'Internal server error' },

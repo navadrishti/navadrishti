@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { authErrorResponse } from '@/lib/server-auth';
 import {
   db,
   getApplicationApplicantUserId,
@@ -18,6 +19,7 @@ import {
   shouldUseDelhiveryForNeed,
 } from '@/lib/service-request-allocation';
 import { NeedCapacityExceededError } from '@/lib/service-requests/errors';
+import { emitNeedMarketplaceEvent } from '@/lib/service-requests/marketplace-events';
 import { parseAmountToInr, parseJsonObject } from '@/lib/utils';
 import type { Json, TablesUpdate } from '@/lib/database.types';
 
@@ -54,6 +56,49 @@ function asOptionalIsoDate(value: unknown): string | null {
   if (!value) return null
   const ms = Date.parse(String(value))
   return Number.isNaN(ms) ? null : new Date(ms).toISOString()
+}
+
+/**
+ * Fulfilment totals for NGO confirmation — same source of truth as delivery sync:
+ * keep an already-recorded fulfilled_* value, otherwise copy assigned/fulfillment pledge.
+ */
+function resolveNgoCompletionFulfilment(
+  application: {
+    assigned_quantity?: unknown
+    fulfillment_quantity?: unknown
+    fulfilled_quantity?: unknown
+    assigned_amount?: unknown
+    fulfillment_amount?: unknown
+    fulfilled_amount?: unknown
+  },
+  isFinancial: boolean
+): { ok: true; fulfilled_quantity: number; fulfilled_amount: number } | { ok: false; error: string } {
+  const existingQty = Number(application.fulfilled_quantity || 0)
+  const existingAmt = Number(application.fulfilled_amount || 0)
+  const assignedQty = Number(application.assigned_quantity || application.fulfillment_quantity || 0)
+  const assignedAmt = Number(application.assigned_amount || application.fulfillment_amount || 0)
+
+  if (isFinancial) {
+    return {
+      ok: true,
+      fulfilled_quantity: existingQty > 0 ? existingQty : 0,
+      fulfilled_amount: existingAmt > 0 ? existingAmt : assignedAmt > 0 ? assignedAmt : 0,
+    }
+  }
+
+  const fulfilled_quantity = existingQty > 0 ? existingQty : assignedQty
+  if (!(fulfilled_quantity > 0)) {
+    return {
+      ok: false,
+      error: 'Cannot confirm completion without an assigned fulfilment quantity on this application.',
+    }
+  }
+
+  return {
+    ok: true,
+    fulfilled_quantity,
+    fulfilled_amount: existingAmt > 0 ? existingAmt : assignedAmt > 0 ? assignedAmt : 0,
+  }
 }
 
 async function rejectOtherPendingApplications(
@@ -258,9 +303,18 @@ export async function PUT(
     }
 
     if (userType === 'ngo' && status === 'completed') {
-      updatePayload.ngo_confirmed_at = new Date().toISOString()
+      const fulfilment = resolveNgoCompletionFulfilment(volunteerApplication, requestTarget.isFinancial)
+      if (!fulfilment.ok) {
+        return NextResponse.json({ error: fulfilment.error }, { status: 400 })
+      }
+
+      const nowIso = new Date().toISOString()
+      updatePayload.ngo_confirmed_at = volunteerApplication.ngo_confirmed_at || nowIso
       updatePayload.ngo_receipt_url = receiptUrl || volunteerApplication.ngo_receipt_url || null
       updatePayload.completion_note = completionNote || volunteerApplication.completion_note || null
+      updatePayload.fulfilled_quantity = fulfilment.fulfilled_quantity
+      updatePayload.fulfilled_amount = fulfilment.fulfilled_amount
+      updatePayload.completed_at = volunteerApplication.completed_at || nowIso
     }
 
     const { data: claimed, error: claimError } = await supabase
@@ -280,6 +334,13 @@ export async function PUT(
     const updatedVolunteer = await db.serviceRequestApplications.update(applicationId, updatePayload);
 
     if (!updatedVolunteer) {
+      // Claim already moved status; restore it so callers are not left mid-transition.
+      await supabase
+        .from('service_request_applications')
+        .update({ status: rawStatus, updated_at: new Date().toISOString() })
+        .eq('id', applicationId)
+        .eq('service_request_id', requestId)
+        .eq('status', String(updatePayload.status));
       return NextResponse.json({ error: 'Failed to update volunteer status' }, { status: 500 });
     }
 
@@ -304,6 +365,37 @@ export async function PUT(
         .eq('application_id', String(applicationId))
         .in('status', ['active', 'in_progress']);
       if (assignmentCloseError) throw assignmentCloseError;
+    }
+
+    // Successful NGO confirmation closes only this application's open engagement (work done).
+    // Rate, payment_mode, meta, and attendance rows are left untouched.
+    if (userType === 'ngo' && status === 'completed') {
+      const completedAt = String(updatePayload.completed_at || new Date().toISOString())
+      const { error: assignmentCompleteError } = await supabase
+        .from('service_engagement_assignments')
+        .update({
+          status: 'completed',
+          completed_at: completedAt,
+          updated_at: completedAt,
+        })
+        .eq('application_table', 'service_request_applications')
+        .eq('application_id', String(applicationId))
+        .in('status', ['active', 'in_progress']);
+
+      if (assignmentCompleteError) {
+        await db.serviceRequestApplications.update(applicationId, {
+          status: currentStatus === 'completed' ? 'completed' : currentStatus,
+          ngo_confirmed_at: volunteerApplication.ngo_confirmed_at || null,
+          ngo_receipt_url: volunteerApplication.ngo_receipt_url || null,
+          completion_note: volunteerApplication.completion_note || null,
+          fulfilled_quantity: volunteerApplication.fulfilled_quantity || 0,
+          fulfilled_amount: volunteerApplication.fulfilled_amount || 0,
+          completed_at: volunteerApplication.completed_at || null,
+          response_meta: volunteerApplication.response_meta,
+          updated_at: new Date().toISOString(),
+        })
+        throw assignmentCompleteError
+      }
     }
 
     if (userType === 'ngo' && status === 'accepted') {
@@ -439,12 +531,69 @@ export async function PUT(
       }
     }
 
+    const applicantUserId = getApplicationApplicantUserId(volunteerApplication)
+    const ngoOwnerId = Number(request_data.ngo_id || 0)
+    const needTitle = String(request_data.title || '')
+    const applicantSnapshot = parseJsonObject(
+      parseJsonObject(volunteerApplication.response_meta).volunteer_snapshot
+    )
+    const applicantName = String(applicantSnapshot.name || '').trim() || null
+
+    if (userType === 'ngo' && status === 'accepted' && applicantUserId > 0) {
+      await emitNeedMarketplaceEvent({
+        eventType: 'need_application_accepted',
+        applicationId,
+        needId: requestId,
+        needTitle,
+        actorUserId: userId,
+        actorDisplayName: null,
+        recipientUserId: applicantUserId,
+        relatedUserId: ngoOwnerId > 0 ? ngoOwnerId : null,
+      })
+    } else if (userType === 'ngo' && status === 'rejected' && applicantUserId > 0) {
+      await emitNeedMarketplaceEvent({
+        eventType: 'need_application_rejected',
+        applicationId,
+        needId: requestId,
+        needTitle,
+        actorUserId: userId,
+        actorDisplayName: null,
+        recipientUserId: applicantUserId,
+        relatedUserId: ngoOwnerId > 0 ? ngoOwnerId : null,
+      })
+    } else if (userType === 'individual' && status === 'completed' && ngoOwnerId > 0) {
+      // Individual "completed" persists as application status `active` (awaiting NGO confirm).
+      await emitNeedMarketplaceEvent({
+        eventType: 'need_work_marked_done',
+        applicationId,
+        needId: requestId,
+        needTitle,
+        actorUserId: userId,
+        actorDisplayName: applicantName,
+        recipientUserId: ngoOwnerId,
+        relatedUserId: userId,
+      })
+    } else if (userType === 'ngo' && status === 'completed' && applicantUserId > 0) {
+      await emitNeedMarketplaceEvent({
+        eventType: 'need_completion_confirmed',
+        applicationId,
+        needId: requestId,
+        needTitle,
+        actorUserId: userId,
+        actorDisplayName: null,
+        recipientUserId: applicantUserId,
+        relatedUserId: ngoOwnerId > 0 ? ngoOwnerId : null,
+      })
+    }
+
     return NextResponse.json({
       success: true,
       data: updatedVolunteer
     });
 
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Error updating volunteer status:', error);
     return NextResponse.json(
       { error: 'Failed to update volunteer status' },

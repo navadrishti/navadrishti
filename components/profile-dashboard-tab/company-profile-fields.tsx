@@ -16,6 +16,7 @@ import {
   COMPANY_CSR_GOVERNANCE_MECHANISMS,
   COMPANY_CSR_IMPLEMENTATION_MODELS,
 } from '@/lib/categories'
+import { getCalendarYearIst } from '@/lib/utils'
 import type { ProfileDetails } from './use-profile-details'
 
 export function CompanyProfileFields({ details }: { details: ProfileDetails }) {
@@ -83,7 +84,7 @@ export function CompanyProfileFields({ details }: { details: ProfileDetails }) {
       </div>
       <div>
         <Label>Founded Year</Label>
-        <Input type="number" min="1800" max={new Date().getFullYear()} placeholder="e.g., 2010" value={foundedYear} onChange={(e) => setFoundedYear(e.target.value)} />
+          <Input type="number" min="1800" max={getCalendarYearIst()} placeholder="e.g., 2010" value={foundedYear} onChange={(e) => setFoundedYear(e.target.value)} />
       </div>
 
       <div className="space-y-3 rounded-lg border p-4">

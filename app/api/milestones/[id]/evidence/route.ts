@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
+import { priorMilestonesArePaidComplete } from '@/lib/csr-agent/project-metrics';
+import { mapSubmissionNotesToDescription } from '@/lib/evidence-field-notes';
 import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth';
+import { isProjectFinancialLead } from '@/lib/csr-agent/project-financial-access';
 
 const LOCKED_MILESTONE_STATUSES = ['approved', 'completed'];
 
@@ -26,7 +29,7 @@ export async function POST(
 
     const { data: project, error: projectError } = await supabase
       .from('csr_projects')
-      .select('*')
+      .select('*, campaigns(lead_ngo_user_id)')
       .eq('id', milestone.project_id)
       .single();
 
@@ -34,7 +37,7 @@ export async function POST(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    if (project.ngo_user_id !== user.id) {
+    if (!isProjectFinancialLead(project, user.id)) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
 
@@ -45,10 +48,29 @@ export async function POST(
       );
     }
 
+    const { data: siblings, error: siblingsError } = await supabase
+      .from('csr_project_milestones')
+      .select('id, status, milestone_order')
+      .eq('project_id', project.id);
+    if (siblingsError) {
+      console.error('Failed to load milestone sequence:', siblingsError);
+      return NextResponse.json({ error: 'Failed to submit evidence' }, { status: 500 });
+    }
+    if (!priorMilestonesArePaidComplete(siblings, milestoneId)) {
+      return NextResponse.json(
+        {
+          error:
+            'Previous milestone payment must be confirmed before evidence can be submitted for this milestone',
+        },
+        { status: 409 }
+      );
+    }
+
     const body = await request.json();
     const {
       device_id,
       description,
+      notes,
       gps_lat,
       gps_long,
       gps_accuracy_meters,
@@ -65,13 +87,16 @@ export async function POST(
       );
     }
 
+    const fieldNotes =
+      mapSubmissionNotesToDescription(description) ?? mapSubmissionNotesToDescription(notes);
+
     const evidencePayload = {
       milestone_id: milestoneId,
       project_id: project.id,
       uploaded_by: user.id,
       ngo_user_id: user.id,
       device_id,
-      description: description ?? null,
+      description: fieldNotes,
       gps_lat: gps_lat ?? null,
       gps_long: gps_long ?? null,
       gps_accuracy_meters: gps_accuracy_meters ?? null,

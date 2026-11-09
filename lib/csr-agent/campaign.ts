@@ -1,5 +1,11 @@
 export { UpdateSelectedCampaignSchema, getCampaignStatus, updateCampaignDb } from "./campaign/drafts";
 export {
+  mapCampaignMilestonesToRows,
+  publishCampaignWithProject,
+  recordPublishFailureAudit,
+  PublishCampaignError,
+} from "./campaign/create-project-on-publish";
+export {
   getCsrCapabilityRentals,
   loadCampaignRentalByOffer,
   updateCsrCapabilityRentalStatus,

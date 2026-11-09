@@ -166,7 +166,14 @@ export function useOtpSender(setFormErrors: Dispatch<SetStateAction<FormErrors>>
       setOtpSent(prev => ({ ...prev, email: true }));
       setOtpVerified(prev => ({ ...prev, email: false }));
       startCooldown('email');
-      toast.success(forgotData.message || 'If an account with that email exists, we have sent a password reset OTP.');
+      const devOtp = typeof forgotData?.devOtp === 'string' ? forgotData.devOtp.trim() : '';
+      if (devOtp) {
+        toast.success(`E2E password reset OTP: ${devOtp}`);
+      } else {
+        toast.success(
+          forgotData.message || 'If an account with that email exists, we have sent a password reset OTP.'
+        );
+      }
       return true;
     } catch {
       toast.error('Failed to send email OTP. Please try again.');

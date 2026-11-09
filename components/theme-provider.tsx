@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
 import {
   CONSOLE_TAB_SESSION_ROUTES,
@@ -252,11 +252,3 @@ export function ThemeProvider({
   )
 }
 
-export const useTheme = () => {
-  const context = useContext(ThemeProviderContext)
-
-  if (context === undefined)
-    throw new Error('useTheme must be used within a ThemeProvider')
-
-  return context
-}

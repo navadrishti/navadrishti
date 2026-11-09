@@ -74,10 +74,24 @@ export function restoreMobileChatScrollPosition(y: number | null) {
   window.scrollTo({ top: y, left: 0, behavior: 'auto' })
 }
 
+/** Official product suite label. */
+export const AI_SUITE_NAME = 'Navadrishti AI Suite' as const
+
 export const AGENT_NAMES = {
   atlas: 'Atlas',
   catalyst: 'Catalyst',
   pulse: 'Pulse',
+  sentinel: 'Sentinel',
+  insight: 'Insight',
+} as const
+
+/** Official intelligence-domain labels from the naming scheme. */
+export const AGENT_DOMAINS = {
+  atlas: 'NGO Intelligence',
+  catalyst: 'CSR Intelligence',
+  pulse: 'Matching Engine',
+  sentinel: 'Monitoring Intelligence',
+  insight: 'Analytics Intelligence',
 } as const
 
 export const AGENT_ROUTES = {
@@ -85,18 +99,102 @@ export const AGENT_ROUTES = {
   catalyst: '/companies/csr-agent',
 } as const
 
+/**
+ * Accurate capability copy for workspace intros and contextual CTAs.
+ * Only list behaviours that exist in the current product code paths.
+ * Sentinel and Insight are named in the suite scheme but are not shipped products.
+ */
+export const AGENT_PROFILES = {
+  atlas: {
+    name: AGENT_NAMES.atlas,
+    domain: AGENT_DOMAINS.atlas,
+    suite: AI_SUITE_NAME,
+    audience: 'NGO',
+    implemented: true as const,
+    tagline: 'Guided drafting for needs and CSR project packages',
+    purpose:
+      'Walks NGO users through a structured intake to draft standalone needs or project packages, then publish them to the marketplace.',
+    capabilities: [
+      'Step-by-step questionnaire with editable answers',
+      `${AGENT_NAMES.pulse} offer recommendations for needs (scored marketplace matches)`,
+      'Draft preview before publish',
+      'Cloud-synced conversation history for your NGO account',
+    ],
+    notIncluded: [
+      'Does not call generative AI for chat replies',
+      'Does not upload or OCR documents',
+      'Does not create payment or refunds',
+    ],
+  },
+  catalyst: {
+    name: AGENT_NAMES.catalyst,
+    domain: AGENT_DOMAINS.catalyst,
+    suite: AI_SUITE_NAME,
+    audience: 'Company',
+    implemented: true as const,
+    tagline: 'CSR campaign intake with milestone suggestions and draft assembly',
+    purpose:
+      'Helps company users capture campaign details, suggest milestones from intake, invite a lead NGO, review Pulse capability matches, and assemble campaign drafts for publish.',
+    capabilities: [
+      'Structured campaign and milestone intake',
+      'Generative milestone set suggestions from the details you shared (with structured fallback)',
+      'Lead NGO invite and Evidence Verifier gates before draft assembly and publish',
+      `${AGENT_NAMES.pulse} capability match suggestions`,
+      'Assembled campaign drafts from your intake and selected milestones (not generative drafting)',
+      'Cloud-synced conversation history for your company account',
+    ],
+    notIncluded: [
+      'Does not upload or OCR documents in this workspace',
+      'Does not approve expenses or evidence (Evidence Verification portal)',
+      'Does not expose a product AI credit wallet',
+    ],
+  },
+  pulse: {
+    name: AGENT_NAMES.pulse,
+    domain: AGENT_DOMAINS.pulse,
+    suite: AI_SUITE_NAME,
+    audience: 'Embedded matching',
+    implemented: true as const,
+    tagline: 'Marketplace matching scores used inside Atlas and Catalyst',
+    purpose:
+      'Ranks existing capability offers and related entities against the draft context. Pulse is not a standalone chat agent.',
+    capabilities: [
+      'Offer match scores shown in Atlas need flows',
+      'Capability match scores shown in Catalyst preview',
+    ],
+    notIncluded: [
+      'No dedicated Pulse chat page',
+      'Scores are recommendations, not verified assignments',
+    ],
+  },
+} as const
+
+/** Named in the suite scheme; no product surface or APIs shipped yet. */
+export const UNIMPLEMENTED_SUITE_AGENTS = {
+  sentinel: {
+    name: AGENT_NAMES.sentinel,
+    domain: AGENT_DOMAINS.sentinel,
+    implemented: false as const,
+  },
+  insight: {
+    name: AGENT_NAMES.insight,
+    domain: AGENT_DOMAINS.insight,
+    implemented: false as const,
+  },
+} as const
+
 export const AGENT_CTA = {
   company: {
     href: AGENT_ROUTES.catalyst,
     title: AGENT_NAMES.catalyst,
-    description: 'Build CSR campaigns with AI',
+    description: `${AGENT_DOMAINS.catalyst} · CSR campaign intake...`,
     openLabel: 'Open Catalyst',
     closeLabel: 'Close Catalyst',
   },
   ngo: {
     href: AGENT_ROUTES.atlas,
     title: AGENT_NAMES.atlas,
-    description: 'Draft service requests with AI',
+    description: `${AGENT_DOMAINS.atlas} · guided need drafting...`,
     openLabel: 'Open Atlas',
     closeLabel: 'Close Atlas',
   },
@@ -104,6 +202,11 @@ export const AGENT_CTA = {
 
 export function agentLoadingLabel(name: string) {
   return `Loading ${name}...`
+}
+
+export function confirmAgentPublish(message: string) {
+  if (typeof window === 'undefined') return false
+  return window.confirm(message)
 }
 
 export type AgentSessionIdentity = {
@@ -209,5 +312,5 @@ export const AGENT_GREETINGS = {
   atlas:
     "Hello! I'm Atlas. Do you want to post a standalone Need (for individuals) or a CSR Project (for companies)? Reply with Need or Project.",
   catalyst:
-    "Hello! I'm Catalyst. We'll capture the campaign details step by step, then I'll generate campaign drafts. Let's start with the campaign name.",
+    "Hello! I'm Catalyst. We'll capture the campaign details step by step, suggest milestones from what you share, then assemble campaign drafts after a lead NGO accepts and an Evidence Verifier is allotted. Let's start with the campaign name.",
 } as const

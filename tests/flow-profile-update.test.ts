@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { generateAdminToken, generateToken, type UserData } from '@/lib/auth'
 import { POST as updateProfile } from '@/app/api/profile/update/route'
 import { createSupabaseFake, type FakeResult } from './support/supabase-fake'
+import './support/install-test-auth'
 
 const mocks = vi.hoisted(() => ({ from: vi.fn(), findByEmail: vi.fn() }))
 

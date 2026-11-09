@@ -44,6 +44,7 @@ import {
   offerRequestTrackHref,
   overlayLiveAttendanceSummary,
   getOfferRequestBillingDetails,
+  canCompleteOfferRequest,
   getOfferRequestBucket,
   toOfferRentalApplication,
   type OfferRequestItem,
@@ -295,8 +296,8 @@ describe('offer availability', () => {
     ['unpaid rental lock', { offer_details: { csr_rental_lock: { held_at: '2026-01-01' } } }, true],
     ['open', { status: 'active' }, true],
     ['listed flag omitted', { status: 'active', is_listed: null }, true],
-    ['unlisted', { status: 'active', is_listed: false }, false],
-    ['rejected leftover', { status: 'active', admin_status: 'rejected', is_listed: true }, false],
+    ['legacy unlisted flag ignored', { status: 'active', is_listed: false }, true],
+    ['legacy rejected flag ignored', { status: 'active', admin_status: 'rejected', is_listed: true }, true],
   ])('lists %s offers: %s', (_label, offer, expected) => {
     expect(isCapabilityOfferAvailableForListing(offer)).toBe(expected)
   })
@@ -307,8 +308,8 @@ describe('offer availability', () => {
     [{ id: 1, isAssigned: true }, 'used'],
     [{ id: 1, is_expired: true, status: 'cancelled' }, 'expired'],
     [{ id: 1, status: 'active' }, null],
-    [{ id: 1, status: 'active', is_listed: false }, 'unlisted'],
-    [{ id: 1, status: 'active', admin_status: 'rejected', is_listed: true }, 'inactive'],
+    [{ id: 1, status: 'active', is_listed: false }, null],
+    [{ id: 1, status: 'active', admin_status: 'rejected', is_listed: true }, null],
     [{ id: 1, usage_records: [{ id: 11, status: 'accepted', selected_needs: [] }] }, null],
     [{ id: 1, usage_records: [{ id: 12, status: 'completed', selected_needs: [] }] }, 'used'],
   ])('classifies past reason as %s', (offer, reason) => {
@@ -325,13 +326,13 @@ describe('offer availability', () => {
     })
     expect(ongoing).toMatchObject({ isActive: true, isOngoing: true, pastReason: null })
 
-    const unlistedOngoing = classifyCapabilityOffer({
+    const legacyUnlistedOngoing = classifyCapabilityOffer({
       id: 3,
       status: 'active',
       is_listed: false,
       usage_records: [{ id: 13, status: 'in_progress', selected_needs: [] }],
     })
-    expect(unlistedOngoing).toMatchObject({ isActive: true, isOngoing: true, pastReason: null })
+    expect(legacyUnlistedOngoing).toMatchObject({ isActive: true, isOngoing: true, pastReason: null })
 
     const completed = classifyCapabilityOffer({
       id: 2,
@@ -341,13 +342,18 @@ describe('offer availability', () => {
     expect(completed).toMatchObject({ isActive: false, isOngoing: false, pastReason: 'used' })
   })
 
-  it('lets pending leftover offers stay open once they are active and listed', () => {
+  it('ignores admin_status and is_listed for open/public eligibility', () => {
     expect(isCapabilityOfferOpenForApplications({ status: 'active', admin_status: 'pending', is_listed: true })).toBe(true)
     expect(isCapabilityOfferPubliclyVisible({ status: 'active', admin_status: 'pending' })).toBe(true)
-    expect(isCapabilityOfferOpenForApplications({ status: 'active', admin_status: 'rejected', is_listed: true })).toBe(false)
-    expect(isCapabilityOfferPubliclyVisible({ status: 'active', admin_status: 'rejected' })).toBe(false)
-    expect(isCapabilityOfferOpenForApplications({ status: 'active', is_listed: false })).toBe(false)
-    expect(isCapabilityOfferPubliclyVisible({ status: 'active', is_listed: false })).toBe(false)
+    expect(isCapabilityOfferAvailableForListing({ status: 'active', admin_status: 'pending', is_listed: true })).toBe(true)
+    expect(isCapabilityOfferAvailableForListing({ status: 'active', admin_status: '', is_listed: true })).toBe(true)
+    expect(isCapabilityOfferOpenForApplications({ status: 'active', admin_status: 'rejected', is_listed: true })).toBe(true)
+    expect(isCapabilityOfferPubliclyVisible({ status: 'active', admin_status: 'rejected' })).toBe(true)
+    expect(isCapabilityOfferAvailableForListing({ status: 'active', admin_status: 'rejected', is_listed: true })).toBe(true)
+    expect(isCapabilityOfferOpenForApplications({ status: 'active', is_listed: false })).toBe(true)
+    expect(isCapabilityOfferPubliclyVisible({ status: 'active', is_listed: false })).toBe(true)
+    expect(isCapabilityOfferOpenForApplications({ status: 'inactive' })).toBe(false)
+    expect(isCapabilityOfferPubliclyVisible({ status: 'inactive' })).toBe(false)
   })
 
   it('requires a Trust, Society, or Section 8 legal tag for NGO publishers', () => {
@@ -505,6 +511,17 @@ describe('offer requests', () => {
     ['pending', false, 'pending'],
   ])('buckets %s (assigned=%s) as %s', (status, isAssigned, bucket) => {
     expect(getOfferRequestBucket(offerRequest({ status, isAssigned }))).toBe(bucket)
+  })
+
+  it.each<[OfferRequestItem['status'], boolean]>([
+    ['accepted', true],
+    ['pending', false],
+    ['rejected', false],
+    ['completed', false],
+    ['cancelled', false],
+    ['active', false],
+  ])('canCompleteOfferRequest(%s) → %s', (status, eligible) => {
+    expect(canCompleteOfferRequest(offerRequest({ status }))).toBe(eligible)
   })
 
   it('formats selected needs from the summary first', () => {

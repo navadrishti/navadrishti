@@ -1,4 +1,5 @@
 'use client'
+import { toast } from 'sonner'
 
 import { readApiError } from '@/lib/user-facing-error'
 import { use, useEffect, useState, type FormEvent } from 'react'
@@ -9,8 +10,6 @@ import { ArrowLeft, Loader2 } from 'lucide-react'
 import { Header } from '@/components/header'
 import ProtectedRoute from '@/components/protected-route'
 import { useAuth } from '@/lib/auth-context'
-import { useToast } from '@/hooks/use-toast'
-
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { buildServiceOfferPayload, validateServiceOfferForm } from '@/components/service-offer-form/helpers'
@@ -22,8 +21,6 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
   const resolvedParams = use(params)
   const router = useRouter()
   const { user, token } = useAuth()
-  const { toast } = useToast()
-
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const form = useServiceOfferForm(token)
@@ -44,11 +41,7 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
         const offer: ServiceOfferResponse = data?.data ?? data
         setFormData(offerToFormData(offer))
       } catch (error) {
-        toast({
-          title: 'Error',
-          description: readApiError(error, 'Failed to fetch service offer'),
-          variant: 'destructive'
-        })
+        toast.error('Error', { description: readApiError(error, 'Failed to fetch service offer') })
         router.push('/service-offers')
       } finally {
         setLoading(false)
@@ -56,19 +49,19 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
     }
 
     fetchOffer()
-  }, [resolvedParams.id, router, setFormData, toast, token])
+  }, [resolvedParams.id, router, setFormData, token])
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
 
     if (!token) {
-      toast({ title: 'Authentication Error', description: 'Please log in to continue.', variant: 'destructive' })
+      toast.error('Authentication Error', { description: 'Please log in to continue.' })
       return
     }
 
     const validationError = validateServiceOfferForm(form.formData)
     if (validationError) {
-      toast({ title: 'Validation Error', description: validationError, variant: 'destructive' })
+      toast.error('Validation Error', { description: validationError })
       return
     }
 
@@ -91,14 +84,10 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
         throw new Error(readApiError(data, 'Failed to update service offer'))
       }
 
-      toast({ title: 'Capability Offer Updated', description: data.data?.message || 'Offer updated successfully.' })
+      toast.success('Capability Offer Updated', { description: data.data?.message || 'Offer updated successfully.' })
       router.push('/service-offers?view=my-offers')
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: readApiError(error, 'Unexpected error while updating offer'),
-        variant: 'destructive'
-      })
+      toast.error('Error', { description: readApiError(error, 'Unexpected error while updating offer') })
     } finally {
       setSubmitting(false)
     }

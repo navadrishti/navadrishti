@@ -17,6 +17,7 @@ import {
   buildCsrDeliveryLocation,
   parseCsrCapabilityRentals,
   shouldUseDelhiveryForCsrCapabilityRental,
+  type CsrCapabilityDeliveryLeg,
   type CsrCapabilityRentalRecord,
 } from "@/lib/service-engagement";
 import { linkCsrCapabilityRentalTracking, syncCsrCapabilityRentalDelhivery } from "./delivery-tracking";
@@ -283,21 +284,45 @@ export async function bookCsrCapabilityRentalDelhivery(input: {
   });
 
   const legKey = input.leg === "outbound" ? "outbound_delivery" : "return_delivery";
-  const updatedLeg = {
-    ...(synced[legKey] || {}),
-    delhivery_order_id: orderId,
-    booked_at: new Date().toISOString(),
-    booking_error: null,
-  };
+  const syncedLeg = (synced[legKey] || {}) as CsrCapabilityDeliveryLeg;
 
-  return updateCsrCapabilityRentalStatus({
+  // Persist booking response evidence and extract freight only if create packages[] exposes it.
+  // Typical Delhivery create responses do not include confirmed freight.
+  const { captureDelhiveryFreightForLeg } = await import("@/lib/delhivery-freight");
+  const withBookingCapture = captureDelhiveryFreightForLeg({
+    existingLeg: {
+      ...syncedLeg,
+      delhivery_order_id: orderId,
+      booked_at: new Date().toISOString(),
+      booking_error: null,
+    },
+    bookingRaw: booking.raw,
+  }).leg;
+
+  const saved = await updateCsrCapabilityRentalStatus({
     campaignId: input.campaignId,
     offerId: input.offerId,
     companyId: Number(campaign.company_id || 0) || undefined,
     patch: {
-      [legKey]: updatedLeg,
+      [legKey]: withBookingCapture,
     } as Partial<CsrCapabilityRentalRecord>,
   });
+
+  // Re-run ledger sync if booking response carried confirmed freight (rare on create).
+  try {
+    const { syncLogisticsExpenseFromCapabilityLegSafe } = await import(
+      "@/lib/csr-agent/sync-logistics-expense"
+    );
+    await syncLogisticsExpenseFromCapabilityLegSafe({
+      rental: saved,
+      leg: input.leg,
+      providerRaw: booking.raw,
+    });
+  } catch (error) {
+    console.warn("[csr-capability-booking] logistics expense sync skipped", error);
+  }
+
+  return saved;
 }
 
 export async function syncAllCsrCapabilityRentalsDelhivery() {

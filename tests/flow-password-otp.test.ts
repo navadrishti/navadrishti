@@ -2,6 +2,8 @@ import crypto from 'node:crypto'
 import { NextRequest } from 'next/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { comparePassword, generateToken, type UserData } from '@/lib/auth'
+import { setLiveUserTypeOverlay } from '@/lib/auth/session'
+import { overlayLiveUserType } from '@/lib/server-auth'
 import { POST as forgotPassword } from '@/app/api/auth/forgot-password/route'
 import { POST as resetPassword } from '@/app/api/auth/reset-password/route'
 import { POST as verifyResetToken } from '@/app/api/auth/verify-reset-token/route'
@@ -54,6 +56,7 @@ vi.mock('@/lib/email', () => ({
   prepareEmailOtpSession: mocks.prepareEmailOtpSession,
   sendEmailOtpWithSupabase: mocks.sendEmailOtpWithSupabase,
   verifyEmailOtpWithSupabase: mocks.verifyEmailOtpWithSupabase,
+  sendEmail: vi.fn().mockResolvedValue({ success: false, message: 'Email service not configured' }),
 }))
 vi.mock('@/lib/sms', () => ({
   sendSMS: mocks.sendSMS,
@@ -63,6 +66,7 @@ vi.mock('@/lib/sms', () => ({
 let store = createAuthStoreFake()
 
 beforeEach(() => {
+  setLiveUserTypeOverlay(overlayLiveUserType)
   mocks.users = [{ id: 7, email: 'asha@example.org', name: 'Asha', password: 'old-hash' }]
   mocks.afterResponse.length = 0
   mocks.update.mockReset()
@@ -77,8 +81,12 @@ beforeEach(() => {
   resetOneTimeCodes()
   useStore('database')
   useDb()
+  vi.unstubAllEnvs()
+  vi.stubEnv('NODE_ENV', 'test')
+  vi.stubEnv('ENABLE_LOCAL_PASSWORD_RESET_OTP', 'false')
   vi.spyOn(console, 'error').mockImplementation(() => {})
   vi.spyOn(console, 'warn').mockImplementation(() => {})
+  vi.spyOn(console, 'info').mockImplementation(() => {})
 })
 
 afterEach(() => {
@@ -94,6 +102,10 @@ function useStore(mode: StoreMode) {
 
 function useDb(responses: Record<string, FakeResult[]> = {}) {
   const fake = createSupabaseFake(responses)
+  fake.intercept((query) => {
+    if (query.table !== 'users' || !query.columns?.includes('account_status')) return undefined
+    return { data: { user_type: 'individual', account_status: 'active', verification_status: 'unverified', profile_data: {} } }
+  })
   mocks.from.mockImplementation(fake.from)
   return fake
 }
@@ -254,6 +266,32 @@ describe('forgot password', () => {
     expect(known).toEqual({ status: 400, body: { error: 'OTP has expired or is invalid' } })
     expect(unknown).toEqual(known)
   })
+
+  it('does not use local OTP for @navadrishti.test when the feature flag is off', async () => {
+    mocks.users = [{ id: 1, email: 'e2e-company@navadrishti.test', name: 'E2E Co', password: 'old-hash' }]
+    const { status, body } = await call(forgotPassword, '/api/auth/forgot-password', {
+      email: 'e2e-company@navadrishti.test',
+    })
+    expect(status).toBe(200)
+    expect(body).toEqual({
+      message: 'If an account with that email exists, we have sent a password reset OTP.',
+      success: true,
+    })
+    expect(body.devOtp).toBeUndefined()
+    expect(mocks.sendEmailOtpWithSupabase).toHaveBeenCalledWith('e2e-company@navadrishti.test')
+  })
+
+  it('does not fall back to local OTP when Supabase rejects a real email address', async () => {
+    mocks.sendEmailOtpWithSupabase.mockResolvedValueOnce({
+      ok: false,
+      error: { code: 'email_address_invalid', message: 'Email address "user@example.org" is invalid', status: 400 },
+    })
+    const response = await forgotPassword(post('/api/auth/forgot-password', { email: 'asha@example.org' }))
+    expect(response.status).toBe(200)
+    await flushAfterResponse()
+    expect(mocks.sendEmailOtpWithSupabase).toHaveBeenCalledTimes(1)
+    expect(store.codes.has('password_reset:otp:asha@example.org')).toBe(false)
+  })
 })
 
 describe.each<StoreMode>(['database', 'memory'])('reset password (%s store)', (mode) => {
@@ -346,6 +384,20 @@ describe.each<StoreMode>(['database', 'memory'])('phone OTP (%s store)', (mode) 
     const otp = mocks.sendSMS.mock.calls.at(-1)?.[0]?.otp as string
     return { ...result, otp }
   }
+
+  it.each([
+    ['deleted', { data: null }, 403],
+    ['suspended', { data: { user_type: 'individual', account_status: 'suspended', profile_data: {} } }, 403],
+    ['lookup failure', { error: new Error('database unavailable') }, 503],
+  ])('does not issue an OTP when the live account is %s', async (_label, result, status) => {
+    const fake = useDb()
+    fake.intercept((query) =>
+      query.table === 'users' && query.columns?.includes('account_status') ? result : undefined
+    )
+    expect((await sendOtp(nextUserId++)).status).toBe(status)
+    expect(mocks.sendSMS).not.toHaveBeenCalled()
+    expect(mocks.rpc).not.toHaveBeenCalled()
+  })
 
   it('sends a six-digit OTP and verifies it once', async () => {
     const id = nextUserId++

@@ -11,6 +11,8 @@ export default defineConfig({
     env: {
       JWT_SECRET: 'test-secret',
     },
+    // These suites write ephemeral rows to a remote test database and are
+    // intentionally unavailable from the default test project.
     projects: [
       {
         extends: true,
@@ -18,7 +20,7 @@ export default defineConfig({
           name: 'server',
           environment: 'node',
           include: ['tests/**/*.test.ts'],
-          exclude: ['tests/ui/**', 'tests/e2e/**'],
+          exclude: ['tests/ui/**', 'tests/integration-db/**'],
         },
       },
       {

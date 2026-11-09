@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { Sparkles, ArrowRight, Plus } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
-import { AGENT_NAMES, AGENT_ROUTES } from "@/lib/ai-agent-sessions"
+import { AGENT_NAMES, AGENT_PROFILES, AGENT_ROUTES } from "@/lib/ai-agent-sessions"
 
 const actionButtonClass =
   "flex h-auto items-center rounded-md border border-gram-border bg-white px-8 py-4 text-base font-medium text-black shadow-sm transition-all duration-300 hover:bg-gram-page"
@@ -29,7 +29,8 @@ export function CatalystCta() {
             Launch New CSR Campaign?
           </h2>
           <p className="text-gray-700 text-base max-w-md font-medium">
-            Create structured campaign plans yourself or through {AGENT_NAMES.catalyst}.
+            Create a campaign manually, or open {AGENT_NAMES.catalyst}: {AGENT_PROFILES.catalyst.tagline}. Review and
+            confirm before anything is published.
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">

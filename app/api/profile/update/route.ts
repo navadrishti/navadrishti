@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { isPlatformUserSession } from '@/lib/auth';
-import { assertUserType, authErrorResponse, getAuthUserFromRequest, findAuthUser } from '@/lib/server-auth';
+import { assertUserType, authErrorResponse, getAuthUserFromRequest } from '@/lib/server-auth';
 import {
   buildPayoutStatus,
   connectPayoutAccount,
@@ -84,7 +84,7 @@ export async function PATCH(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const authUser = findAuthUser(request, { allowCookie: true });
+    const authUser = await getAuthUserFromRequest(request);
     if (!isPlatformUserSession(authUser)) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
@@ -146,6 +146,8 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error('Error in profile update API:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
@@ -157,10 +159,7 @@ export async function POST(request: NextRequest) {
 // PUT method for authenticated users updating their own profile
 export async function PUT(request: NextRequest) {
   try {
-    const payload = findAuthUser(request);
-    if (!payload) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
+    const payload = await getAuthUserFromRequest(request);
 
     const userId = payload.id;
     
@@ -217,6 +216,8 @@ export async function PUT(request: NextRequest) {
     });
 
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error('Error in profile update API (PUT):', error);
     console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     return NextResponse.json(

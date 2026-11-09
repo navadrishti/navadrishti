@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { supabase } from '@/lib/db';
 import { authStoreAvailable, switchToMemoryIfMissing } from '@/lib/auth-store';
 
-export type OneTimeCodePurpose = 'phone_otp' | 'password_reset';
+export type OneTimeCodePurpose = 'phone_otp' | 'password_reset'
 
 export type CodeAttemptStatus = 'ok' | 'missing' | 'expired' | 'invalid' | 'locked';
 

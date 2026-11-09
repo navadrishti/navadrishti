@@ -1,7 +1,9 @@
 'use client';
 
-import { Progress } from '@/components/ui/progress';
+import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { InfoMeter, meterPercent } from '@/components/info-meter';
 import {
   campaignShowsFieldAttendance,
   type CampaignAttendanceMark,
@@ -27,8 +29,7 @@ const LIFECYCLE_LABEL: Record<CampaignLifecycle, { label: string; tone: string }
 };
 
 function percent(part: number, whole: number) {
-  if (!(whole > 0)) return 0;
-  return Math.min(100, Math.round((part / whole) * 100));
+  return meterPercent(part, whole) ?? 0;
 }
 
 function inr(value: number) {
@@ -49,23 +50,7 @@ function formatStamp(value?: string | null) {
   });
 }
 
-function Meter({ title, value, detail, progress }: {
-  title: string;
-  value: string;
-  detail?: string | null;
-  progress?: number | null;
-}) {
-  return (
-    <div className="rounded-md border bg-white p-3 space-y-2">
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
-        {title}
-      </div>
-      <p className="text-sm font-semibold text-slate-900">{value}</p>
-      {progress != null ? <Progress value={progress} className="h-1.5" /> : null}
-      {detail ? <p className="text-xs text-slate-600">{detail}</p> : null}
-    </div>
-  );
-}
+const Meter = InfoMeter;
 
 function markTone(mark: CampaignAttendanceMark) {
   if (mark === 'present') return 'border-emerald-200 bg-emerald-50 text-emerald-800';
@@ -74,29 +59,71 @@ function markTone(mark: CampaignAttendanceMark) {
 }
 
 function markLabel(mark: CampaignAttendanceMark) {
-  if (mark === 'present') return 'Attended';
-  if (mark === 'absent') return 'Absent';
+  if (mark === 'present') return 'Attended today';
+  if (mark === 'absent') return 'Absent today';
   return 'Not due';
 }
 
-function VolunteerRow({ row }: { row: CampaignVolunteerAttendanceRow }) {
+function VolunteerRow({ row, topScrollbar }: { row: CampaignVolunteerAttendanceRow; topScrollbar: boolean }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-white px-3 py-2 text-sm">
+    <div className={`flex w-64 max-w-[85vw] shrink-0 flex-col items-start justify-between gap-2 rounded-md border bg-white px-3 py-2 text-sm ${topScrollbar ? '[transform:scaleY(-1)]' : ''}`}>
       <div className="min-w-0">
-        <p className="font-medium text-slate-900">
+        <p className="break-words font-medium text-slate-900">
           {row.name}
           <span className="ml-1 font-normal text-slate-500">
-            ({row.user_type}{row.capacity > 1 ? ` · ${row.capacity} people` : ''})
+            ({formatStatusLabel(row.user_type)}{row.capacity > 1 ? ` · ${row.capacity} people` : ''})
           </span>
         </p>
         <p className="text-xs text-slate-600">
           Present {row.days_present} · Absent {row.days_absent}
-          {row.last_attendance_at ? ` · last ${formatDisplayDate(row.last_attendance_at)}` : ''}
+          {row.last_attendance_at ? ` · last ${formatDisplayDate(row.last_attendance_at)}` : ' · last not recorded'}
         </p>
       </div>
       <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${markTone(row.today)}`}>
         {markLabel(row.today)}
       </span>
+    </div>
+  );
+}
+
+const VOLUNTEER_PAGE_SIZE = 20;
+
+function VolunteerAttendance({ rows }: { rows: CampaignVolunteerAttendanceRow[] }) {
+  const [page, setPage] = useState(0);
+  const lastPage = Math.max(0, Math.ceil(rows.length / VOLUNTEER_PAGE_SIZE) - 1);
+  const currentPage = Math.min(page, lastPage);
+  const start = currentPage * VOLUNTEER_PAGE_SIZE;
+  const visible = rows.slice(start, start + VOLUNTEER_PAGE_SIZE);
+  const topScrollbar = visible.length > 1;
+
+  return (
+    <div className="min-w-0 space-y-2">
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Volunteer attendance</p>
+      {rows.length === 0 ? (
+        <p className="text-sm text-slate-600">No volunteers signed up yet.</p>
+      ) : (
+        <>
+          {/* Flip the scroll container and cards independently to place the native scrollbar above the cards. */}
+          <div
+            key={currentPage}
+            role="region"
+            aria-label="Volunteer attendance cards"
+            tabIndex={0}
+            className={`flex min-w-0 gap-2 overflow-x-auto overscroll-x-contain ${topScrollbar ? 'pb-2 [transform:scaleY(-1)]' : ''}`}
+          >
+            {visible.map((row) => <VolunteerRow key={row.user_id} row={row} topScrollbar={topScrollbar} />)}
+          </div>
+          {lastPage > 0 ? (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+              <span>Showing {start + 1}–{Math.min(start + VOLUNTEER_PAGE_SIZE, rows.length)} of {rows.length}</span>
+              <Button type="button" size="sm" variant="outline" disabled={currentPage === 0}
+                onClick={() => setPage(currentPage - 1)}>Previous volunteers</Button>
+              <Button type="button" size="sm" variant="outline" disabled={currentPage === lastPage}
+                onClick={() => setPage(currentPage + 1)}>Next volunteers</Button>
+            </div>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }
@@ -138,8 +165,29 @@ function CapabilityRow({ row }: { row: CampaignCapabilityAttendanceRow }) {
 function reviewerLabel(review: NonNullable<CampaignMilestoneTrailRow['evidence'][number]['review']>) {
   const who = [review.reviewer_ca_id, review.reviewer_name].filter(Boolean).join(' · ');
   if (review.reviewer_kind === 'platform_ca') return who ? `Platform CA ${who}` : 'Platform CA';
-  if (who) return `Company CA ${who}`;
+  if (who) return `Evidence Verifier ${who}`;
   return 'CA review';
+}
+
+/** Payment tag only after CA approval (or paid). Do not show "Payment pending" while evidence awaits review. */
+function milestonePaymentTag(milestone: CampaignMilestoneTrailRow): { label: string; tone: string } | null {
+  if (milestone.payment_done) {
+    return {
+      label: `Paid${milestone.paid_at ? ` · ${formatStamp(milestone.paid_at)}` : ''}`,
+      tone: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    };
+  }
+  const status = String(milestone.status || '').toLowerCase();
+  const evidenceApproved = milestone.evidence.some(
+    (item) => String(item.review?.decision || '').toLowerCase() === 'approved'
+  );
+  if (status === 'approved' || status === 'completed' || evidenceApproved) {
+    return {
+      label: 'Payment pending',
+      tone: 'border-amber-200 bg-amber-50 text-amber-800',
+    };
+  }
+  return null;
 }
 
 function MilestoneTrail({ rows }: { rows: CampaignMilestoneTrailRow[] }) {
@@ -149,7 +197,9 @@ function MilestoneTrail({ rows }: { rows: CampaignMilestoneTrailRow[] }) {
 
   return (
     <div className="space-y-2">
-      {rows.map((milestone) => (
+      {rows.map((milestone) => {
+        const paymentTag = milestonePaymentTag(milestone);
+        return (
         <div key={milestone.id} className="rounded-md border bg-white px-3 py-2 space-y-2">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
@@ -160,17 +210,11 @@ function MilestoneTrail({ rows }: { rows: CampaignMilestoneTrailRow[] }) {
                 {milestone.due_date ? ` · due ${formatDisplayDate(milestone.due_date)}` : ''}
               </p>
             </div>
-            <span
-              className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
-                milestone.payment_done
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                  : 'border-amber-200 bg-amber-50 text-amber-800'
-              }`}
-            >
-              {milestone.payment_done
-                ? `Paid${milestone.paid_at ? ` · ${formatStamp(milestone.paid_at)}` : ''}`
-                : 'Payment pending'}
-            </span>
+            {paymentTag ? (
+              <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${paymentTag.tone}`}>
+                {paymentTag.label}
+              </span>
+            ) : null}
           </div>
           {milestone.evidence.length === 0 ? (
             <p className="text-xs text-slate-600">No evidence submitted yet.</p>
@@ -192,7 +236,8 @@ function MilestoneTrail({ rows }: { rows: CampaignMilestoneTrailRow[] }) {
             ))
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -263,14 +308,7 @@ function FieldAttendanceView({
       <DailyCountStrip title="Daily capability count" days={attendance.capability_days || []} />
 
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-        <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Volunteer attendance</p>
-          {attendance.volunteers.length === 0 ? (
-            <p className="text-sm text-slate-600">No volunteers signed up yet.</p>
-          ) : (
-            attendance.volunteers.map((row) => <VolunteerRow key={row.user_id} row={row} />)
-          )}
-        </div>
+        <VolunteerAttendance rows={attendance.volunteers} />
         <div className="space-y-2">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Capability attendance</p>
           {attendance.capabilities.length === 0 ? (
@@ -341,24 +379,26 @@ function PlanningMeters({ tracking }: { tracking: CampaignTracking }) {
             : null
         }
       />
-      <Meter
-        title="Capability rentals"
-        value={rentals.total > 0 ? `${rentalsOpen} open of ${rentals.total}` : 'None rented'}
-        detail={
-          rentals.total > 0
-            ? [
-                rentals.awaiting_payment ? `${rentals.awaiting_payment} awaiting payment` : null,
-                rentals.in_transit ? `${rentals.in_transit} on the way` : null,
-                rentals.on_site ? `${rentals.on_site} on site` : null,
-                rentals.returning ? `${rentals.returning} returning` : null,
-                rentals.closed ? `${rentals.closed} returned` : null,
-                rentals.refunded ? `${rentals.refunded} refunded` : null,
-              ]
-                .filter(Boolean)
-                .join(' · ')
-            : null
-        }
-      />
+      <div className="rounded-md border bg-white p-3 space-y-2">
+        <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Capability rentals</div>
+        <p className="text-sm font-semibold text-slate-900 tabular-nums">
+          {rentals.total > 0 ? `${rentalsOpen} open of ${rentals.total}` : 'None rented'}
+        </p>
+        {rentals.total > 0 ? (
+          <p className="text-xs text-slate-600">
+            {[
+              rentals.awaiting_payment ? `${rentals.awaiting_payment} awaiting payment` : null,
+              rentals.in_transit ? `${rentals.in_transit} on the way` : null,
+              rentals.on_site ? `${rentals.on_site} on site` : null,
+              rentals.returning ? `${rentals.returning} returning` : null,
+              rentals.closed ? `${rentals.closed} returned` : null,
+              rentals.refunded ? `${rentals.refunded} refunded` : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 }

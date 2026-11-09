@@ -5,7 +5,7 @@ import {
   normalizeExpiryDate,
   CSR_WORK_END_DATE_REQUIRED_MESSAGE,
 } from '@/lib/auth'
-import { findAuthUser } from '@/lib/server-auth'
+import { authErrorResponse, getAuthUserFromRequest } from '@/lib/server-auth'
 import { parseLeadNgoInvites, type LeadNgoInvite } from '@/lib/campaign-volunteer-attendance'
 import { parseJsonObject } from '@/lib/utils'
 import type { Tables } from '@/lib/database.types'
@@ -91,11 +91,8 @@ async function findDraftBySession(sessionId: string, companyId: number) {
   return data
 }
 
-function authorizeCompany(request: NextRequest) {
-  const user = findAuthUser(request)
-  if (!user) {
-    return { user: null, error: NextResponse.json({ error: 'Authentication required' }, { status: 401 }) }
-  }
+async function authorizeCompany(request: NextRequest) {
+  const user = await getAuthUserFromRequest(request)
   if (user.user_type !== 'company') {
     return { user: null, error: NextResponse.json({ error: 'Only companies can manage lead NGO invites' }, { status: 403 }) }
   }
@@ -104,7 +101,7 @@ function authorizeCompany(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const { user, error: authError } = authorizeCompany(request)
+    const { user, error: authError } = await authorizeCompany(request)
     if (!user) return authError
 
     const sessionId = String(new URL(request.url).searchParams.get('sessionId') || '').trim()
@@ -141,6 +138,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: summarizeLeadInviteState(campaign) })
   } catch (error) {
+    const auth = authErrorResponse(error)
+    if (auth) return auth
     console.error('CSR agent lead invite fetch error:', error)
     return NextResponse.json({ error: 'Failed to fetch lead NGO invite status' }, { status: 500 })
   }
@@ -148,7 +147,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user, error: authError } = authorizeCompany(request)
+    const { user, error: authError } = await authorizeCompany(request)
     if (!user) return authError
 
     const body = await request.json()
@@ -315,6 +314,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: summarizeLeadInviteState(campaign) })
   } catch (error) {
+    const auth = authErrorResponse(error)
+    if (auth) return auth
     console.error('CSR agent lead invite error:', error)
     return NextResponse.json({ error: 'Failed to update lead NGO invites' }, { status: 500 })
   }

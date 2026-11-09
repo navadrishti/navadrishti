@@ -1,4 +1,5 @@
 'use client'
+import { toast } from 'sonner'
 import { readApiError } from '@/lib/user-facing-error'
 import { getClientSessionToken } from '@/lib/client-session';
 
@@ -14,7 +15,6 @@ import { StyledSelect } from '@/components/ui/styled-select'
 import { SkeletonCTA, SkeletonServiceOffer } from '@/components/ui/skeleton'
 import { Search, ArrowRight, Plus, MapPin } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
-import { useToast } from '@/hooks/use-toast'
 import { IMPACT_AREA_OPTIONS, OFFER_TYPE_OPTIONS, ngoHasLegalEntityTag } from '@/lib/service-offers'
 import { dashboardProfilePayoutHref, usePayoutConnection } from '@/hooks/use-payout-connection'
 import type { ServiceCardProps } from '@/components/service-card/types'
@@ -31,6 +31,7 @@ type ServiceOfferListing = Pick<
   | 'verified'
   | 'tags'
   | 'created_at'
+  | 'updated_at'
   | 'price_amount'
   | 'price_type'
   | 'price_description'
@@ -41,6 +42,8 @@ type ServiceOfferListing = Pick<
   | 'conditions'
   | 'item'
   | 'quantity'
+  | 'applications_count'
+  | 'pending_applications'
   | 'delivery_scope'
   | 'skill'
   | 'capacity'
@@ -100,7 +103,6 @@ function ServiceOffersPageFallback() {
 function ServiceOffersPageContent() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
-  const { toast } = useToast();
 
   const mounted = useIsClient();
   const [searchTerm, setSearchTerm] = useState('');
@@ -169,24 +171,13 @@ function ServiceOffersPageContent() {
       const data = await response.json();
 
       if (data.success) {
-        toast({
-          title: 'Success',
-          description: 'Service offer deleted successfully',
-        });
+        toast.success('Success', { description: 'Service offer deleted successfully' });
         fetchServiceOffers();
       } else {
-        toast({
-          title: 'Error',
-          description: readApiError(data, 'Failed to delete service offer'),
-          variant: 'destructive',
-        });
+        toast.error('Error', { description: readApiError(data, 'Failed to delete service offer') });
       }
     } catch {
-      toast({
-        title: 'Error',
-        description: 'Failed to delete service offer',
-        variant: 'destructive',
-      });
+      toast.error('Error', { description: 'Failed to delete service offer' });
     } finally {
       setDeleting(null);
     }
@@ -434,6 +425,7 @@ function ServiceOffersPageContent() {
                       verified={offer.verified}
                       tags={offer.tags}
                       created_at={offer.created_at}
+                      updated_at={offer.updated_at}
                       price_amount={offer.price_amount}
                       price_type={offer.price_type}
                       price_description={offer.price_description}
@@ -444,6 +436,8 @@ function ServiceOffersPageContent() {
                       conditions={offer.conditions}
                       item={offer.item}
                       quantity={offer.quantity}
+                      applications_count={offer.applications_count}
+                      pending_applications={offer.pending_applications}
                       delivery_scope={offer.delivery_scope}
                       skill={offer.skill}
                       capacity={offer.capacity}
@@ -453,8 +447,8 @@ function ServiceOffersPageContent() {
                       type="offer"
                       onDelete={() => handleDeleteOffer(offer.id)}
                       isDeleting={deleting === offer.id}
-                      showDeleteButton={!!(user && user.id === offer.creator_id)}
-                      isOwner={!!(user && user.id === offer.creator_id)}
+                      showDeleteButton={Boolean(user && Number(user.id) === Number(offer.creator_id))}
+                      isOwner={Boolean(user && Number(user.id) === Number(offer.creator_id))}
                       canInteract={true}
                     />
                   ))}

@@ -31,7 +31,10 @@ export function NeedsSection({ ongoingNeeds, historyNeeds, loading, tab, onTabCh
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h3 className="font-medium">My Needs</h3>
-          <p className="text-sm text-muted-foreground">Standalone needs for individuals. Company CSR applications live under My Projects.</p>
+          <p className="text-sm text-muted-foreground">
+            Standalone needs your organisation posted for individuals. Open needs stay in Ongoing even with no applications yet.
+            Fulfilled or cancelled needs move to History. Company CSR handoffs live under My Projects.
+          </p>
         </div>
         <Link href="/service-requests/create">
           <Button variant="outline" size="sm">
@@ -53,7 +56,10 @@ export function NeedsSection({ ongoingNeeds, historyNeeds, loading, tab, onTabCh
           ) : ongoingNeeds.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">
               <p className="text-lg font-medium mb-2">No ongoing needs</p>
-              <p className="text-sm">Accepted and active requests stay here until the remaining target is fully fulfilled.</p>
+              <p className="text-sm">
+                Needs you publish appear here immediately, including those waiting for their first application.
+                They leave Ongoing only when fulfilled or cancelled.
+              </p>
             </div>
           ) : ongoingNeeds.map((request) => (
             <NgoNeedDashboardInline
@@ -71,7 +77,7 @@ export function NeedsSection({ ongoingNeeds, historyNeeds, loading, tab, onTabCh
           ) : historyNeeds.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">
               <p className="text-lg font-medium mb-2">No history yet</p>
-              <p className="text-sm">Completed or cancelled requests will appear here.</p>
+              <p className="text-sm">Fulfilled or cancelled owned needs appear here. Pending applications alone do not move a need into History.</p>
             </div>
           ) : historyNeeds.map((request) => (
             <NgoNeedDashboardInline

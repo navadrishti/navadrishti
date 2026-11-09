@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SkeletonOrderItem } from '@/components/ui/skeleton';
 import { CsrTrackingProjectDetails } from '@/components/csr-tracking-project-details';
+import { FieldAppCta } from '@/components/field-app-cta';
 import { partitionByWorkBucket } from '@/lib/work-item-bucket';
 import { CompanyApplicationsCard } from './company-applications-card';
 import { CsrAssignmentsPanel, type CsrAssignmentGroups } from './csr-assignments-panel';
@@ -53,11 +54,19 @@ export function CsrProjectsSection({
     data.projectLeadInvitations.length +
     groups.ongoingLeadAssignments.length +
     groups.completedLeadAssignments.length +
+    groups.ongoingVolunteerAssignments.length +
+    groups.completedVolunteerAssignments.length +
     groups.ongoingProjects.length +
     groups.completedProjects.length;
 
   return (
     <>
+      <FieldAppCta
+        className="mb-4"
+        label="Open GRAM App for milestone evidence"
+        hint="Field officers submit milestone evidence through the GRAM App. Offline evidence syncs while the app is open and online — not after it is closed."
+        unavailableHint="Field officers submit milestone evidence through the GRAM App. Ask your administrator to set NEXT_PUBLIC_PWA_URL."
+      />
       <CompanyApplicationsCard
         applications={data.companyProjectApplications}
         loading={data.loadingCompanyProjectApplications}

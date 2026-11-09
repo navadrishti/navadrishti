@@ -13,6 +13,7 @@ import {
   COMPANY_DOCUMENT_OPTIONS,
   NGO_DOCUMENT_OPTIONS,
   IMPACT_PERIOD_OPTIONS,
+  type DocumentDownloadFormat,
   type DocumentHistoryItem,
   type DocumentTypeId,
   type ImpactReportPeriod,
@@ -37,8 +38,7 @@ type EntityOption = {
 
 const HISTORY_STORAGE_KEY = "gram:document-generation-history"
 
-function downloadHtml(filename: string, html: string) {
-  const blob = new Blob([html], { type: "text/html;charset=utf-8" })
+function downloadBlob(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement("a")
   anchor.href = url
@@ -47,6 +47,10 @@ function downloadHtml(filename: string, html: string) {
   anchor.click()
   anchor.remove()
   URL.revokeObjectURL(url)
+}
+
+function downloadHtml(filename: string, html: string) {
+  downloadBlob(filename, new Blob([html], { type: "text/html;charset=utf-8" }))
 }
 
 function readHistory(audience: "company" | "ngo"): DocumentHistoryItem[] {
@@ -86,7 +90,7 @@ export function ImpactReportsPanel({ audience }: ImpactReportsPanelProps) {
   const [selectedEntity, setSelectedEntity] = useState("")
   const [entities, setEntities] = useState<EntityOption[]>([])
   const [loadingEntities, setLoadingEntities] = useState(true)
-  const [generating, setGenerating] = useState(false)
+  const [generatingFormat, setGeneratingFormat] = useState<DocumentDownloadFormat | null>(null)
   const [history, setHistory] = useState<DocumentHistoryItem[]>([])
 
   useEffect(() => {
@@ -103,6 +107,7 @@ export function ImpactReportsPanel({ audience }: ImpactReportsPanelProps) {
     documentType === "impact_report" || documentType === "implementing_agency_report"
 
   const userId = user?.id
+  const generating = generatingFormat !== null
 
   const loadEntities = useCallback(async () => {
     if (!userId) {
@@ -198,7 +203,7 @@ export function ImpactReportsPanel({ audience }: ImpactReportsPanelProps) {
       return
     }
 
-    setGenerating(true)
+    setGeneratingFormat("html")
     try {
       const [kind, entityId] = needsEntity && selectedEntity.includes(":")
         ? (selectedEntity.split(":") as ["campaign" | "project", string])
@@ -237,16 +242,17 @@ export function ImpactReportsPanel({ audience }: ImpactReportsPanelProps) {
         label: String(payload.label || selectedOption?.label || "Document"),
         createdAt: new Date().toISOString(),
         entityTitle: payload.entityTitle ? String(payload.entityTitle) : undefined,
+        format: "html",
       }
       const nextHistory = [historyItem, ...history].slice(0, 20)
       setHistory(nextHistory)
       writeHistory(resolvedAudience, nextHistory)
 
-      toast.success("Document downloaded. Open the HTML file and use Print → Save as PDF if needed.")
+      toast.success("HTML document downloaded")
     } catch (error) {
       toast.error(getErrorMessage(error) || "Failed to generate document")
     } finally {
-      setGenerating(false)
+      setGeneratingFormat(null)
     }
   }
 
@@ -272,7 +278,7 @@ export function ImpactReportsPanel({ audience }: ImpactReportsPanelProps) {
             <CardHeader>
               <CardTitle>Document Generator</CardTitle>
               <CardDescription>
-                Downloads an HTML document from live platform data. Print to PDF from your browser.
+                Download an HTML document for editing, browser print, or sharing with board and funders.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -380,15 +386,19 @@ export function ImpactReportsPanel({ audience }: ImpactReportsPanelProps) {
                 </p>
               ) : null}
 
-              <Button
-                className="mt-2 w-full bg-udaan-orange hover:bg-udaan-orange/90"
-                disabled={!canGenerate}
-                onClick={() => void handleGenerate()}
-              >
-                {generating ? "Generating..." : "Generate & Download HTML"}
-              </Button>
+              <div className="flex flex-col gap-2 pt-1">
+                <Button
+                  className="relative z-10 w-full bg-udaan-orange hover:bg-udaan-orange/90"
+                  disabled={!canGenerate}
+                  onClick={() => void handleGenerate()}
+                  data-testid="generate-document-html"
+                >
+                  {generatingFormat === "html" ? "Generating HTML..." : "Download HTML"}
+                </Button>
+              </div>
               <p className="text-xs text-slate-500">
                 Documents include a GRAM disclaimer and are not MCA filings or statutory certificates.
+                Signature areas remain blank for wet-ink or organisation digital signing.
               </p>
             </CardContent>
           </Card>
@@ -413,7 +423,14 @@ export function ImpactReportsPanel({ audience }: ImpactReportsPanelProps) {
                       className="flex flex-col gap-1 rounded-lg border border-slate-200 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div>
-                        <p className="text-sm font-medium text-slate-900">{item.label}</p>
+                        <p className="text-sm font-medium text-slate-900">
+                          {item.label}
+                          {item.format ? (
+                            <span className="ml-2 text-xs font-normal uppercase tracking-wide text-slate-500">
+                              {item.format}
+                            </span>
+                          ) : null}
+                        </p>
                         <p className="text-xs text-slate-500">
                           {item.entityTitle ? `${item.entityTitle} · ` : ""}
                           {item.filename}

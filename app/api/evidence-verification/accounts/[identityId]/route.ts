@@ -16,7 +16,7 @@ const passwordResetSchema = z.object({
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { identityId: string } | Promise<{ identityId: string }> }
+  { params }: { params: Promise<{ identityId: string }> }
 ) {
   try {
     const user = await getAuthUserFromRequest(request);
@@ -24,7 +24,7 @@ export async function PATCH(
 
     const body = await request.json();
 
-    const resolvedParams = await Promise.resolve(params);
+    const resolvedParams = await params;
     const identityIdRaw = resolvedParams?.identityId;
     const identityId = typeof identityIdRaw === 'string' ? decodeURIComponent(identityIdRaw).trim() : '';
 
@@ -98,20 +98,20 @@ export async function PATCH(
     const authResponse = authErrorResponse(error);
     if (authResponse) return authResponse;
 
-    console.error('Company CA account update error:', error);
-    return NextResponse.json({ error: 'Failed to update Company CA account' }, { status: 500 });
+    console.error('Evidence Verifier account update error:', error);
+    return NextResponse.json({ error: 'Failed to update Evidence Verifier account' }, { status: 500 });
   }
 }
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { identityId: string } | Promise<{ identityId: string }> }
+  { params }: { params: Promise<{ identityId: string }> }
 ) {
   try {
     const user = await getAuthUserFromRequest(request);
     assertUserType(user, ['company']);
 
-    const resolvedParams = await Promise.resolve(params);
+    const resolvedParams = await params;
     const identityIdRaw = resolvedParams?.identityId;
     const identityId = typeof identityIdRaw === 'string' ? decodeURIComponent(identityIdRaw).trim() : '';
 
@@ -127,7 +127,7 @@ export async function DELETE(
       .single();
 
     if (findError || !existing) {
-      return NextResponse.json({ error: 'Company CA identity not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Evidence Verifier identity not found' }, { status: 404 });
     }
 
     const { error: deleteError } = await supabase
@@ -138,7 +138,7 @@ export async function DELETE(
 
     if (deleteError) {
       console.error('Failed to delete company CA identity:', deleteError);
-      return NextResponse.json({ error: 'Failed to delete company CA account' }, { status: 500 });
+      return NextResponse.json({ error: 'Failed to delete Evidence Verifier account' }, { status: 500 });
     }
 
     await supabase.from('csr_audit_log').insert({
@@ -154,12 +154,12 @@ export async function DELETE(
       created_by: user.id
     });
 
-    return NextResponse.json({ success: true, message: 'Company CA account permanently deleted' });
+    return NextResponse.json({ success: true, message: 'Evidence Verifier account permanently deleted' });
   } catch (error) {
     const authResponse = authErrorResponse(error);
     if (authResponse) return authResponse;
 
-    console.error('Company CA account delete error:', error);
-    return NextResponse.json({ error: 'Failed to delete Company CA account' }, { status: 500 });
+    console.error('Evidence Verifier account delete error:', error);
+    return NextResponse.json({ error: 'Failed to delete Evidence Verifier account' }, { status: 500 });
   }
 }

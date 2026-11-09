@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/db";
 import { getDelhiveryTrackingSnapshot, type DelhiveryTrackingSnapshot } from "@/lib/delhivery";
+import { captureDelhiveryFreightForLeg } from "@/lib/delhivery-freight";
 import { isDeliveredTrackingStatus, isPickedUpTrackingStatus } from "@/lib/service-request-allocation";
 import {
   parseCsrCapabilityRentals,
@@ -21,8 +22,12 @@ export type CsrCapabilityRentalDeliveryView = {
   offer_title?: string | null;
 };
 
-function buildDeliveryLegFromSnapshot(snapshot: DelhiveryTrackingSnapshot): CsrCapabilityDeliveryLeg {
-  return {
+function buildDeliveryLegFromSnapshot(
+  snapshot: DelhiveryTrackingSnapshot,
+  existing?: CsrCapabilityDeliveryLeg | null
+): CsrCapabilityDeliveryLeg {
+  const base: CsrCapabilityDeliveryLeg = {
+    ...(existing || {}),
     provider: "delhivery",
     tracking_id: snapshot.trackingId,
     last_status: snapshot.currentStatus,
@@ -31,6 +36,13 @@ function buildDeliveryLegFromSnapshot(snapshot: DelhiveryTrackingSnapshot): CsrC
     synced_at: new Date().toISOString(),
     events: snapshot.events.slice(0, 20),
   };
+
+  // Capture confirmed freight only when the tracking payload exposes freight-named keys.
+  // InvoiceAmount / CODAmount / package total_amount are never treated as freight.
+  return captureDelhiveryFreightForLeg({
+    existingLeg: base,
+    trackingRaw: snapshot.raw,
+  }).leg;
 }
 
 function resolveCsrDeliveryRole(
@@ -66,7 +78,8 @@ function applyDelhiverySnapshotToRental(
   snapshot: DelhiveryTrackingSnapshot,
   campaignStatus?: string | null
 ): Partial<CsrCapabilityRentalRecord> {
-  const legMeta = buildDeliveryLegFromSnapshot(snapshot);
+  const existingLeg = leg === "outbound" ? rental.outbound_delivery : rental.return_delivery;
+  const legMeta = buildDeliveryLegFromSnapshot(snapshot, existingLeg);
   const eventAt = snapshot.lastEventAt || new Date().toISOString();
   const patch: Partial<CsrCapabilityRentalRecord> =
     leg === "outbound" ? { outbound_delivery: legMeta } : { return_delivery: legMeta };
@@ -186,7 +199,7 @@ export async function syncCsrCapabilityRentalDelhivery(input: {
   const snapshot = await getDelhiveryTrackingSnapshot(trackingId);
   const patch = applyDelhiverySnapshotToRental(rental, input.leg, snapshot, campaign.status);
 
-  return updateCsrCapabilityRentalStatus({
+  const updated = await updateCsrCapabilityRentalStatus({
     campaignId: input.campaignId,
     offerId: input.offerId,
     companyId: Number(campaign.company_id || 0) || undefined,
@@ -195,6 +208,23 @@ export async function syncCsrCapabilityRentalDelhivery(input: {
       ...patch,
     },
   });
+
+  // Best-effort ledger sync — only writes when a confirmed freight charge is present.
+  // Never blocks tracking updates; Delhivery package value is not treated as freight.
+  try {
+    const { syncLogisticsExpenseFromCapabilityLegSafe } = await import(
+      "@/lib/csr-agent/sync-logistics-expense"
+    );
+    await syncLogisticsExpenseFromCapabilityLegSafe({
+      rental: updated,
+      leg: input.leg,
+      providerRaw: snapshot.raw,
+    });
+  } catch (error) {
+    console.warn("[csr-capability-delivery] logistics expense sync skipped", error);
+  }
+
+  return updated;
 }
 
 export async function listCsrCapabilityRentalsForUser(userId: number): Promise<CsrCapabilityRentalDeliveryView[]> {

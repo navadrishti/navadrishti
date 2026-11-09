@@ -45,16 +45,25 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Default: get all company CA identities
+    // Default: get all company Evidence Verifier identities with project assignments
     const { data, error } = await supabase
       .from('company_ca_identities')
-      .select('id, ca_id, user_id, company_user_id, status, permissions, must_change_password, created_at, users:user_id(id, name, email)')
+      .select(
+        `
+        id, ca_id, user_id, company_user_id, status, permissions, must_change_password, created_at, last_login_at,
+        users:user_id(id, name, email),
+        assignments:company_ca_project_assignments(
+          id, company_ca_identity_id, project_id, status, assigned_at, deactivated_at,
+          project:project_id(id, title, project_status, region, start_date, end_date)
+        )
+      `
+      )
       .eq('company_user_id', user.id)
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Failed to fetch company CAs:', error);
-      return NextResponse.json({ error: 'Failed to fetch company CAs' }, { status: 500 });
+      console.error('Failed to fetch company Evidence Verifiers:', error);
+      return NextResponse.json({ error: 'Failed to fetch Evidence Verifiers' }, { status: 500 });
     }
 
     return NextResponse.json({ success: true, data: data ?? [] });
@@ -62,7 +71,7 @@ export async function GET(request: NextRequest) {
     const authResponse = authErrorResponse(error);
     if (authResponse) return authResponse;
 
-    console.error('Company CA list error:', error);
+    console.error('Evidence Verifier list error:', error);
     return NextResponse.json({ error: 'Failed to fetch company CAs' }, { status: 500 });
   }
 }
@@ -122,7 +131,7 @@ export async function POST(request: NextRequest) {
       verification_status: 'verified',
       email_verified: true,
       phone_verified: false,
-      // users.ngo_volunteer_capacity is NOT NULL for every row. Company CAs are not NGOs.
+      // users.ngo_volunteer_capacity is NOT NULL for every row. Evidence Verifiers are not NGOs.
       ngo_volunteer_capacity: 0,
       profile_data: {
         role: 'company_ca',
@@ -187,7 +196,7 @@ export async function POST(request: NextRequest) {
     const authResponse = authErrorResponse(error);
     if (authResponse) return authResponse;
 
-    console.error('Company CA create error:', error);
+    console.error('Evidence Verifier create error:', error);
     return NextResponse.json({ error: 'Failed to create company CA user' }, { status: 500 });
   }
 }

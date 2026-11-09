@@ -78,8 +78,8 @@ Application startup does not apply SQL. Follow
 [database documentation](./DATABASE_DOCUMENTATION.md): identify the intended
 Dev or Production project, review the exact SQL and dependencies, confirm
 backup and rollback, obtain required approval, then apply and validate changes
-through the authorized database process. Do not treat captured exports or
-proposed SQL as current schema.
+through the authorized database process. Do not treat repository SQL as proof
+of current live schema.
 
 ## Deployment and operational precautions
 
@@ -87,7 +87,7 @@ Build and validate the application before deployment, configure secrets in the
 hosting platform, and independently verify database state, RLS/grants,
 provider credentials, webhook registration and scheduled jobs. The
 [`vercel.json`](../vercel.json) cron declaration is not deployment evidence.
-Use the retained [production go-live checklist](./PRODUCTION_GO_LIVE_CHECKLIST.md)
+Use the deployment safeguards in [database documentation](./DATABASE_DOCUMENTATION.md)
 as a separate operational gate; it is not an executable deployment script.
 
 Use separate Dev and Production projects and credentials. Never place secrets

@@ -18,12 +18,14 @@ import {
 } from '@/lib/service-engagement'
 import { razorpaySignature } from './support/requests'
 import { argOf, createSupabaseFake, eqValue, hasCall, type FakeQuery } from './support/supabase-fake'
+import './support/install-test-auth'
 
 const mocks = vi.hoisted(() => ({
   supabase: { from: vi.fn() },
   razorpay: { orders: { create: vi.fn(), fetch: vi.fn() }, payments: { fetch: vi.fn(), refund: vi.fn() } },
 }))
 
+vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db', () => ({ supabase: mocks.supabase, db: {} }))
 vi.mock('@/lib/email', () => ({ emailService: {} }))
 vi.mock('razorpay', () => ({
@@ -539,10 +541,13 @@ describe('update-campaign route', () => {
     expect(body.error).toBe('No update fields provided')
   })
 
-  it('PUT refuses to edit an active campaign', async () => {
-    useCampaignDb({ ...baseCampaign, status: 'active' })
-    const { status } = await send(PUT, request('PUT', { campaign_id: CAMPAIGN_ID, company_id: 3, campaign: { title: 'x' } }))
-    expect(status).toBe(409)
+  it('PUT updates an active campaign without changing its status', async () => {
+    const { fake, state } = useCampaignDb({ ...baseCampaign, status: 'active' })
+    const { status, body } = await send(PUT, request('PUT', { campaign_id: CAMPAIGN_ID, company_id: 3, campaign: { title: 'x' } }))
+    expect(status).toBe(200)
+    expect(body).toMatchObject({ success: true, data: [{ status: 'active' }] })
+    expect(state.campaign.title).toBe('x')
+    expect(fake.writes('campaigns')).toHaveLength(1)
   })
 })
 

@@ -5,6 +5,10 @@ import { Loader2 } from 'lucide-react'
 
 import { LeadNgoConfirmedSection } from '@/app/companies/csr-agent/preview-sections'
 import { isPendingLeadInvite } from '@/app/companies/csr-agent/helpers'
+import {
+  EvidenceVerifierSelect,
+  type EvidenceVerifierOption,
+} from '@/components/evidence-verifier-select'
 import type {
   LeadNgoInvite,
   NgoDirectoryItem,
@@ -56,6 +60,8 @@ type SuggestionsSidebarProps = {
   linkedProjectTitle: string | null
   onToggleInvite: (ngo: NgoDirectoryItem) => void | Promise<void>
   inviteError: string
+  evidenceVerifierIdentityId: string
+  onEvidenceVerifierChange: (identityId: string, option: EvidenceVerifierOption | null) => void
 }
 
 function formatBudget(amount: number | null | undefined) {
@@ -87,6 +93,8 @@ export function SuggestionsSidebar({
   linkedProjectTitle,
   onToggleInvite,
   inviteError,
+  evidenceVerifierIdentityId,
+  onEvidenceVerifierChange,
 }: SuggestionsSidebarProps) {
   const [projectCategory, setProjectCategory] = useState('all')
   const [projectCity, setProjectCity] = useState('all')
@@ -284,11 +292,18 @@ export function SuggestionsSidebar({
       />
 
       {acceptedLead ? (
-        <LeadNgoConfirmedSection
-          acceptedLead={acceptedLead}
-          ngos={ngos}
-          linkedProjectTitle={linkedProjectTitle}
-        />
+        <>
+          <LeadNgoConfirmedSection
+            acceptedLead={acceptedLead}
+            ngos={ngos}
+            linkedProjectTitle={linkedProjectTitle}
+          />
+          <EvidenceVerifierSelect
+            enabled
+            value={evidenceVerifierIdentityId}
+            onChange={onEvidenceVerifierChange}
+          />
+        </>
       ) : (
         <BrowseCatalogPanel
           title="NGOs"

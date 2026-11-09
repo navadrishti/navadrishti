@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { GET as getNeed } from '@/app/api/service-requests/[id]/route'
 import { jsonRequest, tokenFor } from './support/requests'
+import './support/install-test-auth'
 
 const mocks = vi.hoisted(() => ({ getById: vi.fn() }))
 
+vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db', () => ({
   supabase: { from: vi.fn() },
   db: { serviceRequests: { getById: mocks.getById } },

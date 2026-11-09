@@ -1,7 +1,3 @@
-/**
- * Route access based on user type and verification status.
- */
-
 export type UserType = 'individual' | 'ngo' | 'company';
 export type VerificationStatus = 'verified' | 'unverified' | 'pending' | 'suspended';
 
@@ -14,26 +10,18 @@ export interface User {
 }
 
 export interface AccessPermissions {
-  // Service system
   canCreateServiceRequests: boolean;
   canApplyToServiceRequests: boolean;
   canCreateServiceOffers: boolean;
   canApplyToServiceOffers: boolean;
-  
-  // Communication
   canSendMessages: boolean;
   canReceiveMessages: boolean;
-  
-  // Profile features
   canViewFullProfiles: boolean;
   canAccessVerificationPage: boolean;
-  
-  // System features
   canAccessDashboard: boolean;
 }
 
 export function getUserPermissions(user: User | null): AccessPermissions {
-  // Default permissions for unauthenticated users
   if (!user) {
     return {
       canCreateServiceRequests: false,
@@ -53,23 +41,15 @@ export function getUserPermissions(user: User | null): AccessPermissions {
   const isPhoneVerified = user.phone_verified || false;
   const hasBasicVerification = isEmailVerified || isPhoneVerified;
 
-  // Base permissions for authenticated users
   const basePermissions: AccessPermissions = {
-    // Service system permissions
     canCreateServiceRequests: false,
     canApplyToServiceRequests: false,
     canCreateServiceOffers: false,
     canApplyToServiceOffers: false,
-    
-    // Communication
     canSendMessages: hasBasicVerification,
     canReceiveMessages: true,
-    
-    // Profile features
     canViewFullProfiles: true,
     canAccessVerificationPage: true,
-    
-    // System features
     canAccessDashboard: true,
   };
 
@@ -79,7 +59,8 @@ export function getUserPermissions(user: User | null): AccessPermissions {
         ...basePermissions,
         canApplyToServiceRequests: isVerified,
         canCreateServiceOffers: isVerified,
-        canApplyToServiceOffers: isVerified,
+        // Offer requests are NGO-only (API: POST /api/service-offers/[id]/clients).
+        canApplyToServiceOffers: false,
       };
       
     case 'ngo':
@@ -94,7 +75,7 @@ export function getUserPermissions(user: User | null): AccessPermissions {
       return {
         ...basePermissions,
         canCreateServiceOffers: isVerified,
-        canApplyToServiceOffers: isVerified,
+        canApplyToServiceOffers: false,
       };
       
     default:
@@ -102,17 +83,11 @@ export function getUserPermissions(user: User | null): AccessPermissions {
   }
 }
 
-/**
- * Check if user has permission for a specific action
- */
 export function hasPermission(user: User | null, permission: keyof AccessPermissions): boolean {
   const permissions = getUserPermissions(user);
   return permissions[permission];
 }
 
-/**
- * Get user-friendly error message for insufficient permissions
- */
 export function getPermissionErrorMessage(permission: keyof AccessPermissions, user: User | null): string {
   if (!user) {
     return "Please sign in to access this feature.";
@@ -152,22 +127,12 @@ export function getPermissionErrorMessage(permission: keyof AccessPermissions, u
         : "You don't have permission to create service offers.";
         
     case 'canApplyToServiceOffers':
-      if (user.user_type === 'individual') {
-        return !isVerified 
-          ? "Please complete your identity verification to respond to capability offers."
-          : "You don't have permission to apply to service offers.";
+      if (user.user_type !== 'ngo') {
+        return 'Only verified NGOs can respond to capability offers.';
       }
-      if (user.user_type === 'company') {
-        return !isVerified
-          ? "Please complete company verification to respond to capability offers."
-          : "You don't have permission to apply to service offers.";
-      }
-      if (user.user_type === 'ngo') {
-        return !isVerified
-          ? "Please complete NGO verification to respond to capability offers."
-          : "You don't have permission to apply to service offers.";
-      }
-      return "You don't have permission to apply to service offers.";
+      return !isVerified
+        ? 'Please complete NGO verification to respond to capability offers.'
+        : "You don't have permission to apply to service offers.";
         
     default:
       return !isVerified 
@@ -176,10 +141,26 @@ export function getPermissionErrorMessage(permission: keyof AccessPermissions, u
   }
 }
 
-/**
- * Redirect paths for different user types when accessing restricted content
- */
-export function getRedirectPathForUserType(userType: UserType): string {
+export function isCompanyEmployeeUserClient(user: {
+  is_company_employee?: boolean;
+  profile_data?: Record<string, unknown> | null;
+} | null | undefined): boolean {
+  if (!user) return false;
+  if (user.is_company_employee) return true;
+  return String(user.profile_data?.role || '').toLowerCase() === 'company_employee';
+}
+
+export function getRedirectPathForUserType(
+  userType: UserType,
+  user?: {
+    is_company_employee?: boolean;
+    must_change_password?: boolean;
+    profile_data?: Record<string, unknown> | null;
+  } | null
+): string {
+  if (isCompanyEmployeeUserClient(user)) {
+    return user?.must_change_password ? '/employees/change-password' : '/employees/dashboard';
+  }
   switch (userType) {
     case 'individual':
       return '/individuals/dashboard';
@@ -196,6 +177,8 @@ const PLATFORM_LOGIN_REQUIRED_PREFIXES = [
   '/individuals/dashboard',
   '/companies/dashboard',
   '/ngos/dashboard',
+  '/employees/dashboard',
+  '/employees/change-password',
   '/companies/csr-agent',
   '/companies/impact-reports',
   '/ngos/ai-agent',
@@ -219,13 +202,29 @@ export function isPlatformLoginRequiredPath(pathname: string): boolean {
   );
 }
 
-/**
- * Check if user type has access to a specific route
- */
-export function canAccessRoute(userType: UserType | undefined, routePath: string): boolean {
+export function canAccessRoute(
+  userType: UserType | undefined,
+  routePath: string,
+  user?: {
+    is_company_employee?: boolean;
+    profile_data?: Record<string, unknown> | null;
+  } | null
+): boolean {
   if (!userType) return false;
+
+  if (isCompanyEmployeeUserClient(user)) {
+    return (
+      routePath === '/employees/dashboard' ||
+      routePath === '/employees/change-password' ||
+      routePath.startsWith('/employees/dashboard/') ||
+      routePath.startsWith('/employees/change-password/')
+    );
+  }
+
+  if (routePath === '/employees/dashboard' || routePath.startsWith('/employees/')) {
+    return false;
+  }
   
-  // Route-specific access control
   const routeAccess: Record<string, UserType[]> = {
     '/individuals/dashboard': ['individual'],
     '/ngos/dashboard': ['ngo'],
@@ -236,12 +235,10 @@ export function canAccessRoute(userType: UserType | undefined, routePath: string
   };
   
   const allowedUserTypes = routeAccess[routePath];
-  if (!allowedUserTypes) return true; // Route has no specific restrictions
-  
+  if (!allowedUserTypes) return true;
+
   return allowedUserTypes.includes(userType);
 }
-
-// --- Product surfaces / route gating ---
 
 export type LaunchHeaderNavItem = {
   label: string;
@@ -252,7 +249,7 @@ export type LaunchHeaderNavItem = {
 
 export const NAVADRISHTI_ABOUT_URL = 'https://www.navadrishti.in';
 export const NAVADRISHTI_PRODUCT_URL = 'https://www.navadrishti.in/GRAM';
-export const NAVADRISHTI_APP_URL = 'https://app.navadrishti.in';
+export const NAVADRISHTI_APP_URL = 'https://gram.navadrishti.in';
 export const NAVADRISHTI_CONTACT_HREF = 'mailto:connect@navadrishti.in';
 export const NAVADRISHTI_LLMS_URL = `${NAVADRISHTI_ABOUT_URL}/llms.txt`;
 
@@ -311,8 +308,8 @@ export const GRAM_LIVE_FEATURES = [
 
 export const AGENT_FAQ = [
   {
-    question: 'What is app.navadrishti.in?',
-    answer: `app.navadrishti.in is the live GRAM application by ${COMPANY_LEGAL_NAME}. Product overview: ${NAVADRISHTI_PRODUCT_URL}. Company: ${NAVADRISHTI_ABOUT_URL}`,
+    question: 'What is gram.navadrishti.in?',
+    answer: `gram.navadrishti.in is the live GRAM application by ${COMPANY_LEGAL_NAME}. Product overview: ${NAVADRISHTI_PRODUCT_URL}. Company: ${NAVADRISHTI_ABOUT_URL}`,
   },
   {
     question: 'Who operates a live CSR and NGO platform with CA-verified NGOs in India?',
@@ -383,9 +380,9 @@ export function shouldShowPayoutAccountPanel(
 }
 
 const DASHBOARD_SIDEBAR_ITEM_COUNTS: Record<string, number> = {
-  ngo: 6,
-  company: 6,
-  individual: 4,
+  ngo: 8,
+  company: 7,
+  individual: 6,
 };
 
 export function getDashboardSidebarItemCount(userType?: string | null): number {

@@ -35,12 +35,22 @@ export function isDailyRentalEngagementMeta(meta: unknown) {
 
 export function formatAttendanceSummary(meta: unknown) {
   const summary = asRecord(asRecord(meta).attendance_summary)
+  const totalDue = Number(summary.total_due || 0)
+  const paidTotal = Number(summary.paid_total || 0)
+  const waivedTotal = Number(summary.waived_total || 0)
+  // Prefer explicit outstanding from settlement refresh; otherwise exclude waived from owed balance.
+  const outstandingRaw =
+    summary.outstanding != null && summary.outstanding !== ''
+      ? Number(summary.outstanding)
+      : Math.max(0, totalDue - paidTotal - waivedTotal)
 
   return {
     // total_entries also counts absent days, so it is only a fallback for summaries without days_attended.
     daysPresent: Number(summary.days_attended ?? summary.total_entries ?? 0),
-    totalDue: Number(summary.total_due || 0),
-    paidTotal: Number(summary.paid_total || 0),
+    totalDue,
+    paidTotal,
+    waivedTotal,
+    outstanding: Number.isFinite(outstandingRaw) ? Math.max(0, outstandingRaw) : 0,
     lastAttendanceAt: summary.last_attendance_at ? String(summary.last_attendance_at) : null,
   }
 }

@@ -6,7 +6,7 @@ import {
   CSR_PROJECT_CREATE_REQUIRED_MESSAGE,
 } from '@/lib/auth';
 
-import { ngoUserIsCsrEligible, ngoUserIsCsrEligibleForProject } from '@/lib/server-auth';
+import { authErrorResponse, ngoUserIsCsrEligible, ngoUserIsCsrEligibleForProject } from '@/lib/server-auth';
 import {
   withProjectMeta,
   enrichProjectRecord,
@@ -218,6 +218,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: project });
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Failed to create service request project:', error);
     return NextResponse.json({ error: 'Failed to create service request project' }, { status: 500 });
   }

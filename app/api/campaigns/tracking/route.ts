@@ -19,7 +19,19 @@ export async function GET(request: NextRequest) {
       .limit(MAX_TRACKED_CAMPAIGNS)
     if (error) throw error
 
-    const tracking = await buildCampaignTracking(campaigns || [])
+    let authorizedCampaigns = campaigns || []
+    if (user.user_type === 'ngo' && authorizedCampaigns.length > 0) {
+      const { data: projects, error: projectError } = await supabase
+        .from('csr_projects')
+        .select('id, campaign_id, ngo_user_id')
+        .in('campaign_id', authorizedCampaigns.map((campaign) => campaign.id))
+      if (projectError) throw projectError
+      authorizedCampaigns = authorizedCampaigns.filter((campaign) => {
+        const linked = (projects || []).filter((project) => project.campaign_id === campaign.id)
+        return linked.length > 0 && linked.every((project) => project.ngo_user_id === user.id)
+      })
+    }
+    const tracking = await buildCampaignTracking(authorizedCampaigns)
     return NextResponse.json({ success: true, data: Object.fromEntries(tracking) })
   } catch (error) {
     const authResponse = authErrorResponse(error)

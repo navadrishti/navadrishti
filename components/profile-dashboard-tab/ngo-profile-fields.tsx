@@ -13,6 +13,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { MultiSelectDropdown } from '@/components/ui/multi-select-dropdown'
 import { CSR_SCHEDULE_VII_CATEGORIES } from '@/lib/categories'
+import { getCalendarYearIst } from '@/lib/utils'
 import type { ProfileDetails } from './use-profile-details'
 
 export function NgoProfileFields({ details }: { details: ProfileDetails }) {
@@ -41,7 +42,7 @@ export function NgoProfileFields({ details }: { details: ProfileDetails }) {
         </div>
         <div>
           <Label>Founded Year</Label>
-          <Input type="number" min="1800" max={new Date().getFullYear()} placeholder="e.g., 2010" value={foundedYear} onChange={(e) => setFoundedYear(e.target.value)} />
+          <Input type="number" min="1800" max={getCalendarYearIst()} placeholder="e.g., 2010" value={foundedYear} onChange={(e) => setFoundedYear(e.target.value)} />
         </div>
       </div>
       <div>

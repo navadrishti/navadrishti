@@ -673,10 +673,17 @@ export async function buildCampaignTracking(
     const id = String(campaign.id)
     const impact = parseJsonObject(campaign.impact_metrics)
     const applications = filterVolunteerApplicationsExcludingLeadNgo(campaign)
+    const individualApplications = applications.filter((app) =>
+      String(userTypes.get(Number(app.user_id)) || app.user_type || '').toLowerCase() === 'individual'
+    )
     const campaignVolunteerAssignments = filterVolunteerAssignmentsExcludingLeadNgo(
       campaign,
       volunteerAssignmentsByCampaign.get(id) || []
-    )
+    ).filter((row) => {
+      const app = applications.find((entry) => Number(entry.user_id) === Number(row.assignee_user_id))
+      const meta = parseJsonObject(row.meta)
+      return String(userTypes.get(Number(row.assignee_user_id)) || app?.user_type || meta.volunteer_user_type || '').toLowerCase() === 'individual'
+    })
     const campaignVolunteerAssignmentIds = new Set(
       campaignVolunteerAssignments.map((row) => String(row.id || '')).filter(Boolean)
     )
@@ -733,7 +740,7 @@ export async function buildCampaignTracking(
       rentals,
       attendance: buildFieldAttendance({
         campaign,
-        applications,
+        applications: individualApplications,
         volunteerAssignments: campaignVolunteerAssignments,
         capabilityAssignments: capabilityAssignmentsByCampaign.get(id) || [],
         rentals: parsedRentals,

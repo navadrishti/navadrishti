@@ -3,9 +3,10 @@ import { db } from '@/lib/db';
 import { canIndividualApplyToNeed } from '@/lib/infrastructure-assignment-lock';
 import { getNgoNeedFulfillmentMode, isNeedOpenForListing } from '@/lib/service-request-allocation';
 import { getTokenClaims } from '@/lib/auth';
-import { resolveEffectiveVerificationStatus } from '@/lib/server-auth';
+import { authErrorResponse, resolveEffectiveVerificationStatus } from '@/lib/server-auth';
 import { isProjectLocked } from '@/lib/service-requests/list-shape';
 import { isUniqueViolation } from '@/lib/service-requests/errors';
+import { emitNeedMarketplaceEvent } from '@/lib/service-requests/marketplace-events';
 
 // GET - Fetch volunteers for a service request
 export async function GET(
@@ -56,6 +57,8 @@ export async function GET(
     });
 
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Error fetching volunteers:', error);
     return NextResponse.json(
       { error: 'Failed to fetch volunteers' },
@@ -171,12 +174,29 @@ export async function POST(
 
     const newApplication = await db.serviceRequestApplications.create(volunteerData);
 
+    const applicationId = Number(newApplication?.id || 0)
+    const ngoOwnerId = Number(requestData.ngo_id || 0)
+    if (applicationId > 0 && ngoOwnerId > 0) {
+      await emitNeedMarketplaceEvent({
+        eventType: 'need_application_submitted',
+        applicationId,
+        needId: requestId,
+        needTitle: String(requestData.title || ''),
+        actorUserId: applicantId,
+        actorDisplayName: user.name || null,
+        recipientUserId: ngoOwnerId,
+        relatedUserId: applicantId,
+      })
+    }
+
     return NextResponse.json({
       success: true,
       data: newApplication
     });
 
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     if (isUniqueViolation(error)) {
       return NextResponse.json(
         { error: 'You have already applied for this service request' },

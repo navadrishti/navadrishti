@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTokenClaims } from '@/lib/auth';
-import { resolveEffectiveVerificationStatus } from '@/lib/server-auth';
+import { authErrorResponse, resolveEffectiveVerificationStatus } from '@/lib/server-auth';
 import { listServiceRequests } from '@/lib/service-requests/list-query';
 import { createNeed } from '@/lib/service-requests/create-need';
 
@@ -39,6 +39,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error('Error fetching service requests:', error);
     return NextResponse.json(
       { error: 'Failed to fetch service requests' },
@@ -94,6 +96,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error('Error processing service request:', error);
     return NextResponse.json(
       { error: 'Failed to process service request' },

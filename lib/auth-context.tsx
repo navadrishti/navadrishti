@@ -146,6 +146,8 @@ export interface User {
     has_expired: boolean;
     has_due_soon: boolean;
   } | null;
+  is_company_employee?: boolean;
+  must_change_password?: boolean;
 }
 
 interface AuthContextType {

@@ -185,11 +185,23 @@ export function EvidenceActionRow({ children, className }: { children: ReactNode
   );
 }
 
-export function EvidenceDetailField({ label, children }: { label: string; children: ReactNode }) {
+export function EvidenceDetailField({
+  label,
+  children,
+  preserveWhitespace = false,
+}: {
+  label: string;
+  children: ReactNode;
+  preserveWhitespace?: boolean;
+}) {
   return (
     <div className="space-y-1 rounded-lg border border-slate-100 bg-slate-50/80 p-3">
       <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-      <div className="text-sm font-medium text-slate-900">{children}</div>
+      <div
+        className={`text-sm font-medium text-slate-900${preserveWhitespace ? ' whitespace-pre-wrap break-words' : ''}`}
+      >
+        {children}
+      </div>
     </div>
   );
 }

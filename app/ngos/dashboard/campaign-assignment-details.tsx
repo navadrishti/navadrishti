@@ -9,6 +9,8 @@ import { InlineCsrCapabilityDelhivery } from '@/components/service-card';
 import { StaticStatusBadge, getStatusBadgeClass } from '@/components/dashboard-status';
 import type { CsrCapabilityRentalRecord } from '@/lib/service-engagement';
 import type { CampaignLeadAssignment, CsrCapabilityRentalRow } from './types';
+import type { NgoCsrProject } from './types';
+import { CsrProjectOpsPanel } from './csr-project-ops-panel';
 
 const getCampaignLifecycleBadgeClass = (lifecycle: CampaignLeadLifecycle): string => {
   if (lifecycle === 'yet_to_start') return 'border-amber-300 bg-amber-50 text-amber-700';
@@ -21,11 +23,13 @@ export function CampaignAssignmentDetails({
   roleLabel,
   capabilityRentals = [],
   onRentalUpdated,
+  project,
 }: {
   assignment: CampaignLeadAssignment;
   roleLabel: string;
   capabilityRentals?: CsrCapabilityRentalRow[];
   onRentalUpdated?: () => void | Promise<void>;
+  project?: NgoCsrProject;
 }) {
   const campaignRentals = capabilityRentals.filter(
     (row) => String(row.campaign_id) === String(assignment.campaign_id)
@@ -74,6 +78,10 @@ export function CampaignAssignmentDetails({
       ) : null}
 
       {assignment.tracking ? <CampaignTrackingPanel tracking={assignment.tracking} viewer="lead_ngo" /> : null}
+
+      {project?.financial_access === true && assignment.lifecycle !== 'completed' ? (
+        <CsrProjectOpsPanel projectId={project.id} campaignId={project.campaign_id} />
+      ) : null}
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm md:grid-cols-3">
         <div>

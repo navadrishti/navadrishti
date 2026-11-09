@@ -5,7 +5,7 @@ export function formatPastReasonLabel(reason: CapabilityOfferPastReason | null |
   if (reason === 'expired') return 'Expired'
   if (reason === 'used') return 'Used'
   if (reason === 'expired_and_used') return 'Expired · Used'
-  if (reason === 'unlisted') return 'Unlisted'
+  if (reason === 'unlisted') return 'Unavailable'
   if (reason === 'inactive') return 'Unavailable'
   return 'Past'
 }

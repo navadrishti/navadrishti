@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server'
 import { describe, expect, it, vi } from 'vitest'
 import { findAuthUser, getAdminUser } from '@/lib/server-auth'
 
+vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db', () => ({ supabase: {}, db: {} }))
 
 const userToken = jwt.sign({ id: 12, email: 'ngo@example.org', user_type: 'ngo' }, 'test-secret')

@@ -21,7 +21,7 @@ export function createServerClient() {
   return supabase
 }
 
-setLiveUserTypeOverlay(async (claims) => {
+setLiveUserTypeOverlay(async (claims, pathname) => {
   const { overlayLiveUserType } = await import('@/lib/server-auth')
-  return overlayLiveUserType(claims)
+  return overlayLiveUserType(claims, pathname)
 })

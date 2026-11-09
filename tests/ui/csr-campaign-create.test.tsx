@@ -25,7 +25,9 @@ vi.mock('@/components/protected-route', () => ({
   default: ({ children }: { children: React.ReactNode }) => children,
 }))
 vi.mock('@/lib/auth-context', () => ({ useAuth: () => auth }))
-vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }))
+vi.mock('sonner', () => ({
+  toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
+}))
 
 beforeEach(() => {
   mockFetch(() => jsonResponse({ success: true, data: [] }))

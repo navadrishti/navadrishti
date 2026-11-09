@@ -11,8 +11,6 @@ export default defineConfig([
     'build/**',
     'coverage/**',
     'test-results/**',
-    'playwright-report/**',
-    'blob-report/**',
     'reference/**',
     'ocr-service/**',
     'next-env.d.ts',
@@ -41,8 +39,7 @@ export default defineConfig([
     },
   },
   {
-    // Test fakes expose non-React helpers named useDb/useSupabase, and Playwright
-    // fixtures receive a `use` callback; neither is a React hook.
+    // Test fakes expose non-React helpers named useDb/useSupabase; neither is a React hook.
     files: ['tests/**/*.ts'],
     rules: {
       'react-hooks/rules-of-hooks': 'off',

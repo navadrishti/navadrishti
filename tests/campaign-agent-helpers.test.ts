@@ -266,6 +266,7 @@ describe('csr agent api helpers', () => {
       volunteerRequirement: '10',
       selectedProjectSuggestionId: 'p1',
       projectSuggestions: [{ id: 'p1', title: 'P', description: '', location: '', expected_beneficiaries: 250 }],
+      evidenceVerifierIdentityId: 'ev-1',
     })
     expect(body.impact_metrics).toMatchObject({
       csr_agent_session_id: 's1',
@@ -273,6 +274,7 @@ describe('csr agent api helpers', () => {
       invited_offer_ids: [11],
       beneficiaries: 250,
       selected_existing_project_id: 'p1',
+      evidence_verifier_identity_id: 'ev-1',
     })
     expect(body.impact_metrics.lead_ngo_invites.map((row) => [row.ngo_id, row.status])).toEqual([
       [6, 'accepted'],

@@ -8,36 +8,42 @@ export function getCampaignAttendanceDate(reference: Date = new Date()): string 
   }).format(reference)
 }
 
-export function getInclusiveDayCount(startDate?: string | null, endDate?: string | null): number {
-  if (!startDate || !endDate) return 0
-  const start = new Date(`${String(startDate).slice(0, 10)}T00:00:00`)
-  const end = new Date(`${String(endDate).slice(0, 10)}T00:00:00`)
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return 0
-  return Math.floor((end.getTime() - start.getTime()) / 86400000) + 1
-}
-
-export function getElapsedCampaignDays(
-  startDate?: string | null,
-  endDate?: string | null,
-  reference: Date = new Date()
-): number {
-  const total = getInclusiveDayCount(startDate, endDate)
-  if (!total || !startDate) return 0
-  const start = new Date(`${String(startDate).slice(0, 10)}T00:00:00`)
-  const endCap = endDate
-    ? new Date(`${String(endDate).slice(0, 10)}T00:00:00`)
-    : reference
-  const today = new Date(reference)
-  today.setHours(0, 0, 0, 0)
-  const last = endCap < today ? endCap : today
-  if (last < start) return 0
-  return Math.floor((last.getTime() - start.getTime()) / 86400000) + 1
+function isoDay(value?: string | null): string {
+  const day = String(value || '').slice(0, 10)
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : ''
 }
 
 function shiftIsoDate(date: string, days: number): string {
   const [year, month, day] = date.split('-').map(Number)
   const next = new Date(Date.UTC(year, month - 1, day + days))
   return next.toISOString().slice(0, 10)
+}
+
+function inclusiveIsoDayCount(start: string, end: string): number {
+  if (!start || !end || end < start) return 0
+  const startMs = Date.parse(`${start}T00:00:00Z`)
+  const endMs = Date.parse(`${end}T00:00:00Z`)
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return 0
+  return Math.floor((endMs - startMs) / 86400000) + 1
+}
+
+export function getInclusiveDayCount(startDate?: string | null, endDate?: string | null): number {
+  return inclusiveIsoDayCount(isoDay(startDate), isoDay(endDate))
+}
+
+/** Campaign days that have occurred through today (IST) or end date, whichever is sooner. */
+export function getElapsedCampaignDays(
+  startDate?: string | null,
+  endDate?: string | null,
+  reference: Date = new Date()
+): number {
+  const start = isoDay(startDate)
+  const end = isoDay(endDate)
+  if (!start || !end || end < start) return 0
+  const today = getCampaignAttendanceDate(reference)
+  const last = end < today ? end : today
+  if (last < start) return 0
+  return inclusiveIsoDayCount(start, last)
 }
 
 /** Every calendar day from start through end, inclusive. */

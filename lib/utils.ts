@@ -7,6 +7,16 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+/** Calendar year in Asia/Kolkata — stable across UTC SSR hosts and Indian clients. */
+export function getCalendarYearIst(reference: Date = new Date()): number {
+  return Number(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+    }).format(reference)
+  )
+}
+
 // Supabase and Razorpay errors are plain objects with a message, not Error instances.
 export function getErrorMessage(error: unknown): string {
   let raw = ''

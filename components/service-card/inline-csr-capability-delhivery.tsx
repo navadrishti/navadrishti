@@ -1,4 +1,5 @@
 'use client'
+import { toast } from 'sonner'
 import { readApiError } from '@/lib/user-facing-error'
 import { getClientSessionToken } from '@/lib/client-session';
 
@@ -6,7 +7,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, Loader2, Truck } from 'lucide-react'
 import { TrackingIdChip } from '@/components/tracking-id-chip'
 import { Button } from '@/components/ui/button'
-import { useToast } from '@/hooks/use-toast'
 import {
   DelhiveryPartyFields,
   emptyDelhiveryPartyForm,
@@ -107,7 +107,6 @@ export function InlineCsrCapabilityDelhivery({
   canSync = true,
   onUpdated,
 }: InlineCsrCapabilityDelhiveryProps) {
-  const { toast } = useToast()
   const [busy, setBusy] = useState(false)
   const [pickup, setPickup] = useState<DelhiveryPartyForm>(() => emptyDelhiveryPartyForm())
   const [consignee, setConsignee] = useState<DelhiveryPartyForm>(() => emptyDelhiveryPartyForm())
@@ -134,18 +133,11 @@ export function InlineCsrCapabilityDelhivery({
         leg
       )
 
-      toast({
-        title: 'Delivery status updated',
-        description: nextLeg?.last_status || statusLabel,
-      })
+      toast.success('Delivery status updated', { description: nextLeg?.last_status || statusLabel })
 
       await onUpdated?.(nextLeg)
     } catch (error) {
-      toast({
-        title: 'Status refresh failed',
-        description: readApiError(error, 'Could not refresh delivery status'),
-        variant: 'destructive',
-      })
+      toast.error('Status refresh failed', { description: readApiError(error, 'Could not refresh delivery status') })
     } finally {
       setBusy(false)
     }
@@ -198,18 +190,11 @@ export function InlineCsrCapabilityDelhivery({
         leg
       )
 
-      toast({
-        title: hasAwb ? 'Delivery booking retried' : 'Delivery shipment scheduled',
-        description: nextLeg?.tracking_id ? `AWB ${nextLeg.tracking_id}` : 'Booking submitted',
-      })
+      toast.success(hasAwb ? 'Delivery booking retried' : 'Delivery shipment scheduled', { description: nextLeg?.tracking_id ? `AWB ${nextLeg.tracking_id}` : 'Booking submitted' })
 
       await onUpdated?.(nextLeg)
     } catch (error) {
-      toast({
-        title: 'Booking retry failed',
-        description: readApiError(error, 'Could not retry delivery booking'),
-        variant: 'destructive',
-      })
+      toast.error('Booking retry failed', { description: readApiError(error, 'Could not retry delivery booking') })
     } finally {
       setBusy(false)
     }

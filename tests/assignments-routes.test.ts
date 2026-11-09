@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GET as listEngagements } from '@/app/api/service-assignments/route'
 import { GET, POST, PUT } from '@/app/api/service-request-assignments/route'
 import { jsonRequest, tokenFor } from './support/requests'
+import './support/install-test-auth'
 import { businessQueries, callsOf, createSupabaseFake, eqsOf, unknownColumns, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => {
@@ -116,6 +117,9 @@ describe('GET /api/service-request-assignments', () => {
       if (query.table === 'service_requests') {
         return { data: [{ id: 11, status: 'active' }, { id: 12, status: 'completed' }] }
       }
+      if (query.table === 'service_request_contributions') {
+        return { data: [] }
+      }
       return {
         data: [
           { id: 1, service_request_id: 11, status: 'accepted', application_message: 'hi', fulfillment: [] },
@@ -128,7 +132,8 @@ describe('GET /api/service-request-assignments', () => {
 
     const { json } = await read(await GET(jsonRequest(URL_BASE, { token: tokenFor(1, 'ngo') })))
 
-    const [requests, applications] = businessQueries(fake.queries)
+    const requests = fake.queries.find((query) => query.table === 'service_requests')
+    const applications = fake.queries.find((query) => query.table === 'service_request_applications')
     expect(eqsOf(requests)).toEqual({ ngo_id: 1 })
     expect(callsOf(applications, 'in')).toEqual([['service_request_id', [11, 12]]])
     expect(json.data).toHaveLength(1)
@@ -148,6 +153,9 @@ describe('GET /api/service-request-assignments', () => {
             remaining_quantity: 200,
           }],
         }
+      }
+      if (query.table === 'service_request_contributions') {
+        return { data: [] }
       }
       return {
         data: [
@@ -180,6 +188,9 @@ describe('GET /api/service-request-assignments', () => {
             remaining_quantity: 0,
           }],
         }
+      }
+      if (query.table === 'service_request_contributions') {
+        return { data: [] }
       }
       if (query.table === 'service_requests' && query.op === 'update') {
         return { data: [{ id: 11, status: 'completed' }] }
@@ -228,6 +239,9 @@ describe('GET /api/service-request-assignments', () => {
           ],
         }
       }
+      if (query.table === 'service_request_contributions') {
+        return { data: [] }
+      }
       return { data: [{ id: 1, service_request_id: 11, status: 'accepted' }] }
     })
 
@@ -254,6 +268,9 @@ describe('GET /api/service-request-assignments', () => {
             },
           ],
         }
+      }
+      if (query.table === 'service_request_contributions') {
+        return { data: [] }
       }
       if (query.table === 'service_requests' && query.op === 'update') {
         return { data: [{ id: 11, status: 'completed' }] }
@@ -291,6 +308,9 @@ describe('GET /api/service-request-assignments', () => {
             },
           ],
         }
+      }
+      if (query.table === 'service_request_contributions') {
+        return { data: [] }
       }
       return { data: [{ id: 1, service_request_id: 11, status: 'completed' }] }
     })

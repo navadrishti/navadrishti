@@ -7,6 +7,7 @@ import { GET as searchProfiles } from '@/app/api/search/profiles/route'
 import { GET as listNgos } from '@/app/api/ngos/list/route'
 import { GET as pwaGet, POST as pwaPost } from '@/app/api/pwa/[...path]/route'
 import { createSupabaseFake, type FakeResult } from './support/supabase-fake'
+import './support/install-test-auth'
 
 const mocks = vi.hoisted(() => ({ from: vi.fn() }))
 
@@ -197,6 +198,8 @@ describe('ngo list route', () => {
     }))
     vi.resetModules()
     const { GET } = await import('@/app/api/ngos/list/route')
+    const { setTestAuthOverlay } = await import('@/lib/server-auth')
+    setTestAuthOverlay(async (claims) => claims)
 
     const anonymous = useDb({ 'users.select': [{ data: [ngo] }] })
     const anonymousBody = await (await GET(new NextRequest('http://localhost/api/ngos/list?q=seva'))).json()
@@ -213,6 +216,7 @@ describe('ngo list route', () => {
     ).json()
     expect(signedIn.queries[0].filters.find(([name]) => name === 'or')?.[1]).toContain('email.ilike.%seva%')
     expect(signedInBody.data[0].email).toBe('seva@example.org')
+    setTestAuthOverlay(null)
     vi.doUnmock('@/lib/auth')
   })
 })

@@ -10,12 +10,6 @@
 # production
 /build
 
-# playwright
-test-results/
-playwright-report/
-/blob-report/
-/playwright/.cache/
-
 # debug
 npm-debug.log*
 yarn-debug.log*
@@ -29,6 +23,11 @@ yarn-error.log*
 .env.*.local
 # Allow .env.example to be committed
 !.env.example
+
+# Cycle 1.2a local smoke artifacts (never commit)
+scripts/.cycle12a-pass2-manifest.json
+scripts/.cycle12a-pass2-smoke-report.json
+scripts/.cycle12a-pass2-server-*.log
 
 # vercel
 .vercel
@@ -51,3 +50,9 @@ ocr-service/engine/__pycache__/
 ocr-service/validation/__pycache__/
 ocr-service/validation/images/
 ocr-service/validation/accuracy_report.json
+
+# Local QA / smoke / probe outputs (never commit)
+/tmp/
+
+# One-off local generator scripts
+scripts/_tmp_*

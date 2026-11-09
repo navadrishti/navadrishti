@@ -117,13 +117,13 @@ export function useCampaignSuggestions({
   const acceptedLead = useMemo(() => getAcceptedLeadNgo(leadNgoInvites), [leadNgoInvites])
   const hasLockedLeadNgo = Boolean(acceptedLead)
 
-  const applyRemoteInviteState = (data: RemoteInviteState) => {
+  const applyRemoteInviteState = useCallback((data: RemoteInviteState) => {
     if (data.draftCampaignId) setDraftCampaignId(String(data.draftCampaignId))
     const nextInvites = leadInvitesFromRemote(data)
     setLeadNgoInvites((prev) =>
       JSON.stringify(prev) === JSON.stringify(nextInvites) ? prev : nextInvites
     )
-  }
+  }, [setDraftCampaignId])
 
   useEffect(() => {
     let cancelled = false
@@ -225,7 +225,7 @@ export function useCampaignSuggestions({
     if (!response.ok || !payload?.success) return null
     applyRemoteInviteState(payload.data || {})
     return payload.data
-  }, [draftCampaignId, token, setDraftCampaignId])
+  }, [draftCampaignId, token, applyRemoteInviteState])
 
   useEffect(() => {
     if (!token || !draftCampaignId || hasLockedLeadNgo) return

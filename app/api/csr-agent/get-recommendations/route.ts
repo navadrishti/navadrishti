@@ -7,7 +7,7 @@ import {
   type CapabilityMatch,
 } from "@/lib/csr-agent/find-service-offers";
 import { buildRequirementDetails } from "@/lib/csr-agent/recommendation-utils";
-import { findAuthUser } from "@/lib/server-auth";
+import { authErrorResponse, getAuthUserFromRequest } from "@/lib/server-auth";
 import { toUserFacingError, zodIssuesToUserMessage } from "@/lib/user-facing-error";
 
 type RecommendationResponse =
@@ -152,7 +152,6 @@ const findServiceOffersFallback = async (input: z.infer<typeof RequestCoercionSc
     .from("service_offers")
     .select("id,title,description,offer_type,transaction_type,impact_area,city,state_province,price_amount,price_type,tags,requirements")
     .eq("status", "active")
-    .eq("admin_status", "approved")
     .or(`price_type.neq.fixed,price_amount.lte.${input.budget}`)
     .limit(200);
 
@@ -178,14 +177,8 @@ const findServiceOffersFallback = async (input: z.infer<typeof RequestCoercionSc
 };
 
 export async function POST(request: NextRequest) {
-  if (!findAuthUser(request, { allowCookie: true })) {
-    return NextResponse.json<RecommendationResponse>(
-      { success: false, error: "Login required" },
-      { status: 401 }
-    );
-  }
-
   try {
+    await getAuthUserFromRequest(request);
     const body = await request.json();
 
     const coerced = RequestCoercionSchema.safeParse(body);
@@ -256,6 +249,8 @@ export async function POST(request: NextRequest) {
       data: fallbackMatches,
     });
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error("get-recommendations route error:", error);
     return NextResponse.json<RecommendationResponse>(
       {

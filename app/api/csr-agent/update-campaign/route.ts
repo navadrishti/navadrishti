@@ -123,9 +123,10 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
     }
 
-    if (String(currentStatus).toLowerCase() !== "draft") {
+    const status = String(currentStatus).toLowerCase()
+    if (status !== 'draft' && status !== 'active') {
       return NextResponse.json(
-        { error: "Only draft campaigns can be edited" },
+        { error: 'Only draft or active campaigns can be edited' },
         { status: 409 }
       );
     }
