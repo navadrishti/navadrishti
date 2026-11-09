@@ -8,12 +8,20 @@ import {
   getCompanyCaIdSuccessionOptions,
   isCompanyCaIdReusableForSuccession,
 } from '@/lib/company-ca';
+import { zodIssuesToUserMessage } from '@/lib/user-facing-error';
 
 const createCompanyCASchema = z.object({
   name: z.string().min(2),
   email: z.string().trim().toLowerCase().email(),
   password: z.string().min(8),
-  permissions: z.record(z.any()).optional(),
+  permissions: z
+    .object({
+      can_review_evidence: z.boolean().optional(),
+      can_confirm_payments: z.boolean().optional(),
+      can_view_audit: z.boolean().optional(),
+    })
+    .strict()
+    .optional(),
   status: z.enum(['active', 'inactive']).optional(),
   ca_id: z.string().optional(),
   auto_generate_ca_id: z.boolean().default(true)
@@ -21,7 +29,7 @@ const createCompanyCASchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    const user = getAuthUserFromRequest(request);
+    const user = await getAuthUserFromRequest(request);
     assertUserType(user, ['company']);
 
     const url = new URL(request.url);
@@ -37,16 +45,25 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Default: get all company CA identities
+    // Default: get all company Evidence Verifier identities with project assignments
     const { data, error } = await supabase
       .from('company_ca_identities')
-      .select('id, ca_id, user_id, company_user_id, status, permissions, must_change_password, created_at, users:user_id(id, name, email)')
+      .select(
+        `
+        id, ca_id, user_id, company_user_id, status, permissions, must_change_password, created_at, last_login_at,
+        users:user_id(id, name, email),
+        assignments:company_ca_project_assignments(
+          id, company_ca_identity_id, project_id, status, assigned_at, deactivated_at,
+          project:project_id(id, title, project_status, region, start_date, end_date)
+        )
+      `
+      )
       .eq('company_user_id', user.id)
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Failed to fetch company CAs:', error);
-      return NextResponse.json({ error: 'Failed to fetch company CAs' }, { status: 500 });
+      console.error('Failed to fetch company Evidence Verifiers:', error);
+      return NextResponse.json({ error: 'Failed to fetch Evidence Verifiers' }, { status: 500 });
     }
 
     return NextResponse.json({ success: true, data: data ?? [] });
@@ -54,21 +71,21 @@ export async function GET(request: NextRequest) {
     const authResponse = authErrorResponse(error);
     if (authResponse) return authResponse;
 
-    console.error('Company CA list error:', error);
+    console.error('Evidence Verifier list error:', error);
     return NextResponse.json({ error: 'Failed to fetch company CAs' }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const user = getAuthUserFromRequest(request);
+    const user = await getAuthUserFromRequest(request);
     assertUserType(user, ['company']);
 
     const body = await request.json();
     const parsed = createCompanyCASchema.safeParse(body);
 
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.issues[0]?.message || 'Invalid payload' }, { status: 400 });
+      return NextResponse.json({ error: zodIssuesToUserMessage(parsed.error.issues) || 'Please check your details and try again.' }, { status: 400 });
     }
 
     const { name, email, password, permissions, status, ca_id, auto_generate_ca_id } = parsed.data;
@@ -114,6 +131,8 @@ export async function POST(request: NextRequest) {
       verification_status: 'verified',
       email_verified: true,
       phone_verified: false,
+      // users.ngo_volunteer_capacity is NOT NULL for every row. Evidence Verifiers are not NGOs.
+      ngo_volunteer_capacity: 0,
       profile_data: {
         role: 'company_ca',
         parent_company_user_id: user.id
@@ -140,6 +159,10 @@ export async function POST(request: NextRequest) {
 
     if (identityError) {
       console.error('Failed to create company CA identity:', identityError);
+      const { error: rollbackError } = await supabase.from('users').delete().eq('id', newUser.id);
+      if (rollbackError) {
+        console.error('Failed to roll back company CA user after identity insert failed:', rollbackError);
+      }
       return NextResponse.json({ error: 'Failed to create company CA identity' }, { status: 500 });
     }
 
@@ -173,7 +196,7 @@ export async function POST(request: NextRequest) {
     const authResponse = authErrorResponse(error);
     if (authResponse) return authResponse;
 
-    console.error('Company CA create error:', error);
+    console.error('Evidence Verifier create error:', error);
     return NextResponse.json({ error: 'Failed to create company CA user' }, { status: 500 });
   }
 }

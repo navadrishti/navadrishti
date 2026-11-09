@@ -21,6 +21,16 @@ export interface ServiceCardProps {
   deadline?: string
   requirements?: string | object
   current_amount?: number | string | null
+  target_amount?: number | string | null
+  remaining_amount?: number | string | null
+  current_quantity?: number | string | null
+  target_quantity?: number | string | null
+  remaining_quantity?: number | string | null
+  request_type?: string | null
+  estimated_budget?: string | null
+  updated_at?: string | null
+  accepted_volunteers_count?: number | null
+  volunteers_count?: number | null
   impact_score?: number
 
   price_amount?: number
@@ -34,6 +44,8 @@ export interface ServiceCardProps {
   conditions?: string | null
   item?: string | null
   quantity?: number | null
+  applications_count?: number | null
+  pending_applications?: number | null
   delivery_scope?: string | null
   project?: {
     id?: string

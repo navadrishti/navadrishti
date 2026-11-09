@@ -1,4 +1,7 @@
 'use client'
+import { toast } from 'sonner'
+import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -10,13 +13,12 @@ import ProtectedRoute from '@/components/protected-route'
 import { useAuth } from '@/lib/auth-context'
 
 import { Button } from '@/components/ui/button'
-import { useToast } from '@/hooks/use-toast'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { AGENT_NAMES } from '@/lib/ai-agent-sessions'
 import { AI_DRAFT_STORAGE_KEY, buildNeedPayload, createEmptyNeed, needsFromDraft, validateNeed, withoutIndex } from './helpers'
 import { NeedCard } from './need-card'
-import { getNeedRecommendations } from './recommendations'
 import { RelatedOffersSidebar } from './related-offers-sidebar'
 import type { AIGeneratedDraft, NeedDraft } from './types'
 import { useNeedImageUpload } from './use-need-image-upload'
@@ -41,18 +43,21 @@ function readAiDraftNeeds(): NeedDraft[] | null {
 export default function CreateServiceRequestPage() {
   const router = useRouter()
   const { user } = useAuth()
-  const { toast } = useToast()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [needs, setNeeds] = useState<NeedDraft[]>(() => readAiDraftNeeds() ?? [createEmptyNeed()])
+  // Hydration-safe: never read localStorage during useState init (SSR vs client mismatch).
+  const [needs, setNeeds] = useState<NeedDraft[]>(() => [createEmptyNeed()])
   const [selectedOffersByNeed, setSelectedOffersByNeed] = useState<Record<number, number[]>>({})
 
   useEffect(() => {
+    const drafted = readAiDraftNeeds()
+    if (drafted && drafted.length > 0) {
+      setNeeds(drafted)
+    }
     localStorage.removeItem(AI_DRAFT_STORAGE_KEY)
   }, [])
 
-  const { serviceOffers, offersLoading, serverRecommendations, refreshNeedRecommendations, forgetNeedRecommendations } =
-    useNeedRecommendations(needs)
+  const { serviceOffers, offersLoading } = useNeedRecommendations()
   const { needUploadProgress, handleNeedImageFiles, removeNeedImageUrl, forgetNeedUploadProgress } =
     useNeedImageUpload(setNeeds, setError)
 
@@ -68,7 +73,6 @@ export default function CreateServiceRequestPage() {
     if (needs.length <= 1) return
     setNeeds((prev) => prev.filter((_, needIndex) => needIndex !== index))
     setSelectedOffersByNeed((prev) => withoutIndex(prev, index))
-    forgetNeedRecommendations(index)
     forgetNeedUploadProgress(index)
   }
 
@@ -93,11 +97,6 @@ export default function CreateServiceRequestPage() {
     })
   }
 
-  const getRecommendationsForNeed = (need: NeedDraft, index: number) => {
-    const serverRecs = serverRecommendations[index]
-    return serverRecs && serverRecs.length > 0 ? serverRecs : getNeedRecommendations(need, serviceOffers)
-  }
-
   const applyOfferToNeed = async (offerId: number, needIndex: number, createdNeedId?: number) => {
     setSelectedOffersByNeed((prev) => ({
       ...prev,
@@ -110,7 +109,7 @@ export default function CreateServiceRequestPage() {
     try {
       const response = await fetch(`/api/service-offers/${offerId}/clients`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getClientSessionToken()}` },
         body: JSON.stringify({
           client_id: user?.id,
           client_type: user?.user_type,
@@ -121,14 +120,14 @@ export default function CreateServiceRequestPage() {
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({}))
-        toast({ title: 'Apply failed', description: err.error || 'Could not apply to offer', variant: 'destructive' })
+        toast.error('Apply failed', { description: readApiError(err, 'Could not apply to offer') })
         return
       }
 
-      toast({ title: 'Applied', description: 'Application submitted to the offer owner.' })
+      toast.success('Applied', { description: 'Application submitted to the offer owner.' })
     } catch (err) {
       console.error('Error applying to offer:', err)
-      toast({ title: 'Apply failed', description: 'Could not apply to offer', variant: 'destructive' })
+      toast.error('Apply failed', { description: 'Could not apply to offer' })
     }
   }
 
@@ -157,13 +156,21 @@ export default function CreateServiceRequestPage() {
     setError('')
 
     try {
-      const token = localStorage.getItem('token')
+      const token = getClientSessionToken()
       const creationResults: Array<{ ok: boolean; error?: string }> = []
 
       for (let index = 0; index < needs.length; index += 1) {
         const need = needs[index]
         const selectedOfferIds = selectedOffersByNeed[index] || []
-        const matchedRecommendations = getNeedRecommendations(need, serviceOffers).filter((item) => selectedOfferIds.includes(item.offer.id))
+        const matchedRecommendations = serviceOffers
+          .filter((offer) => selectedOfferIds.includes(offer.id))
+          .map((offer) => ({
+            offer,
+            score: 0,
+            coverageRatio: null,
+            coverageLabel: 'possible' as const,
+            rationale: '',
+          }))
 
         const response = await fetch('/api/service-requests', {
           method: 'POST',
@@ -176,7 +183,7 @@ export default function CreateServiceRequestPage() {
 
         const data = await response.json()
         if (!response.ok || !data.success) {
-          creationResults.push({ ok: false, error: data.error || data.message || `Failed on need ${index + 1}` })
+          creationResults.push({ ok: false, error: readApiError(data, `Failed on need ${index + 1}`) })
           break
         }
 
@@ -210,7 +217,6 @@ export default function CreateServiceRequestPage() {
           return next
         })
         for (let i = 0; i < successfulCount; i += 1) {
-          forgetNeedRecommendations(0)
           forgetNeedUploadProgress(0)
         }
       }
@@ -241,7 +247,8 @@ export default function CreateServiceRequestPage() {
 
             <h1 className="text-3xl font-bold tracking-tight">Post Needs for Individuals</h1>
             <p className="text-muted-foreground">
-              Publish standalone needs with location, Schedule VII category, timeline, and beneficiaries.{' '}
+              Publish standalone needs with location, Schedule VII category, timeline, and beneficiaries. Browse listed
+              capability offers on the right — matching stays in {AGENT_NAMES.atlas}.{' '}
               <Link href="/service-requests/projects/create" className="text-primary underline-offset-4 hover:underline">
                 Create a CSR project instead
               </Link>
@@ -253,7 +260,9 @@ export default function CreateServiceRequestPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Need Details</CardTitle>
-                <CardDescription>Every need must define who benefits, how many, and what measurable change will happen.</CardDescription>
+                <CardDescription>
+                  Every need must define who benefits, how many, and what measurable change will happen. Browse capability offers on the right to apply without recommendations.
+                </CardDescription>
               </CardHeader>
 
               <CardContent>
@@ -311,10 +320,9 @@ export default function CreateServiceRequestPage() {
 
                     <RelatedOffersSidebar
                       needs={needs}
+                      offers={serviceOffers}
                       offersLoading={offersLoading}
                       selectedOffersByNeed={selectedOffersByNeed}
-                      getRecommendations={getRecommendationsForNeed}
-                      onRefresh={refreshNeedRecommendations}
                       onApply={(offerId, index) => void applyOfferToNeed(offerId, index)}
                     />
                   </div>

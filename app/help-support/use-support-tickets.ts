@@ -1,14 +1,13 @@
 'use client';
+import { toast } from 'sonner'
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useToast } from '@/hooks/use-toast';
 import { getErrorMessage } from '@/lib/utils';
 import { filterTickets } from './helpers';
 import type { SupportMessage, SupportTicket, TicketBucket, TicketStatus, ViewingDocument } from './types';
 
-export function useSupportTickets(token: string | null | undefined, inboxActive: boolean) {
-  const { toast } = useToast();
-
+export function useSupportTickets(token: string | null | undefined, inboxActive: boolean) {
   const [ticketBucket, setTicketBucket] = useState<TicketBucket>('open');
   const [ticketStatusFilter, setTicketStatusFilter] = useState<TicketStatus | 'all'>('all');
   const [ticketQuery, setTicketQuery] = useState('');
@@ -36,16 +35,16 @@ export function useSupportTickets(token: string | null | undefined, inboxActive:
       });
       const payload = await response.json();
       if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error || 'Failed to load tickets');
+        throw new Error(readApiError(payload, 'Failed to load tickets'));
       }
       setTickets(Array.isArray(payload.tickets) ? payload.tickets : []);
     } catch (error) {
-      toast({ title: 'Could not load tickets', description: getErrorMessage(error) || 'Please try again.', variant: 'destructive' });
+      toast.error('Could not load tickets', { description: getErrorMessage(error) || 'Please try again.' });
       setTickets([]);
     } finally {
       setInboxLoading(false);
     }
-  }, [token, toast]);
+  }, [token]);
 
   const loadTicketDetail = useCallback(async (ticketId: string) => {
     if (!token) return;
@@ -56,16 +55,16 @@ export function useSupportTickets(token: string | null | undefined, inboxActive:
       });
       const payload = await response.json();
       if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error || 'Failed to load ticket');
+        throw new Error(readApiError(payload, 'Failed to load ticket'));
       }
       setSelectedTicket(payload.ticket || null);
       setMessages(Array.isArray(payload.messages) ? payload.messages : []);
     } catch (error) {
-      toast({ title: 'Could not load ticket', description: getErrorMessage(error) || 'Please try again.', variant: 'destructive' });
+      toast.error('Could not load ticket', { description: getErrorMessage(error) || 'Please try again.' });
     } finally {
       setDetailLoading(false);
     }
-  }, [token, toast]);
+  }, [token]);
 
   useEffect(() => {
     if (token && inboxActive) {
@@ -90,7 +89,7 @@ export function useSupportTickets(token: string | null | undefined, inboxActive:
 
   const sendReply = async () => {
     if (!selectedTicketId || !token || !replyMessage.trim()) {
-      toast({ title: 'Message required', description: 'Write a message before sending.', variant: 'destructive' });
+      toast.error('Message required', { description: 'Write a message before sending.' });
       return;
     }
 
@@ -106,7 +105,7 @@ export function useSupportTickets(token: string | null | undefined, inboxActive:
       });
       const payload = await response.json();
       if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error || 'Failed to send message');
+        throw new Error(readApiError(payload, 'Failed to send message'));
       }
       setSelectedTicket(payload.ticket || null);
       setMessages(Array.isArray(payload.messages) ? payload.messages : []);
@@ -114,9 +113,9 @@ export function useSupportTickets(token: string | null | undefined, inboxActive:
       setTickets((prev) =>
         prev.map((ticket) => (ticket.ticket_id === selectedTicketId ? { ...ticket, ...(payload.ticket || {}) } : ticket))
       );
-      toast({ title: 'Message sent', description: 'The support team has been notified.' });
+      toast.success('Message sent', { description: 'The support team has been notified.' });
     } catch (error) {
-      toast({ title: 'Send failed', description: getErrorMessage(error) || 'Could not send your message.', variant: 'destructive' });
+      toast.error('Send failed', { description: getErrorMessage(error) || 'Could not send your message.' });
     } finally {
       setReplying(false);
     }

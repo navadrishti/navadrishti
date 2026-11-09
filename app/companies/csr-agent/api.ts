@@ -1,5 +1,6 @@
 import { readCampaignCategory, readCampaignDuration, readCampaignLocation } from "@/lib/campaign-schema"
 import { buildRequirementDetails, scoreProjectSuggestions } from "@/lib/csr-agent/recommendation-utils"
+import { readApiError } from "@/lib/user-facing-error"
 import {
   type GeneratedCampaign,
   type LeadNgoInvite,
@@ -123,7 +124,7 @@ export async function fetchScoredNgoDirectory(token: string, projectData: Projec
 
   const payload = await response.json().catch(() => null)
   if (!response.ok) {
-    throw new Error(payload?.error || 'Failed to load lead NGO suggestions')
+    throw new Error(readApiError(payload, 'Failed to load lead NGO suggestions'))
   }
 
   const rows: ScoredNgoRow[] = Array.isArray(payload?.data) ? payload.data : []
@@ -170,18 +171,71 @@ export async function requestServiceRecommendations(
   const result = (await response.json()) as RecommendationApiResponse
 
   if (!response.ok || !result?.success) {
-    const detailText = result?.details && typeof result.details === "object"
-      ? Object.entries(result.details)
-          .map(([key, values]) => `${key}: ${Array.isArray(values) ? values.join(", ") : "invalid"}`)
-          .join(" | ")
-      : ""
-    return { error: [result?.error || "Failed to fetch recommendations", detailText].filter(Boolean).join(". ") }
+    return {
+      error: readApiError(result, "Failed to fetch recommendations"),
+    }
   }
 
   return {
     suggestions: Array.isArray(result.data)
       ? result.data.map(normalizeSuggestion).filter((item): item is ServiceSuggestion => Boolean(item))
       : [],
+  }
+}
+
+export async function requestMilestoneSuggestions(input: {
+  companyId: number
+  payload: ProjectIntakeData
+  refresh?: boolean
+}): Promise<{ sets: Array<{ title: string; milestones: MilestoneInput[] }>; warning: string | null }> {
+  const { payload } = input
+  const budget = parseMoneyValue(payload.budget || '') || 0
+  const response = await fetch('/api/csr-agent/suggest-milestones', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      company_id: String(input.companyId),
+      campaignName: payload.campaignName || '',
+      category: payload.category || '',
+      city: payload.city || '',
+      state_province: payload.state || '',
+      budget,
+      start_date: payload.startDate || '',
+      end_date: payload.endDate || '',
+      volunteerRequirement: payload.volunteerRequirement || '',
+      requirementDetails: payload.requirementDetails || '',
+      refresh: Boolean(input.refresh),
+    }),
+  })
+
+  const result = await response.json()
+  if (!response.ok || !result?.success || !Array.isArray(result?.data)) {
+    throw new Error(readApiError(result, 'Failed to suggest milestones'))
+  }
+
+  const sets = (result.data as Array<{
+    title?: string
+    milestones?: Array<{
+      title?: string
+      description?: string
+      budget_allocated?: number
+      start_date?: string
+      end_date?: string
+    }>
+  }>).map((set) => ({
+    title: String(set.title || 'Suggested set'),
+    milestones: (Array.isArray(set.milestones) ? set.milestones : []).map((milestone) => ({
+      title: String(milestone.title || '').trim(),
+      description: String(milestone.description || '').trim(),
+      budgetTarget: String(milestone.budget_allocated ?? ''),
+      startDate: milestone.start_date || undefined,
+      endDate: milestone.end_date || undefined,
+    })),
+  }))
+
+  return {
+    sets,
+    warning: typeof result.warning === 'string' && result.warning.trim() ? result.warning : null,
   }
 }
 
@@ -221,7 +275,7 @@ export async function requestCampaignDrafts(input: {
 
   const result = await response.json()
   if (!response.ok || !result?.success || !Array.isArray(result?.data)) {
-    throw new Error(result?.error || "Failed to generate CSR campaign drafts")
+    throw new Error(readApiError(result, "Failed to generate CSR campaign drafts"))
   }
 
   return {
@@ -238,6 +292,7 @@ export function buildPublishCampaignBody(draft: GeneratedCampaign, context: {
   volunteerRequirement: string
   selectedProjectSuggestionId: string | null
   projectSuggestions: ProjectSuggestion[]
+  evidenceVerifierIdentityId: string
 }) {
   const { selectedProjectSuggestionId } = context
   return {
@@ -264,6 +319,7 @@ export function buildPublishCampaignBody(draft: GeneratedCampaign, context: {
       })),
       invited_offer_ids: context.invitedOfferIds,
       volunteer_requirement: context.volunteerRequirement,
+      evidence_verifier_identity_id: context.evidenceVerifierIdentityId,
       ...(selectedProjectSuggestionId ? { beneficiaries: Number((context.projectSuggestions.find(p => p.id === selectedProjectSuggestionId)?.expected_beneficiaries) || draft.impact_metrics.beneficiaries || 0) } : {}),
       selected_existing_project_id: selectedProjectSuggestionId,
     },
@@ -290,7 +346,7 @@ export async function publishCampaignDraft(
 
   const payload = await response.json().catch(() => null)
   if (!response.ok || !payload?.success) {
-    throw new Error(payload?.error || 'Failed to publish campaign')
+    throw new Error(readApiError(payload, 'Failed to publish campaign'))
   }
   return { id: payload.data?.id, campaignUrl: payload.campaign_url }
 }
@@ -303,6 +359,6 @@ export async function deleteServerSession(sessionId: string, token: string | nul
   })
   const body = await response.json().catch(() => ({}))
   if (!response.ok && response.status !== 404) {
-    throw new Error(body?.error || 'Failed to delete conversation')
+    throw new Error(readApiError(body, 'Failed to delete conversation'))
   }
 }

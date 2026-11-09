@@ -1,5 +1,6 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertCircle, Loader2 } from 'lucide-react';
@@ -52,7 +53,7 @@ export default function CAChangePasswordClient() {
           router.push('/ca/login');
           return;
         }
-        throw new Error(data?.error || 'Password change failed');
+        throw new Error(readApiError(data, 'Password change failed'));
       }
 
       toast.success('Password updated successfully');

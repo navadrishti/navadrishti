@@ -1,3 +1,4 @@
+import { readApiError } from '@/lib/user-facing-error'
 import { useRef } from "react"
 import { useRouter } from "next/navigation"
 import type { User } from "@/lib/auth-context"
@@ -54,7 +55,7 @@ export function usePublishDraft({
 
     const needData = await response.json()
     if (!response.ok || !needData?.success || !needData?.data?.id) {
-      throw new Error(needData?.error || 'Failed to create standalone need.')
+      throw new Error(readApiError(needData, 'Failed to create standalone need.'))
     }
 
     const needId = Number(needData.data.id)
@@ -76,7 +77,7 @@ export function usePublishDraft({
         })
         if (response.ok) return null
         const body = await response.json().catch(() => ({}))
-        return `${offerTitle(offerId)}: ${body?.message || body?.error || 'the application was not accepted'}`
+        return `${offerTitle(offerId)}: ${readApiError(body, 'the application was not accepted')}`
       } catch {
         return `${offerTitle(offerId)}: network error`
       }
@@ -110,7 +111,7 @@ export function usePublishDraft({
 
     const projectResponseData = await projectResponse.json()
     if (!projectResponse.ok || !projectResponseData?.success || !projectResponseData?.data?.id) {
-      throw new Error(projectResponseData?.error || 'Failed to create project.')
+      throw new Error(readApiError(projectResponseData, 'Failed to create project.'))
     }
 
     const projectId = String(projectResponseData.data.id)

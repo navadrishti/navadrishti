@@ -8,6 +8,14 @@ import type { CAQueueType } from '@/lib/ca-review-types'
 import { parseJsonObject } from '@/lib/utils'
 import type { Json, TablesUpdate } from '@/lib/database.types'
 import { CAReviewError } from './errors'
+import {
+  buildCaReviewHistoryEntry,
+  persistCaReviewHistory,
+  readCaReviewHistory,
+  resolveHistoryKind,
+  withCaReviewHistory,
+} from './history'
+import { newsletterEventId, withNewsletterHistory } from '@/lib/platform-newsletter/history'
 import { notifyUser } from './notifications'
 import { TYPE_CONFIG } from './queue-config'
 
@@ -28,8 +36,8 @@ type VerificationActionRow = {
   ngo_name?: string
 }
 
-const AWAITING_REVIEW_STATUSES = new Set(['pending', 'unverified'])
 const ALREADY_DECIDED_MESSAGE = 'This record was already decided by another reviewer'
+const PENDING_ONLY_MESSAGE = 'Only pending submissions can be reviewed. Unverified accounts must resubmit first.'
 
 async function claimReverification<T>(decide: () => Promise<T>) {
   try {
@@ -125,8 +133,7 @@ export async function applyCAVerificationAction(options: {
   const currentUserStatus = String(user.verification_status || '').toLowerCase()
   const rowStatus = String(row.verification_status || 'unverified').trim().toLowerCase()
   const isVerified = currentUserStatus === 'verified'
-  const isReverification =
-    type === 'ngos' && isVerified && rowStatus === 'verified' && Boolean(profileData.reverification_pending)
+  const isReverification = isVerified && rowStatus === 'verified' && Boolean(profileData.reverification_pending)
   if (!isReverification) {
     if (isVerified || rowStatus === 'verified') {
       throw new CAReviewError('This record is already verified. Tags and decisions cannot be changed.', 409)
@@ -134,8 +141,13 @@ export async function applyCAVerificationAction(options: {
     if (currentUserStatus === 'suspended') {
       throw new CAReviewError('This account is suspended by an admin and cannot be reviewed.', 409)
     }
-    if (!AWAITING_REVIEW_STATUSES.has(rowStatus)) {
-      throw new CAReviewError(`This record is ${rowStatus}. It can be reviewed again after the user resubmits.`, 409)
+    if (rowStatus !== 'pending') {
+      throw new CAReviewError(
+        rowStatus === 'unverified' || !row.verification_status
+          ? PENDING_ONLY_MESSAGE
+          : `This record is ${rowStatus}. It can be reviewed again after the user resubmits.`,
+        409
+      )
     }
   }
   const rowRecord = parseJsonObject(row)
@@ -148,8 +160,14 @@ export async function applyCAVerificationAction(options: {
     (type === 'companies' ? 'Company' : type === 'ngos' ? 'NGO' : 'Individual')
   const reviewer = ca.display_name || ca.username
 
+  const historyKind = resolveHistoryKind({
+    isReverification,
+    existing: readCaReviewHistory(profileData),
+  })
+  const historyAttempt = readCaReviewHistory(profileData).length + 1
+
   if (isReverification) {
-    return applyReverificationDecision({
+    const result = await applyReverificationDecision({
       userId: row.user_id,
       action,
       reason,
@@ -157,6 +175,24 @@ export async function applyCAVerificationAction(options: {
       reviewer,
       stakeholderName,
     })
+    await persistCaReviewHistory(
+      row.user_id,
+      buildCaReviewHistoryEntry({
+        at: reviewedAt,
+        ca,
+        action,
+        kind: 'reverification',
+        attempt: historyAttempt,
+        entity_type: type,
+        entity_id: id,
+        user_id: row.user_id,
+        stakeholder_name: stakeholderName,
+        reason,
+        previous_status: 'verified',
+        next_status: 'verified',
+      })
+    )
+    return result
   }
 
   const nextStatus = action === 'approve' ? 'verified' : 'rejected'
@@ -247,6 +283,34 @@ export async function applyCAVerificationAction(options: {
     })
     nextProfileData = attached.profileData
     caBadgeNumber = attached.badge
+  }
+
+  nextProfileData = withCaReviewHistory(
+    nextProfileData,
+    buildCaReviewHistoryEntry({
+      at: reviewedAt,
+      ca,
+      action,
+      kind: historyKind,
+      attempt: historyAttempt,
+      entity_type: type,
+      entity_id: id,
+      user_id: row.user_id,
+      stakeholder_name: stakeholderName,
+      reason,
+      badge: caBadgeNumber,
+      previous_status: currentUserStatus || rowStatus,
+      next_status: userStatus,
+    })
+  )
+
+  if (action === 'approve' && userStatus === 'verified' && currentUserStatus !== 'verified') {
+    nextProfileData = withNewsletterHistory(nextProfileData, {
+      id: newsletterEventId('verified', row.user_id, reviewedAt),
+      kind: 'verified',
+      at: reviewedAt,
+      source: 'ca',
+    })
   }
 
   const userUpdate: TablesUpdate<'users'> = {

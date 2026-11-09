@@ -1,4 +1,6 @@
 "use client"
+import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 
 import { useEffect, useState } from "react"
 import { getErrorMessage } from "@/lib/utils"
@@ -24,7 +26,7 @@ export function usePublicProfile(id: string) {
         setLoading(true)
         setError(null)
 
-        const token = localStorage.getItem("token")
+        const token = getClientSessionToken()
         const profileRes = await fetch(`/api/profile/${id}`, {
           headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         })
@@ -32,7 +34,7 @@ export function usePublicProfile(id: string) {
         if (cancelled) return
 
         if (!profileRes.ok || !profileData.success) {
-          setError(profileData.error || "Profile not found")
+          setError(readApiError(profileData, "Profile not found"))
           return
         }
 

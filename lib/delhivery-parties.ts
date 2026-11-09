@@ -63,7 +63,11 @@ export function isCompleteAddress(address: StructuredAddress | null): address is
  * comes from the structured block on their profile (registered office or home address), with
  * the profile's city, state and pincode filling any gaps in that block.
  */
-export async function loadDelhiveryParty(userId: number, owner: string): Promise<DelhiveryParty> {
+export async function loadDelhiveryParty(
+  userId: number,
+  owner: string,
+  options?: { requireComplete?: boolean }
+): Promise<DelhiveryParty> {
   const notFound = () => new Error(`Couldn't find ${owner} profile for the Delhivery booking`);
   if (!Number.isFinite(userId) || userId <= 0) throw notFound();
 
@@ -84,13 +88,15 @@ export async function loadDelhiveryParty(userId: number, owner: string): Promise
   const state = block?.state || text(user.state_province);
   const pincode = normalizeDelhiveryPincode(block?.pincode || user.pincode);
 
-  const missing = (what: string) => new Error(`Add ${what} to ${owner} profile before booking Delhivery`);
-  if (!name) throw missing('a name');
-  if (!phone) throw missing('a valid 10-digit phone number');
-  if (!address) throw missing('a street address');
-  if (!city) throw missing('a city');
-  if (!state) throw missing('a state');
-  if (!pincode) throw missing('a valid 6-digit pincode');
+  if (options?.requireComplete !== false) {
+    const missing = (what: string) => new Error(`Add ${what} to ${owner} profile before booking Delhivery`);
+    if (!name) throw missing('a name');
+    if (!phone) throw missing('a valid 10-digit phone number');
+    if (!address) throw missing('a street address');
+    if (!city) throw missing('a city');
+    if (!state) throw missing('a state');
+    if (!pincode) throw missing('a valid 6-digit pincode');
+  }
 
   return {
     userId,
@@ -102,6 +108,69 @@ export async function loadDelhiveryParty(userId: number, owner: string): Promise
     state,
     pincode,
     country: block?.country || text(user.country) || 'India',
+  };
+}
+
+export type PublicDelhiveryParty = {
+  name: string;
+  phone: string;
+  address: string;
+  city: string;
+  state: string;
+  pincode: string;
+  country: string;
+};
+
+export function toPublicDelhiveryParty(party: DelhiveryParty): PublicDelhiveryParty {
+  return {
+    name: party.name,
+    phone: party.phone,
+    address: party.address,
+    city: party.city,
+    state: party.state,
+    pincode: party.pincode,
+    country: party.country,
+  };
+}
+
+export type PartyAddressOverride = StructuredAddress & {
+  name?: string;
+  phone?: string;
+};
+
+/** Reads an optional booking-time edit of a pickup or delivery party. */
+export function parsePartyAddressOverride(raw: unknown): PartyAddressOverride | null {
+  if (raw == null) return null;
+  const address = readStructuredAddress(raw);
+  if (!address) return null;
+  const record = raw as Record<string, unknown>;
+  const name = text(record.name);
+  const phone = text(record.phone);
+  return {
+    ...address,
+    name: name || undefined,
+    phone: phone || undefined,
+  };
+}
+
+/**
+ * Applies a donor/NGO edit on top of the saved party. A provided override must be a complete
+ * address; omitted override leaves the automatic party unchanged.
+ */
+export function overlayDelhiveryParty(party: DelhiveryParty, override: unknown): DelhiveryParty {
+  if (override == null) return party;
+  const parsed = parsePartyAddressOverride(override);
+  if (!parsed || !isCompleteAddress(parsed)) {
+    throw new Error('Party address must include street address, city, state and a 6-digit pincode');
+  }
+  const phone = parsed.phone ? normalizeDelhiveryPhone(parsed.phone) : party.phone;
+  if (parsed.phone && !phone) {
+    throw new Error('Party phone must be a valid 10-digit mobile number');
+  }
+  return {
+    ...withAddress(party, parsed),
+    name: parsed.name || party.name,
+    phone: phone || party.phone,
   };
 }
 

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase, getProjectLeadNgoId } from '@/lib/db'
+import { authErrorResponse } from '@/lib/server-auth'
+import { supabase, getProjectLeadNgoId, buildProjectLeadNgoPatch } from '@/lib/db'
 import {
   getTokenClaims,
   assertCsr1CoversProject,
   CSR_ELIGIBILITY_REQUIRED_MESSAGE,
 } from '@/lib/auth'
-import { assertNgoCsr1CoversProject } from '@/lib/server-auth'
 import {
   enrichProjectRecord,
   parseProjectMeta,
@@ -15,14 +15,17 @@ import {
   COMPANY_PROJECT_CONTRIBUTION_TYPE,
   EXPIRED_STATUS,
   LEAD_NGO_INVITE_CONTRIBUTION_TYPE,
+  OWNER_NGO_CANNOT_BE_LEAD_MESSAGE,
+  PENDING_LEAD_INVITE_STATUSES,
+  distinctLeadNgoId,
   isFullyVerifiedCompany,
+  isSamePositiveId,
+  projectLeadInviteId,
 } from '@/lib/service-request-assignments/shared'
-
-const PENDING_LEAD_INVITE_STATUSES = ['pending', 'invited', 'pending_acceptance', 'awaiting_acceptance', 'offered']
 
 export async function submitProjectApplication(request: NextRequest) {
   try {
-    const decoded = getTokenClaims(request)
+    const decoded = await getTokenClaims(request)
     if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
@@ -86,11 +89,6 @@ export async function submitProjectApplication(request: NextRequest) {
     const needIds = activeNeeds.map((item) => item.id)
 
     if (action === 'apply-project') {
-      const ownerCoverage = await assertNgoCsr1CoversProject(ownerNgoId, projectRow)
-      if (!ownerCoverage.ok) {
-        return NextResponse.json({ error: ownerCoverage.error }, { status: 403 })
-      }
-
       if (projectRow?.csr_project_available_for_csr === false) {
         return NextResponse.json({
           error: 'This project is locked for CSR and cannot accept new company applications.'
@@ -106,28 +104,49 @@ export async function submitProjectApplication(request: NextRequest) {
       const pending = Array.isArray(projectRow.pending_company_applications)
         ? [...projectRow.pending_company_applications]
         : []
+      const reapplyStatuses = ['rejected', 'expired', 'cancelled']
+      const existingIndex = pending.findIndex((item) => Number(item.company_id) === Number(userId))
+      const existing = existingIndex >= 0 ? pending[existingIndex] : null
+      const existingStatus = String(existing?.status || 'pending').toLowerCase()
 
-      if (pending.some((item) => Number(item.company_id) === Number(userId))) {
+      if (existing && !reapplyStatuses.includes(existingStatus)) {
         return NextResponse.json({
-          error: 'You have already applied to this project.'
+          error: 'You have already applied to this project.',
+          data: {
+            projectId,
+            application: {
+              company_id: userId,
+              company_name: existing.company_name || userName || null,
+              status: existingStatus,
+              needs: [],
+            },
+          },
         }, { status: 409 })
       }
 
-      if (pending.some((item) => String(item.status || '').toLowerCase() === 'accepted')) {
+      if (pending.some((item) =>
+        String(item.status || '').toLowerCase() === 'accepted' && Number(item.company_id) !== Number(userId)
+      )) {
         return NextResponse.json({
           error: 'This project has already been accepted by a company. New applications are not allowed.'
         }, { status: 409 })
       }
 
-      pending.push({
+      const nextApplication = {
         company_id: userId,
-        company_name: userName || null,
-        note: note || null,
+        company_name: userName || existing?.company_name || null,
+        note: note || existing?.note || null,
         applied_at: new Date().toISOString(),
         status: 'pending',
         source: 'company_apply',
         applicant_user_id: userId,
-      })
+      }
+
+      if (existingIndex >= 0) {
+        pending[existingIndex] = { ...existing, ...nextApplication }
+      } else {
+        pending.push(nextApplication)
+      }
 
       const nextDescription = withProjectMeta(projectRowRaw.description, {
         ...parseProjectMeta(projectRowRaw.description),
@@ -158,6 +177,16 @@ export async function submitProjectApplication(request: NextRequest) {
           .filter((item) => ['pending', 'pledged', 'accepted', 'in_progress', 'completed'].includes(String(item.status || '').toLowerCase()))
           .map((item) => Number(item.service_request_id)))
 
+        const reopenIds = (existingRows || [])
+          .filter((item) => reapplyStatuses.includes(String(item.status || '').toLowerCase()))
+          .map((item) => item.id)
+        if (reopenIds.length > 0) {
+          await supabase
+            .from('service_request_contributions')
+            .update({ status: 'pending', updated_at: new Date().toISOString() })
+            .in('id', reopenIds)
+        }
+
         const rowsToInsert = activeNeeds
           .filter((need) => !existingNeedIds.has(Number(need.id)))
           .map((need) => ({
@@ -179,7 +208,8 @@ export async function submitProjectApplication(request: NextRequest) {
           }))
 
         if (rowsToInsert.length > 0) {
-          await supabase.from('service_request_contributions').insert(rowsToInsert)
+          const { error: insertError } = await supabase.from('service_request_contributions').insert(rowsToInsert)
+          if (insertError) throw insertError
         }
       }
 
@@ -187,7 +217,15 @@ export async function submitProjectApplication(request: NextRequest) {
         success: true,
         data: {
           projectId,
-          message: 'Project-level CSR application submitted to NGO.'
+          message: existingIndex >= 0
+            ? 'Takeover application sent again to the NGO for review.'
+            : 'Project-level CSR application submitted to NGO.',
+          application: {
+            company_id: userId,
+            company_name: nextApplication.company_name,
+            status: 'pending',
+            needs: [],
+          },
         }
       })
     }
@@ -209,21 +247,32 @@ export async function submitProjectApplication(request: NextRequest) {
         .select('id')
 
       if (removeError) throw removeError
-      if (!removed || removed.length === 0) {
+
+      const existingMeta = parseProjectMeta(projectRowRaw.description)
+      const metaInvites = Array.isArray(existingMeta.pending_lead_ngo_invites)
+        ? existingMeta.pending_lead_ngo_invites
+        : []
+      const nextMetaInvites = metaInvites.filter((invite) => {
+        const pending = PENDING_LEAD_INVITE_STATUSES.includes(String(invite.status || 'pending').toLowerCase())
+        return !(pending && Number(invite.ngo_id) === ngoId && Number(invite.inviting_company_id) === Number(userId))
+      })
+      const removedMetaCount = metaInvites.length - nextMetaInvites.length
+      if (removedMetaCount > 0) {
+        const { error: metaUpdateError } = await supabase
+          .from('service_request_projects')
+          .update({
+            description: withProjectMeta(projectRowRaw.description, { pending_lead_ngo_invites: nextMetaInvites }),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', projectId)
+        if (metaUpdateError) throw metaUpdateError
+      }
+
+      if ((!removed || removed.length === 0) && removedMetaCount === 0) {
         return NextResponse.json({ error: 'This invite has already been answered and can no longer be removed.' }, { status: 409 })
       }
 
       return NextResponse.json({ success: true, data: { projectId, message: 'Lead NGO invite removed.' } })
-    }
-
-    if (activeNeeds.length === 0 && action === 'invite-lead-ngo') {
-      return NextResponse.json({
-        error: 'Lead NGO invites for projects without legacy needs are managed from the project assignment after NGO acceptance. Ensure the project is accepted first.'
-      }, { status: 409 })
-    }
-
-    if (activeNeeds.length === 0) {
-      return NextResponse.json({ error: 'No active project found' }, { status: 404 })
     }
 
     if (action === 'invite-lead-ngo') {
@@ -236,30 +285,39 @@ export async function submitProjectApplication(request: NextRequest) {
         return NextResponse.json({ error: 'At least one NGO id is required' }, { status: 400 })
       }
 
-      const { data: ngoRows, error: ngoRowsError } = await supabase
-        .from('users')
-        .select('id, user_type, verification_status, profile_data')
-        .in('id', ngoIds)
+      if (ownerNgoId > 0 && ngoIds.includes(ownerNgoId)) {
+        return NextResponse.json({ error: OWNER_NGO_CANNOT_BE_LEAD_MESSAGE }, { status: 400 })
+      }
 
-      if (ngoRowsError) throw ngoRowsError
-
-      const { data: inviteProjectRow } = await supabase
-        .from('service_request_projects')
-        .select('valid_until, timeline, lead_ngo_user_id')
-        .eq('id', projectId)
-        .maybeSingle()
-
-      if (getProjectLeadNgoId(inviteProjectRow) > 0) {
+      const storedLeadId = getProjectLeadNgoId(projectRow)
+      if (storedLeadId > 0 && isSamePositiveId(ownerNgoId, storedLeadId)) {
+        const { error: clearOwnerError } = await supabase
+          .from('service_request_projects')
+          .update({
+            ...buildProjectLeadNgoPatch(null),
+            assignment_status: 'accepted',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', projectId)
+        if (clearOwnerError) throw clearOwnerError
+      } else if (distinctLeadNgoId(ownerNgoId, storedLeadId) > 0) {
         return NextResponse.json({
           error: 'A lead NGO is already assigned to this project. Additional invites are not allowed.'
         }, { status: 409 })
       }
 
+      const { data: ngoRows, error: ngoRowsError } = await supabase
+        .from('users')
+        .select('id, user_type, verification_status, profile_data, name, email')
+        .in('id', ngoIds)
+
+      if (ngoRowsError) throw ngoRowsError
+
       for (const row of ngoRows || []) {
         if (row.user_type !== 'ngo') {
           return NextResponse.json({ error: CSR_ELIGIBILITY_REQUIRED_MESSAGE }, { status: 400 })
         }
-        const gate = assertCsr1CoversProject(row.verification_status, row.profile_data, inviteProjectRow)
+        const gate = assertCsr1CoversProject(row.verification_status, row.profile_data, projectRow)
         if (!gate.ok) {
           return NextResponse.json({ error: gate.error }, { status: 400 })
         }
@@ -269,24 +327,38 @@ export async function submitProjectApplication(request: NextRequest) {
         return NextResponse.json({ error: CSR_ELIGIBILITY_REQUIRED_MESSAGE }, { status: 400 })
       }
 
-      const requestOwnerNgoId = Number(activeNeeds[0]?.ngo_id || ownerNgoId || 0)
-      if (requestOwnerNgoId > 0 && ngoIds.includes(requestOwnerNgoId)) {
-        return NextResponse.json({
-          error: 'You cannot invite the NGO that owns the original project request as lead NGO.'
-        }, { status: 400 })
+      const assignmentAccepted =
+        Number(projectRow.assigned_company_user_id || 0) === Number(userId) &&
+        ['accepted', 'lead_selected', 'in_progress'].includes(String(projectRow.assignment_status || '').toLowerCase())
+
+      if (needIds.length > 0) {
+        const { data: acceptedRows, error: acceptedRowsError } = await supabase
+          .from('service_request_contributions')
+          .select('id, service_request_id, status, meta')
+          .in('service_request_id', needIds)
+          .eq('contributor_id', userId)
+          .eq('contribution_type', COMPANY_PROJECT_CONTRIBUTION_TYPE)
+          .eq('status', 'accepted')
+
+        if (acceptedRowsError) throw acceptedRowsError
+        if ((!acceptedRows || acceptedRows.length === 0) && !assignmentAccepted) {
+          return NextResponse.json({ error: 'Project must be accepted by NGO before inviting lead NGOs' }, { status: 409 })
+        }
+      } else if (!assignmentAccepted) {
+        return NextResponse.json({ error: 'Project must be accepted by NGO before inviting lead NGOs' }, { status: 409 })
       }
 
-      const { data: acceptedRows, error: acceptedRowsError } = await supabase
-        .from('service_request_contributions')
-        .select('id, service_request_id, status, meta')
-        .in('service_request_id', needIds)
-        .eq('contributor_id', userId)
-        .eq('contribution_type', COMPANY_PROJECT_CONTRIBUTION_TYPE)
-        .eq('status', 'accepted')
-
-      if (acceptedRowsError) throw acceptedRowsError
-      if (!acceptedRows || acceptedRows.length === 0) {
-        return NextResponse.json({ error: 'Project must be accepted by NGO before inviting lead NGOs' }, { status: 409 })
+      const existingMetaInvites = Array.isArray(projectRow.pending_lead_ngo_invites)
+        ? [...projectRow.pending_lead_ngo_invites]
+        : []
+      if (existingMetaInvites.some((invite) =>
+        Number(invite.inviting_company_id) === Number(userId) &&
+        String(invite.status || '').toLowerCase() === 'accepted' &&
+        !isSamePositiveId(ownerNgoId, invite.ngo_id)
+      )) {
+        return NextResponse.json({
+          error: 'A lead NGO has already accepted this project invite. No additional invites are allowed.'
+        }, { status: 409 })
       }
 
       const { data: alreadyAcceptedLeadInvite, error: alreadyAcceptedLeadInviteError } = await supabase
@@ -301,69 +373,122 @@ export async function submitProjectApplication(request: NextRequest) {
       if (alreadyAcceptedLeadInviteError) throw alreadyAcceptedLeadInviteError
 
       if (alreadyAcceptedLeadInvite) {
-        await supabase
-          .from('service_request_contributions')
-          .update({ status: EXPIRED_STATUS, updated_at: new Date().toISOString() })
-          .eq('contribution_type', LEAD_NGO_INVITE_CONTRIBUTION_TYPE)
-          .eq('meta->>project_id', projectId)
-          .eq('meta->>inviting_company_id', String(userId))
-          .neq('id', alreadyAcceptedLeadInvite.id)
-          .in('status', ['pending', 'invited', 'pending_acceptance', 'awaiting_acceptance', 'offered', 'assigned'])
+        if (isSamePositiveId(ownerNgoId, alreadyAcceptedLeadInvite.contributor_id)) {
+          await supabase
+            .from('service_request_contributions')
+            .update({ status: EXPIRED_STATUS, updated_at: new Date().toISOString() })
+            .eq('id', alreadyAcceptedLeadInvite.id)
+        } else {
+          await supabase
+            .from('service_request_contributions')
+            .update({ status: EXPIRED_STATUS, updated_at: new Date().toISOString() })
+            .eq('contribution_type', LEAD_NGO_INVITE_CONTRIBUTION_TYPE)
+            .eq('meta->>project_id', projectId)
+            .eq('meta->>inviting_company_id', String(userId))
+            .neq('id', alreadyAcceptedLeadInvite.id)
+            .in('status', ['pending', 'invited', 'pending_acceptance', 'awaiting_acceptance', 'offered', 'assigned'])
 
-        return NextResponse.json({
-          error: 'A lead NGO has already accepted this project invite. No additional invites are allowed.'
-        }, { status: 409 })
+          return NextResponse.json({
+            error: 'A lead NGO has already accepted this project invite. No additional invites are allowed.'
+          }, { status: 409 })
+        }
       }
 
-      const anchorNeedId = needIds[0]
-      const { data: existingInvites, error: existingInvitesError } = await supabase
-        .from('service_request_contributions')
-        .select('id, contributor_id, status')
-        .eq('contribution_type', LEAD_NGO_INVITE_CONTRIBUTION_TYPE)
-        .eq('meta->>project_id', projectId)
-        .in('contributor_id', ngoIds)
+      let insertedCount = 0
+      let alreadyInvitedCount = 0
 
-      if (existingInvitesError) throw existingInvitesError
-
-      const existingInvitedNgoIds = new Set((existingInvites || []).map((item) => Number(item.contributor_id)))
-      const rowsToInsert = ngoIds
-        .filter((ngoId: number) => !existingInvitedNgoIds.has(ngoId))
-        .map((ngoId: number) => ({
-          service_request_id: anchorNeedId,
-          contributor_id: ngoId,
-          contribution_type: LEAD_NGO_INVITE_CONTRIBUTION_TYPE,
-          status: 'pending',
-          reference_text: note || null,
-          meta: {
-            project_id: projectId,
-            inviting_company_id: userId,
-            invitation_scope: 'lead_ngo',
-            note,
-            selected_as_lead: false
-          }
-        }))
-
-      if (rowsToInsert.length > 0) {
-        const { error: inviteInsertError } = await supabase
+      if (needIds.length > 0) {
+        const anchorNeedId = needIds[0]
+        const { data: existingInvites, error: existingInvitesError } = await supabase
           .from('service_request_contributions')
-          .insert(rowsToInsert)
+          .select('id, contributor_id, status')
+          .eq('contribution_type', LEAD_NGO_INVITE_CONTRIBUTION_TYPE)
+          .eq('meta->>project_id', projectId)
+          .in('contributor_id', ngoIds)
 
-        if (inviteInsertError) throw inviteInsertError
+        if (existingInvitesError) throw existingInvitesError
+
+        const existingInvitedNgoIds = new Set((existingInvites || []).map((item) => Number(item.contributor_id)))
+        const rowsToInsert = ngoIds
+          .filter((ngoId: number) => !existingInvitedNgoIds.has(ngoId))
+          .map((ngoId: number) => ({
+            service_request_id: anchorNeedId,
+            contributor_id: ngoId,
+            contribution_type: LEAD_NGO_INVITE_CONTRIBUTION_TYPE,
+            status: 'pending',
+            reference_text: note || null,
+            meta: {
+              project_id: projectId,
+              inviting_company_id: userId,
+              invitation_scope: 'lead_ngo',
+              note,
+              selected_as_lead: false
+            }
+          }))
+
+        if (rowsToInsert.length > 0) {
+          const { error: inviteInsertError } = await supabase
+            .from('service_request_contributions')
+            .insert(rowsToInsert)
+
+          if (inviteInsertError) throw inviteInsertError
+        }
+        insertedCount = rowsToInsert.length
+        alreadyInvitedCount = ngoIds.length - rowsToInsert.length
+      } else {
+        const ngoById = new Map((ngoRows || []).map((row) => [Number(row.id), row]))
+        const nextInvites = [...existingMetaInvites]
+        for (const ngoId of ngoIds) {
+          const already = nextInvites.some((invite) =>
+            Number(invite.ngo_id) === ngoId &&
+            Number(invite.inviting_company_id) === Number(userId) &&
+            PENDING_LEAD_INVITE_STATUSES.includes(String(invite.status || 'pending').toLowerCase())
+          )
+          if (already) {
+            alreadyInvitedCount += 1
+            continue
+          }
+          const ngo = ngoById.get(ngoId)
+          nextInvites.push({
+            id: projectLeadInviteId(projectId, ngoId, userId),
+            ngo_id: ngoId,
+            ngo_name: ngo?.name || null,
+            ngo_email: ngo?.email || null,
+            inviting_company_id: userId,
+            note: note || null,
+            invited_at: new Date().toISOString(),
+            status: 'pending',
+          })
+          insertedCount += 1
+        }
+
+        if (insertedCount > 0) {
+          const { error: metaUpdateError } = await supabase
+            .from('service_request_projects')
+            .update({
+              description: withProjectMeta(projectRowRaw.description, { pending_lead_ngo_invites: nextInvites }),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', projectId)
+          if (metaUpdateError) throw metaUpdateError
+        }
       }
 
       return NextResponse.json({
         success: true,
         data: {
           projectId,
-          invitedNgoCount: rowsToInsert.length,
-          alreadyInvitedNgoCount: ngoIds.length - rowsToInsert.length,
-          message: rowsToInsert.length > 0 ? 'Lead NGO invitations sent.' : 'Selected NGOs were already invited.'
+          invitedNgoCount: insertedCount,
+          alreadyInvitedNgoCount: alreadyInvitedCount,
+          message: insertedCount > 0 ? 'Lead NGO invitations sent.' : 'Selected NGOs were already invited.'
         }
       })
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
   } catch (error) {
+    const auth = authErrorResponse(error)
+    if (auth) return auth
     console.error('Error creating project-level company application:', error)
     return NextResponse.json({ error: 'Failed to submit project-level application' }, { status: 500 })
   }

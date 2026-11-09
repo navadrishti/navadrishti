@@ -88,7 +88,9 @@ export function offerToFormData(offer: ServiceOfferResponse): ServiceOfferFormDa
       ? Number(offer.unit_rate)
       : Number.isFinite(Number(details.unit_rate))
         ? Number(details.unit_rate)
-        : '',
+        : Number.isFinite(Number(offer.price_amount))
+          ? Number(offer.price_amount)
+          : '',
     billing_cycle: String(offer.billing_cycle || details.billing_cycle || 'daily'),
     rate_currency: String(offer.rate_currency || details.rate_currency || 'INR'),
 

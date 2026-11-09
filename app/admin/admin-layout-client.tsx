@@ -190,8 +190,12 @@ export default function AdminLayoutClient({ children }: { children: ReactNode })
   const [ready, setReady] = useState(isPublicRoute);
 
   useEffect(() => {
-    if (isPublicRoute) return;
+    if (isPublicRoute) {
+      setReady(true);
+      return;
+    }
 
+    setReady(false);
     let cancelled = false;
 
     const checkAccess = async () => {

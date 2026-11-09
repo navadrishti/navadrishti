@@ -1,6 +1,6 @@
 import type { CSRTrackingAssignment } from '@/components/csr-tracking-project-details';
 import type { Tables } from '@/lib/database.types';
-import type { CampaignTracking } from '@/lib/campaign-tracking';
+import type { CampaignTracking } from '@/lib/campaign-tracking-types';
 
 export type { CompanyCaIdSuccessionOption } from '@/lib/company-ca';
 
@@ -44,6 +44,8 @@ export interface PublishedCsrCampaign {
   end_date: string | null;
   status?: string | null;
   impact_metrics?: Record<string, unknown> | null;
+  lead_ngo_user_id?: number | null;
+  selected_lead_ngo_name?: string | null;
   company_id?: number | null;
   created_at?: string | null;
   tracking?: CampaignTracking | null;
@@ -59,12 +61,40 @@ export interface NgoDirectoryItem {
 
 export type LeadNgoInvite = NonNullable<CSRTrackingAssignment['lead_ngo_invites']>[number];
 
+export type CompanyCaProjectAssignmentRow = {
+  id: string
+  company_ca_identity_id: string
+  project_id: string
+  status: string
+  assigned_at?: string | null
+  deactivated_at?: string | null
+  project?: {
+    id: string
+    title: string | null
+    project_status: string | null
+    region?: string | null
+    start_date?: string | null
+    end_date?: string | null
+  } | null
+}
+
+export type EligibleEvidenceVerifierProject = {
+  id: string
+  title: string
+  project_status: string
+  region: string | null
+  start_date: string | null
+  end_date: string | null
+}
+
 export type CompanyCaAccount = Pick<
   Tables<'company_ca_identities'>,
   'id' | 'ca_id' | 'user_id' | 'company_user_id' | 'status' | 'permissions' | 'must_change_password' | 'created_at'
 > & {
-  users: Pick<Tables<'users'>, 'id' | 'name' | 'email'> | null;
-};
+  users: Pick<Tables<'users'>, 'id' | 'name' | 'email'> | null
+  assignments?: CompanyCaProjectAssignmentRow[]
+  last_login_at?: string | null
+}
 
 export interface CompanyCaForm {
   name: string;
@@ -74,16 +104,13 @@ export interface CompanyCaForm {
   auto_generate_ca_id: boolean;
 }
 
-export interface CompanyCaFeedback {
-  type: 'success' | 'error';
-  message: string;
-}
-
 export interface CreatedCompanyCaCredentials {
   email: string;
   password: string;
   ca_id: string;
 }
+
+export type CsrProjectsSubTab = 'takeover' | 'campaigns';
 
 export type CapabilityOffersSubTab = 'your-capabilities' | 'requests';
 

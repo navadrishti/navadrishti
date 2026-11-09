@@ -2,20 +2,21 @@ import { after, NextRequest, NextResponse } from 'next/server'
 import { db, supabase } from '@/lib/db'
 import { syncServiceOfferEmbedding } from '@/lib/embeddings'
 import { getTokenClaims } from '@/lib/auth'
+import { authErrorResponse, getAdminUser } from '@/lib/server-auth'
 import {
   buildOfferCapabilityRow,
   buildOfferRow,
   changedOfferFields,
   coerceOfferBody,
   OFFER_PRICING_FIELDS,
-  OFFER_REVIEWED_FIELDS,
+  redactCapabilityMerchantForPublic,
   toOfferResponse,
   validateOfferBody,
 } from '@/lib/service-offer-payload'
-import {
-  assertUserRazorpayPayoutActiveForCapabilities,
-  CAPABILITY_LISTING_REQUIRES_PAYOUT_MESSAGE,
-} from '@/lib/razorpay-route'
+import { isCapabilityOfferPubliclyVisible, ngoLegalTagsForOffer } from '@/lib/service-offers'
+import { removeServiceOfferSafely } from '@/lib/service-offers/lifecycle'
+import { assertCapabilityPublisher, capabilityPublishGateResponse } from '@/lib/service-offers/publish-assert'
+import { toUserFacingError } from '@/lib/user-facing-error'
 
 function parseOfferId(id: string): number | null {
   if (!/^\d+$/.test(id)) return null
@@ -40,9 +41,9 @@ export async function GET(
       return NextResponse.json({ error: 'Service offer not found' }, { status: 404 })
     }
 
-    const claims = getTokenClaims(request)
-    const isOwner = claims !== null && serviceOffer.creator_id === claims.id
-    const isPublic = serviceOffer.status === 'active' && serviceOffer.admin_status === 'approved'
+    const claims = await getTokenClaims(request)
+    const isOwner = claims !== null && Number(serviceOffer.creator_id) === Number(claims.id)
+    const isPublic = isCapabilityOfferPubliclyVisible(serviceOffer)
 
     if (!isOwner && !isPublic) {
       let isApplicant = false
@@ -73,10 +74,17 @@ export async function GET(
     const providerType = serviceOffer.ngo?.user_type || 'ngo'
     const providerProfileImage = serviceOffer.ngo?.profile_image || null
     const { admin_comments, admin_reviewed_by, ngo, ...publicOffer } = serviceOffer
-    const publicProvider = ngo ? { ...ngo, email: undefined } : ngo
+    const publicProvider = ngo ? redactCapabilityMerchantForPublic(ngo) : ngo
     const visibleOffer = isOwner
       ? { ...publicOffer, ngo, admin_comments, admin_reviewed_by }
       : { ...publicOffer, ngo: publicProvider }
+    const legalTags = providerType === 'ngo'
+      ? ngoLegalTagsForOffer({
+          verification_status: ngo?.verification_status,
+          profile_data: ngo && 'profile_data' in ngo ? ngo.profile_data : null,
+          registration_type: ngo && 'registration_type' in ngo ? ngo.registration_type : null,
+        })
+      : { registration_type: null, ca_compliance_tags: [] }
 
     return NextResponse.json({
       ...toOfferResponse(visibleOffer, capabilities || []),
@@ -84,35 +92,47 @@ export async function GET(
       provider_name: providerName,
       provider_type: providerType,
       provider_profile_image: providerProfileImage,
+      registration_type: legalTags.registration_type,
+      ca_compliance_tags: legalTags.ca_compliance_tags,
     })
-  } catch {
+  } catch (error) {
+    const auth = authErrorResponse(error)
+    if (auth) return auth
     return NextResponse.json({ error: 'Failed to fetch service offer' }, { status: 500 })
   }
 }
 
-// PUT - Update service offer (offer owner only)
+// PUT - Update service offer (owner or admin)
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params
-
-    const decoded = getTokenClaims(request)
-    if (!decoded) {
+    const admin = getAdminUser(request)
+    const decoded = await getTokenClaims(request)
+    if (!admin && !decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
-    const { id: userId } = decoded
 
     const offerId = parseOfferId(id)
     if (!offerId) {
       return NextResponse.json({ error: 'Invalid offer id' }, { status: 400 })
     }
-    const body = coerceOfferBody(await request.json())
+
+    const rawBody = await request.json()
+    if (rawBody && typeof rawBody === 'object' && 'is_listed' in rawBody && Object.keys(rawBody).length === 1) {
+      return NextResponse.json(
+        { error: 'Listing toggles are no longer supported. Edit or remove the offer instead.' },
+        { status: 400 }
+      )
+    }
+
+    const body = coerceOfferBody(rawBody)
 
     const validationError = validateOfferBody(body)
     if (validationError) {
-      return NextResponse.json({ error: validationError }, { status: 400 })
+      return NextResponse.json({ error: toUserFacingError(validationError) }, { status: 400 })
     }
 
     const existingOffer = await db.serviceOffers.getById(offerId)
@@ -120,20 +140,17 @@ export async function PUT(
       return NextResponse.json({ error: 'Service offer not found' }, { status: 404 })
     }
 
-    if (existingOffer.creator_id !== userId) {
+    const isAdmin = Boolean(admin)
+    const isOwner = Boolean(decoded && Number(existingOffer.creator_id) === Number(decoded.id))
+    if (!isAdmin && !isOwner) {
       return NextResponse.json({ error: 'You can only update your own offers' }, { status: 403 })
     }
 
-    try {
-      await assertUserRazorpayPayoutActiveForCapabilities(userId)
-    } catch (payoutError) {
-      return NextResponse.json(
-        {
-          error: payoutError instanceof Error ? payoutError.message : CAPABILITY_LISTING_REQUIRES_PAYOUT_MESSAGE,
-          requiresPayoutConnection: true,
-        },
-        { status: 403 }
-      )
+    if (!isAdmin && decoded) {
+      const publishGate = await assertCapabilityPublisher(decoded.id, decoded.user_type)
+      if (!publishGate.ok) {
+        return NextResponse.json(capabilityPublishGateResponse(publishGate), { status: publishGate.status })
+      }
     }
 
     const nowIso = new Date().toISOString()
@@ -155,14 +172,8 @@ export async function PUT(
       }
     }
 
-    const needsReview = existingOffer.admin_status === 'approved'
-      && changedOfferFields(existingOffer, offerRow, OFFER_REVIEWED_FIELDS).length > 0
-
     const updateData = {
       ...offerRow,
-      ...(needsReview
-        ? { admin_status: 'pending' as const, status: 'inactive' as const, submitted_for_review_at: nowIso }
-        : {}),
       updated_at: nowIso,
     }
     const { error: updateError } = await supabase
@@ -191,6 +202,24 @@ export async function PUT(
       return NextResponse.json({ error: 'Offer updated but failed to save capability details' }, { status: 500 })
     }
 
+    if (isAdmin) {
+      const { error: auditError } = await supabase.from('csr_audit_log').insert({
+        entity_type: 'service_offer',
+        entity_id: String(offerId),
+        event_type: 'offer_admin_updated',
+        event_hash: `offer_admin_updated:${offerId}:${nowIso}`,
+        event_payload: {
+          offer_id: offerId,
+          actor: 'admin',
+          actor_admin_email: admin?.email || null,
+        },
+        created_by: null,
+      })
+      if (auditError) {
+        console.error('Failed to write admin offer update audit:', auditError)
+      }
+    }
+
     after(() =>
       syncServiceOfferEmbedding(offerId).catch((err) => console.error(`Failed to embed offer ${offerId}:`, err))
     )
@@ -198,30 +227,28 @@ export async function PUT(
     return NextResponse.json({
       success: true,
       data: {
-        message: needsReview
-          ? 'Service offer updated and resubmitted for approval'
-          : 'Service offer updated successfully',
-        requiresReview: needsReview,
+        message: 'Service offer updated successfully',
       }
     })
-  } catch {
+  } catch (error) {
+    const auth = authErrorResponse(error)
+    if (auth) return auth
     return NextResponse.json({ error: 'Failed to update service offer' }, { status: 500 })
   }
 }
 
-// DELETE - Delete a service offer (offer owner only)
+// DELETE - Remove offer (owner or admin). Archives when applications exist.
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params
-
-    const decoded = getTokenClaims(request)
-    if (!decoded) {
+    const admin = getAdminUser(request)
+    const decoded = await getTokenClaims(request)
+    if (!admin && !decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
-    const { id: userId } = decoded
 
     const offerId = parseOfferId(id)
     if (!offerId) {
@@ -233,33 +260,33 @@ export async function DELETE(
       return NextResponse.json({ error: 'Service offer not found' }, { status: 404 })
     }
 
-    if (existingOffer.creator_id !== userId) {
+    const isAdmin = Boolean(admin)
+    const isOwner = Boolean(decoded && Number(existingOffer.creator_id) === Number(decoded.id))
+    if (!isAdmin && !isOwner) {
       return NextResponse.json({ error: 'You can only delete your own service offers' }, { status: 403 })
     }
 
-    const { data: engagedClient, error: engagedClientError } = await supabase
-      .from('service_clients')
-      .select('id')
-      .eq('service_offer_id', offerId)
-      .not('status', 'in', '(pending,rejected,cancelled)')
-      .limit(1)
-      .maybeSingle()
+    const removal = await removeServiceOfferSafely({
+      offerId,
+      actorUserId: isAdmin ? null : (decoded?.id ?? null),
+      requireCreatorId: isAdmin ? null : decoded!.id,
+    })
 
-    if (engagedClientError) {
-      return NextResponse.json({ error: 'Failed to check offer applications' }, { status: 500 })
+    if (!removal.ok) {
+      return NextResponse.json({ error: removal.error }, { status: removal.status })
     }
-
-    if (engagedClient) {
-      return NextResponse.json({ error: 'This offer has accepted or completed applications and cannot be deleted.' }, { status: 409 })
-    }
-
-    await db.serviceOffers.delete(offerId, userId)
 
     return NextResponse.json({
       success: true,
-      message: 'Service offer deleted successfully'
+      mode: removal.mode,
+      message:
+        removal.mode === 'archived'
+          ? 'Offer archived (applications and payment history preserved)'
+          : 'Service offer deleted successfully',
     })
-  } catch {
+  } catch (error) {
+    const auth = authErrorResponse(error)
+    if (auth) return auth
     return NextResponse.json({ error: 'Failed to delete service offer' }, { status: 500 })
   }
 }

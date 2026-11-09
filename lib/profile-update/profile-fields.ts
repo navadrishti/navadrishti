@@ -3,6 +3,7 @@ import { parseJsonObject } from '@/lib/utils';
 import type { Json, Tables, TablesUpdate } from '@/lib/database.types';
 
 const SERVER_OWNED_PROFILE_KEYS = [
+  'role',
   'ca_badge_number',
   'ca_verified_at',
   'ca_verified_by',

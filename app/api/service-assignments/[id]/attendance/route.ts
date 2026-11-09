@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { getTokenClaims } from '@/lib/auth';
+import { authErrorResponse } from '@/lib/server-auth';
 import { calculatePaymentProgress } from '@/lib/service-engagement';
-import { isCampaignVolunteerAssignment } from '@/lib/campaign-volunteer-attendance';
+import { isCampaignVolunteerAssignment, isCsrCapabilityRentalAssignment } from '@/lib/campaign-volunteer-attendance';
 
 import { parseJsonObject, getErrorMessage } from '@/lib/utils';
 
@@ -27,7 +28,7 @@ async function loadAssignment(assignmentId: string) {
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const claims = getTokenClaims(request);
+    const claims = await getTokenClaims(request);
     if (!claims) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
@@ -38,6 +39,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const callerId = Number(claims.id);
     if (callerId !== Number(assignment.owner_user_id) && callerId !== Number(assignment.assignee_user_id)) {
       return NextResponse.json({ error: 'You do not have access to this assignment' }, { status: 403 });
+    }
+
+    if (claims.user_type === 'ngo' && callerId === Number(assignment.assignee_user_id) &&
+      isCampaignVolunteerAssignment(assignment) && !isCsrCapabilityRentalAssignment(assignment)) {
+      return NextResponse.json({ error: 'Attendance is not available for NGO campaign participation' }, { status: 403 });
     }
 
     const { data, error } = await supabase
@@ -81,6 +87,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
     });
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Attendance fetch error:', error);
     return NextResponse.json({ error: getErrorMessage(error) || 'Failed to fetch attendance' }, { status: 500 });
   }

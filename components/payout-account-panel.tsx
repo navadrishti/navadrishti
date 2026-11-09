@@ -1,4 +1,6 @@
 "use client"
+import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
@@ -86,7 +88,7 @@ export function PayoutAccountPanel({ userType }: { userType: 'ngo' | 'individual
   const [status, setStatus] = useState<PayoutAccountResponse | null>(null)
 
   const loadStatus = useCallback(async () => {
-    const token = localStorage.getItem('token')
+    const token = getClientSessionToken()
     if (!token) return
 
     setLoading(true)
@@ -96,7 +98,7 @@ export function PayoutAccountPanel({ userType }: { userType: 'ngo' | 'individual
       })
       const data = (await response.json()) as PayoutAccountResponse & { error?: string }
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to load payout account details.')
+        throw new Error(readApiError(data, 'Failed to load payout account details.'))
       }
 
       setStatus(data)
@@ -106,7 +108,7 @@ export function PayoutAccountPanel({ userType }: { userType: 'ngo' | 'individual
         account_number: '',
       })
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to load payout account.')
+      toast.error(readApiError(error, 'Failed to load payout account.'))
     } finally {
       setLoading(false)
     }
@@ -143,7 +145,7 @@ export function PayoutAccountPanel({ userType }: { userType: 'ngo' | 'individual
       return
     }
 
-    const token = localStorage.getItem('token')
+    const token = getClientSessionToken()
     if (!token) {
       toast.error('Please sign in again.')
       return
@@ -161,7 +163,7 @@ export function PayoutAccountPanel({ userType }: { userType: 'ngo' | 'individual
       })
       const data = await response.json()
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to save payout account.')
+        throw new Error(readApiError(data, 'Failed to save payout account.'))
       }
 
       toast.success(data.message || 'Payout bank details saved.')
@@ -172,14 +174,14 @@ export function PayoutAccountPanel({ userType }: { userType: 'ngo' | 'individual
         account_number: '',
       })
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to save payout account.')
+      toast.error(readApiError(error, 'Failed to save payout account.'))
     } finally {
       setSaving(false)
     }
   }
 
   const handleConnect = async () => {
-    const token = localStorage.getItem('token')
+    const token = getClientSessionToken()
     if (!token) {
       toast.error('Please sign in again.')
       return
@@ -197,13 +199,13 @@ export function PayoutAccountPanel({ userType }: { userType: 'ngo' | 'individual
       })
       const data = await response.json()
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to connect payout account.')
+        throw new Error(readApiError(data, 'Failed to connect payout account.'))
       }
 
       toast.success(data.message || 'Payout account connected.')
       setStatus(data)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to connect payout account.')
+      toast.error(readApiError(error, 'Failed to connect payout account.'))
       await loadStatus()
     } finally {
       setConnecting(false)

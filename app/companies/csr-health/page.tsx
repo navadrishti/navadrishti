@@ -1,4 +1,6 @@
 "use client"
+import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 
 import { useEffect, useMemo, useState } from "react"
 import { useIsClient } from "@/hooks/use-is-client"
@@ -38,7 +40,7 @@ export default function CompanyCSRHealthPage() {
       try {
         setLoading(true)
         setLoadError('')
-        const token = localStorage.getItem("token")
+        const token = getClientSessionToken()
 
         if (!token) {
           setProjects([])
@@ -55,7 +57,7 @@ export default function CompanyCSRHealthPage() {
         if (response.ok && payload?.success) {
           setProjects(Array.isArray(payload.data) ? payload.data : [])
         } else {
-          setLoadError(payload?.error || 'Could not load your CSR projects.')
+          setLoadError(readApiError(payload, 'Could not load your CSR projects.'))
         }
       } catch {
         setLoadError('Could not load your CSR projects. Check your connection and try again.')
@@ -143,7 +145,14 @@ export default function CompanyCSRHealthPage() {
       <main className="min-h-screen bg-background px-4 py-8">
         <div className="mx-auto max-w-5xl space-y-6">
           <div className="flex items-start justify-between gap-4">
-            <div>
+            <div className="space-y-3">
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                Pilot page — not linked from the company dashboard. Prefer{' '}
+                <a href="/companies/dashboard?tab=csr-projects" className="font-medium underline underline-offset-2">
+                  CSR Projects
+                </a>{' '}
+                and your Evidence Verification portal for live milestone and finance status.
+              </div>
               <h1 className="text-3xl font-bold text-slate-900">CSR Health Snapshot</h1>
               <p className="mt-1 text-slate-600">A pilot one-glance score for CSR execution quality and delivery risk.</p>
             </div>

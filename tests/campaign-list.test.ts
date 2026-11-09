@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { GET } from '@/app/api/campaigns/route'
-import { callsOf, supabaseFake } from './support/supabase-fake'
+import { callsOf, eqValue, supabaseFake } from './support/supabase-fake'
 import { jsonRequest, tokenFor } from './support/requests'
 
 vi.mock('server-only', () => ({}))
@@ -9,8 +9,22 @@ vi.mock('@/lib/db', async () => {
   return { supabase: supabaseFake.client, db: {} }
 })
 
+let companySixRole: 'company' | 'ngo'
+function resetCampaigns(rows: unknown[][] = [[]]) {
+  const queue = [...rows]
+  supabaseFake.reset((query) => {
+    if (query.table === 'users' && query.columns === 'account_status, locked_until, profile_data, user_type, verification_status') {
+      const id = Number(eqValue(query, 'id'))
+      return { data: { id, user_type: id === 6 ? companySixRole : id === 7 ? 'company' : 'ngo', account_status: 'active', verification_status: 'verified', profile_data: {} } }
+    }
+    if (['company_ca_identities', 'ngo_field_officer_identities', 'company_employee_identities'].includes(query.table) && eqValue(query, 'user_id') !== undefined) return { data: null }
+    if (query.table === 'campaigns' && query.op === 'select') return { data: queue.shift() ?? [] }
+    return { data: [] }
+  })
+}
 beforeEach(() => {
-  supabaseFake.reset({ 'campaigns.select': [{ data: [] }] })
+  companySixRole = 'company'
+  resetCampaigns()
 })
 
 async function listCampaigns(query: string, token?: string) {
@@ -30,6 +44,7 @@ describe('GET /api/campaigns', () => {
     ['another company', tokenFor(7, 'company')],
     ['an NGO with the same id', tokenFor(6, 'ngo')],
   ])('hides drafts when %s filters by company', async (_label, token) => {
+    if (_label === 'an NGO with the same id') companySixRole = 'ngo'
     const query = await listCampaigns('?company_id=6', token)
     expect(callsOf(query, 'eq')).toEqual([['company_id', 6]])
     expect(callsOf(query, 'neq')).toEqual([['status', 'draft']])
@@ -41,23 +56,37 @@ describe('GET /api/campaigns', () => {
     expect(callsOf(query, 'neq')).toEqual([])
   })
 
-  it("hides payment references and invitee emails outside the owner's own list", async () => {
+  it("hides rental and other organizations' participation details outside the owner's own list", async () => {
     const row = {
       id: 'c1',
       company_id: 6,
       status: 'active',
+      budget_inr: 1000,
+      milestones: [{ title: 'Water', budget_allocated: 500 }],
       impact_metrics: {
         csr_capability_rentals: [{ service_offer_id: 7, payment_status: 'paid', razorpay_order_id: 'order_1', razorpay_payment_id: 'pay_1' }],
         lead_ngo_invites: [{ ngo_id: 5, email: 'green@example.org', status: 'accepted' }],
+        volunteer_applications: [{ user_id: 5, capacity: 2 }, { user_id: 9, capacity: 3 }],
       },
     }
-    supabaseFake.reset({ 'campaigns.select': [{ data: [row] }, { data: [row] }] })
+    resetCampaigns([[row], [row], [row]])
 
     const publicList = await (await GET(jsonRequest('http://localhost/api/campaigns'))).json()
     expect(publicList.data[0].impact_metrics).toEqual({
-      csr_capability_rentals: [{ service_offer_id: 7, payment_status: 'paid' }],
+      volunteer_count: 5,
+      volunteer_applications: [],
+      lead_ngo_invites: [],
+    })
+    expect(publicList.data[0]).toMatchObject({ budget_inr: 1000, milestones: row.milestones })
+
+    const participant = await (await GET(jsonRequest('http://localhost/api/campaigns', { token: tokenFor(5, 'ngo') }))).json()
+    expect(participant.data[0].impact_metrics).toMatchObject({
+      volunteer_count: 5,
+      volunteer_applications: [{ user_id: 5 }],
       lead_ngo_invites: [{ ngo_id: 5, status: 'accepted' }],
     })
+    expect(JSON.stringify(participant)).not.toContain('razorpay')
+    expect(JSON.stringify(participant)).not.toContain('"user_id":9')
 
     const ownList = await (await GET(jsonRequest('http://localhost/api/campaigns?company_id=6', { token: tokenFor(6, 'company') }))).json()
     expect(ownList.data[0].impact_metrics).toEqual(row.impact_metrics)

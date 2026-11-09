@@ -1,6 +1,8 @@
+import { readApiError } from '@/lib/user-facing-error'
 import { useEffect, useEffectEvent, useState } from "react"
+import { toast } from 'sonner'
 import { useAuth } from '@/lib/auth-context'
-import { isFullyVerifiedAccount } from '@/lib/auth'
+import { isCaVerifiedAccount } from '@/lib/auth'
 import { isCampaignStarted, isVolunteerRegistrationPastDeadline } from "@/lib/format-date"
 import { getVolunteerButtonState, sumVolunteerApplicationCount } from "@/lib/campaign-schema"
 import { isCampaignLeadNgo, parseLeadNgoInvites } from '@/lib/campaign-volunteer-attendance'
@@ -14,10 +16,11 @@ export function useCampaignDetail(campaignId: string) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [accepting, setAccepting] = useState(false)
+  const [declining, setDeclining] = useState(false)
   const [applying, setApplying] = useState(false)
 
   const currentUserId = Number(user?.id || 0)
-  const allVerified = isFullyVerifiedAccount(user)
+  const allVerified = isCaVerifiedAccount(user?.verification_status)
 
   const loadCampaign = async () => {
     setLoading(true)
@@ -29,7 +32,7 @@ export function useCampaignDetail(campaignId: string) {
       const payload = await response.json().catch(() => null)
       if (!response.ok || !payload?.success || !payload?.data) {
         setCampaign(null)
-        setError(payload?.error || 'Campaign not found')
+        setError(readApiError(payload, 'Campaign not found'))
         return
       }
       setCampaign(payload.data as Campaign)
@@ -57,7 +60,9 @@ export function useCampaignDetail(campaignId: string) {
     status: campaign?.status,
     startDate: campaign?.start_date,
     leadNgoAccepted: impact?.lead_ngo_accepted,
-    volunteerCount: sumVolunteerApplicationCount(applications),
+    volunteerCount: impact?.volunteer_count != null && Number.isFinite(Number(impact.volunteer_count))
+      ? Number(impact.volunteer_count)
+      : sumVolunteerApplicationCount(applications),
     volunteerLimit: Number(impact?.volunteer_requirement ?? impact?.volunteer_limit ?? 0) || 0,
     userType: user?.user_type,
     allVerified,
@@ -92,7 +97,7 @@ export function useCampaignDetail(campaignId: string) {
 
   const volunteer = async () => {
     if (!token) {
-      alert('Please sign in to volunteer')
+      toast.error('Please sign in to volunteer')
       return
     }
     if (applying) return
@@ -104,14 +109,14 @@ export function useCampaignDetail(campaignId: string) {
       })
       const payload = await res.json().catch(() => null)
       if (!res.ok || !payload?.success) {
-        alert(payload?.error || 'Failed to volunteer')
+        toast.error(readApiError(payload, 'Failed to volunteer'))
       } else {
         await loadCampaign()
-        alert('Applied to volunteer')
+        toast.success('Applied to volunteer')
       }
     } catch (e) {
       console.error(e)
-      alert('Failed to volunteer')
+      toast.error('Failed to volunteer')
     } finally {
       setApplying(false)
     }
@@ -119,27 +124,66 @@ export function useCampaignDetail(campaignId: string) {
 
   const acceptLeadRole = async () => {
     if (!campaignId) return
+    if (!token) {
+      toast.error('Please sign in to accept this invite')
+      return
+    }
     try {
       setAccepting(true)
       const res = await fetch('/api/campaigns/accept-lead', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ campaign_id: campaignId })
       })
       const payload = await res.json().catch(() => null)
       if (!res.ok || !payload?.success) {
-        alert(payload?.error || 'Failed to accept lead role')
+        toast.error(readApiError(payload, 'Failed to accept lead role'))
       } else {
         setCampaign((prev) => (prev ? { ...prev, ...payload.data } : payload.data))
-        alert('Accepted lead role. Volunteer gap calculated and campaign activated.')
+        const nextStatus = String(payload.data?.status || campaign?.status || '')
+        toast.success(
+          nextStatus === 'draft'
+            ? 'Lead role accepted. The company will launch this campaign once the draft is finalised.'
+            : 'Lead role accepted. Volunteer gap calculated and campaign activated.'
+        )
       }
     } catch {
-      alert('Failed to accept lead role')
+      toast.error('Failed to accept lead role')
     } finally {
       setAccepting(false)
+    }
+  }
+
+  const declineLeadRole = async () => {
+    if (!campaignId) return
+    if (!token) {
+      toast.error('Please sign in to decline this invite')
+      return
+    }
+    try {
+      setDeclining(true)
+      const res = await fetch('/api/campaigns/decline-lead', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ campaign_id: campaignId }),
+      })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok || !payload?.success) {
+        toast.error(readApiError(payload, 'Failed to decline lead role'))
+      } else {
+        await loadCampaign()
+        toast.success('Lead invite declined. The company can invite another NGO.')
+      }
+    } catch {
+      toast.error('Failed to decline lead role')
+    } finally {
+      setDeclining(false)
     }
   }
 
@@ -149,6 +193,7 @@ export function useCampaignDetail(campaignId: string) {
     loading,
     error,
     accepting,
+    declining,
     volunteerState,
     canShowVolunteerAction,
     isDraft,
@@ -156,5 +201,6 @@ export function useCampaignDetail(campaignId: string) {
     acceptedDraftLead,
     volunteer,
     acceptLeadRole,
+    declineLeadRole,
   }
 }

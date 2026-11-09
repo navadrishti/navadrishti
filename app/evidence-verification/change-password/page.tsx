@@ -1,5 +1,6 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertCircle } from 'lucide-react';
@@ -73,7 +74,7 @@ export default function EvidenceVerificationChangePasswordPage() {
 
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data?.error || 'Password change failed');
+        throw new Error(readApiError(data, 'Password change failed'));
       }
 
       toast.success('Password updated successfully');

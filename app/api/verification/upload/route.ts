@@ -1,16 +1,21 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { v2 as cloudinary, type UploadApiOptions, type UploadApiResponse } from 'cloudinary';
-import { findAuthUser } from '@/lib/server-auth';
+import { NextRequest, NextResponse } from 'next/server'
+import { v2 as cloudinary, type UploadApiOptions, type UploadApiResponse } from 'cloudinary'
+import { authErrorResponse, getAuthUserFromRequest } from '@/lib/server-auth'
+import { kycAuthenticatedUploadEnabled } from '@/lib/kyc/flags'
+import {
+  actorTypeFromUploadCategory,
+  encodeKycDocumentRef,
+} from '@/lib/kyc/document-refs'
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
-export const maxDuration = 30;
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+export const maxDuration = 30
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+})
 
 const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg',
@@ -20,9 +25,9 @@ const ALLOWED_MIME_TYPES = new Set([
   'application/pdf',
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-]);
+])
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const MAX_FILE_SIZE = 10 * 1024 * 1024
 
 export async function POST(request: NextRequest) {
   try {
@@ -30,105 +35,177 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Verification upload service is not configured' },
         { status: 503 }
-      );
+      )
     }
 
-    const user = findAuthUser(request);
-    if (!user) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
+    const user = await getAuthUserFromRequest(request)
 
-    const formData = await request.formData();
-    const file = formData.get('file');
-    const documentKey = formData.get('documentKey');
-    const category = formData.get('category');
+    const formData = await request.formData()
+    const file = formData.get('file')
+    const documentKey = formData.get('documentKey')
+    const category = formData.get('category')
 
     if (!(file instanceof File)) {
-      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+      return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
     if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json({ error: 'File too large. Maximum size is 10MB.' }, { status: 413 });
+      return NextResponse.json({ error: 'File too large. Maximum size is 10MB.' }, { status: 413 })
     }
 
     if (!ALLOWED_MIME_TYPES.has(file.type)) {
       return NextResponse.json(
         { error: 'Only image files (JPG, PNG, GIF, WebP) and documents (PDF, DOC, DOCX) are allowed.' },
         { status: 400 }
-      );
+      )
     }
 
     const toPathSegment = (value: FormDataEntryValue | null, fallback: string) => {
-      const cleaned = typeof value === 'string' ? value.trim().replace(/[^A-Za-z0-9_-]/g, '') : '';
-      return cleaned || fallback;
-    };
-    const safeCategory = toPathSegment(category, 'general');
-    const safeDocumentKey = toPathSegment(documentKey, 'document');
+      const cleaned = typeof value === 'string' ? value.trim().replace(/[^A-Za-z0-9_-]/g, '') : ''
+      return cleaned || fallback
+    }
+    const safeCategory = toPathSegment(category, 'general')
+    const safeDocumentKey = toPathSegment(documentKey, 'document')
+    const authenticatedUpload = kycAuthenticatedUploadEnabled()
 
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
+    const bytes = await file.arrayBuffer()
+    const buffer = Buffer.from(bytes)
 
-    const isImage = file.type.startsWith('image/');
+    const isImage = file.type.startsWith('image/')
+    const resourceType: 'image' | 'raw' = isImage ? 'image' : 'raw'
     const uploadOptions: UploadApiOptions = {
-      resource_type: isImage ? 'image' : 'raw',
+      resource_type: resourceType,
       folder: `verification/${safeCategory}/${user.id}`,
       public_id: `${safeDocumentKey}_${Date.now()}_${crypto.randomUUID()}`,
       overwrite: false,
-    };
+      ...(authenticatedUpload ? { type: 'authenticated' } : {}),
+    }
 
     if (isImage) {
       uploadOptions.transformation = [
         { width: 1600, height: 1600, crop: 'limit' },
         { quality: 'auto' },
         { format: 'auto' },
-      ];
+      ]
     }
 
     const uploadResult = await new Promise<UploadApiResponse>((resolve, reject) => {
       cloudinary.uploader.upload_stream(uploadOptions, (error, result) => {
         if (error || !result) {
-          reject(error ?? new Error('Cloudinary upload returned no result'));
-          return;
+          reject(error ?? new Error('Cloudinary upload returned no result'))
+          return
         }
-        resolve(result);
-      }).end(buffer);
-    });
+        resolve(result)
+      }).end(buffer)
+    })
+
+    const publicId = String(uploadResult.public_id || '')
+    const deliveryType = authenticatedUpload ? 'authenticated' : 'upload'
+
+    if (!authenticatedUpload) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          url: uploadResult.secure_url,
+          publicId,
+          resourceType: uploadResult.resource_type || resourceType,
+          documentKey: safeDocumentKey,
+          deliveryType,
+        },
+      })
+    }
+
+    // Persist a verification_documents row so content is addressable by id only.
+    const { verificationDocuments } = await import('@/lib/db/verification')
+    const actorType = actorTypeFromUploadCategory(safeCategory)
+    const provisional = await verificationDocuments.upsert({
+      user_id: user.id,
+      actor_type: actorType,
+      doc_key: safeDocumentKey,
+      file_url: null,
+      status: 'uploaded',
+      metadata: {
+        public_id: publicId,
+        resource_type: resourceType,
+        delivery_type: deliveryType,
+        kyc_storage: 'authenticated',
+        category: safeCategory,
+      },
+    })
+
+    if (!provisional.ok || !provisional.row?.id) {
+      return NextResponse.json(
+        { error: 'Failed to register verification document' },
+        { status: 500 }
+      )
+    }
+
+    const documentId = provisional.row.id
+    const documentRef = encodeKycDocumentRef({
+      deliveryType: 'authenticated',
+      resourceType,
+      publicId,
+      documentId,
+    })
+
+    const finalized = await verificationDocuments.upsert({
+      user_id: user.id,
+      actor_type: actorType,
+      doc_key: safeDocumentKey,
+      file_url: documentRef,
+      status: 'uploaded',
+      metadata: {
+        public_id: publicId,
+        resource_type: resourceType,
+        delivery_type: deliveryType,
+        kyc_storage: 'authenticated',
+        category: safeCategory,
+      },
+    })
+
+    if (!finalized.ok) {
+      return NextResponse.json(
+        { error: 'Failed to register verification document' },
+        { status: 500 }
+      )
+    }
 
     return NextResponse.json({
       success: true,
       data: {
-        url: uploadResult.secure_url,
-        publicId: uploadResult.public_id,
-        resourceType: uploadResult.resource_type,
+        publicId,
+        resourceType,
+        deliveryType: 'authenticated',
         documentKey: safeDocumentKey,
+        documentId,
+        documentRef,
       },
-    });
+    })
   } catch (error) {
-    console.error('Verification document upload error:', error);
+    const auth = authErrorResponse(error)
+    if (auth) return auth
+    console.error('Verification document upload error:', error)
 
     const cloudinaryError = error as {
-      message?: string;
-      http_code?: number;
-      name?: string;
-    };
+      message?: string
+      http_code?: number
+      name?: string
+    }
 
     const errorMessage =
       typeof cloudinaryError?.message === 'string' && cloudinaryError.message.trim().length > 0
         ? cloudinaryError.message
-        : 'Failed to upload verification document';
+        : 'Failed to upload verification document'
 
     const statusCode =
       typeof cloudinaryError?.http_code === 'number' && cloudinaryError.http_code >= 400 && cloudinaryError.http_code < 600
         ? cloudinaryError.http_code
-        : 500;
+        : 500
 
     const userSafeError = /api[ _](key|secret)/i.test(errorMessage)
       ? 'Verification upload service authentication failed'
-      : errorMessage;
+      : errorMessage
 
-    return NextResponse.json(
-      { error: userSafeError },
-      { status: statusCode }
-    );
+    return NextResponse.json({ error: userSafeError }, { status: statusCode })
   }
 }

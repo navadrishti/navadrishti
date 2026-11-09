@@ -3,9 +3,10 @@
 import { useMemo } from "react"
 import { useIsClient } from "@/hooks/use-is-client"
 import { useAuth } from "@/lib/auth-context"
-import { Header } from "@/components/header"
-import { ConsoleFooter } from "@/components/product-brand"
-import { AGENT_NAMES, agentLoadingLabel } from "@/lib/ai-agent-sessions"
+import { AgentShell } from "@/components/agent-shell"
+import { AgentWorkspace } from "@/components/agent-workspace"
+import { AgentIntroCard, AgentUsageNote } from "@/components/agent-guidance"
+import { AGENT_NAMES, agentLoadingLabel, confirmAgentPublish } from "@/lib/ai-agent-sessions"
 import { describeCloudSaveStatus } from "@/lib/cloud-save-status"
 import { useSessionSync } from "./use-session-sync"
 import { useIntakeState } from "./use-intake-state"
@@ -114,83 +115,101 @@ export default function NGOAIAgentPage() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col bg-white md:h-dvh">
-      <Header />
-      <main className="flex flex-1 flex-col md:min-h-0 md:overflow-hidden">
-        <div className="container mx-auto flex min-h-[calc(100dvh-4rem)] flex-1 flex-col px-3 py-3 md:min-h-0 md:px-4 md:py-4">
-          <ProgressHeader
-            title={progress.promptTitle}
-            isDraftComplete={Boolean(generatedDraft)}
-            promptNumber={progress.promptNumber}
-            promptCount={progress.promptCount}
-            progressPercent={progress.progressPercent}
-            cloudSaveText={cloudSaveText}
-          />
-
-          <div className="grid flex-1 gap-4 min-h-0 lg:grid-cols-[280px_1.1fr_0.9fr] lg:items-stretch lg:gap-6">
-            <SessionSidebar
-              sessions={orderedSessions}
-              activeSessionId={activeSessionId}
-              onNewSession={createNewSession}
-              onSelectSession={setActiveSessionId}
-              onDeleteSession={deleteSession}
-            />
-
-            <ChatPanel
+    <AgentShell>
+      <AgentWorkspace
+        toolbarLabel={progress.promptTitle}
+        renderProgress={() => (
+          <div className="space-y-2">
+            <AgentIntroCard agent="atlas" compact />
+            <AgentUsageNote agent="atlas" />
+            <ProgressHeader
+              title={progress.promptTitle}
               isDraftComplete={Boolean(generatedDraft)}
               promptNumber={progress.promptNumber}
               promptCount={progress.promptCount}
-              activeQuestionLabel={progress.activeQuestionLabel}
-            >
-              <ChatMessageList
-                messages={messages}
-                isTyping={isTyping}
-                containerRef={messagesContainerRef}
-                needCount={needCount}
-                userName={user?.name}
-                userAvatar={userAvatar}
-                userInitials={userInitials}
-                onSaveEdit={saveEditedMessage}
-              />
-              <ChatComposer
-                input={input}
-                isTyping={isTyping}
-                fixedChoiceOptions={progress.fixedChoiceOptions}
-                suggestionNeedIndex={generatedDraft ? null : lastCompletedNeedIndex}
-                suggestedOffers={lastCompletedNeedIndex !== null ? relatedOffersByNeed[lastCompletedNeedIndex] || [] : []}
-                appliedOfferIds={lastCompletedNeedIndex !== null ? selectedOfferIdsByNeed[lastCompletedNeedIndex] || [] : []}
-                onInputChange={setInput}
-                onInputFocus={lockMobileChatScroll}
-                onSend={handleSend}
-                onQuickPick={handleQuickPick}
-                onApplyOffer={offers.applyOfferFromChat}
-                onRemoveOffer={offers.toggleOfferForNeed}
-              />
-            </ChatPanel>
-
-            <RequestPreview
-              generatedDraft={generatedDraft}
-              intakePath={intakePath}
-              projectData={projectData}
-              needsData={needsData}
-              answeredQuestions={progress.answeredQuestions}
-              answeredProjectQuestions={progress.answeredProjectQuestions}
-              relatedOffersByNeed={relatedOffersByNeed}
-              selectedOfferIdsByNeed={selectedOfferIdsByNeed}
-              offersLoading={offersLoading}
-              publishingDraft={publishingDraft}
-              publishedProjectId={publishedProjectId}
-              onApplyAll={offers.applyToAllOffersForNeed}
-              onRemoveAll={offers.removeAllOffersForNeed}
-              onToggleOffer={offers.toggleOfferForNeed}
-              onPublish={() => {
-                            void publishDraft()
-                          }}
+              progressPercent={progress.progressPercent}
+              cloudSaveText={cloudSaveText}
+              className="mb-0"
             />
           </div>
-        </div>
-      </main>
-      <ConsoleFooter />
-    </div>
+        )}
+        renderSessions={({ close }) => (
+          <SessionSidebar
+            className="h-full min-h-0"
+            sessions={orderedSessions}
+            activeSessionId={activeSessionId}
+            onNewSession={() => {
+              createNewSession()
+              close()
+            }}
+            onSelectSession={(sessionId) => {
+              setActiveSessionId(sessionId)
+              close()
+            }}
+            onDeleteSession={deleteSession}
+          />
+        )}
+        renderPreview={() => (
+          <RequestPreview
+            generatedDraft={generatedDraft}
+            intakePath={intakePath}
+            projectData={projectData}
+            needsData={needsData}
+            answeredQuestions={progress.answeredQuestions}
+            answeredProjectQuestions={progress.answeredProjectQuestions}
+            relatedOffersByNeed={relatedOffersByNeed}
+            selectedOfferIdsByNeed={selectedOfferIdsByNeed}
+            offersLoading={offersLoading}
+            publishingDraft={publishingDraft}
+            publishedProjectId={publishedProjectId}
+            onApplyAll={offers.applyToAllOffersForNeed}
+            onRemoveAll={offers.removeAllOffersForNeed}
+            onToggleOffer={offers.toggleOfferForNeed}
+            onPublish={() => {
+              const ok = confirmAgentPublish(
+                intakePath === 'need'
+                  ? 'Publish this need to the marketplace? Selected offer applications will be sent.'
+                  : 'Publish this project package to the marketplace? This creates live listings.'
+              )
+              if (!ok) return
+              void publishDraft()
+            }}
+          />
+        )}
+      >
+        <ChatPanel
+          isDraftComplete={Boolean(generatedDraft)}
+          promptNumber={progress.promptNumber}
+          promptCount={progress.promptCount}
+          activeQuestionLabel={progress.activeQuestionLabel}
+        >
+          <ChatMessageList
+            messages={messages}
+            isTyping={isTyping}
+            containerRef={messagesContainerRef}
+            needCount={needCount}
+            needsData={needsData}
+            userName={user?.name}
+            userAvatar={userAvatar}
+            userInitials={userInitials}
+            onSaveEdit={saveEditedMessage}
+          />
+          <ChatComposer
+            input={input}
+            isTyping={isTyping}
+            fixedChoiceOptions={progress.fixedChoiceOptions}
+            suggestionNeedIndex={generatedDraft ? null : lastCompletedNeedIndex}
+            suggestedOffers={lastCompletedNeedIndex !== null ? relatedOffersByNeed[lastCompletedNeedIndex] || [] : []}
+            appliedOfferIds={lastCompletedNeedIndex !== null ? selectedOfferIdsByNeed[lastCompletedNeedIndex] || [] : []}
+            onInputChange={setInput}
+            onInputFocus={lockMobileChatScroll}
+            onSend={handleSend}
+            onQuickPick={handleQuickPick}
+            onApplyOffer={offers.applyOfferFromChat}
+            onRemoveOffer={offers.toggleOfferForNeed}
+          />
+        </ChatPanel>
+      </AgentWorkspace>
+    </AgentShell>
   )
 }

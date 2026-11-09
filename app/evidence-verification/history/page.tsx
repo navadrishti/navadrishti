@@ -135,7 +135,7 @@ export default function EvidenceVerificationHistoryPage() {
           return;
         }
 
-        setContext(verifyPayload.company_ca);
+        setContext(verifyPayload.evidence_verifier || verifyPayload.company_ca);
 
         const projectsRes = await fetch('/api/csr-projects', {
           credentials: 'include',

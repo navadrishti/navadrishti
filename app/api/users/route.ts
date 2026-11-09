@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 import { getTokenClaims } from '@/lib/auth'
+import { authErrorResponse } from '@/lib/server-auth'
 import { getCompanyCAUserIdSet } from '@/lib/company-ca'
 import { fetchUserPaymentHistory } from '@/lib/razorpay-route'
 import { fetchCompanyCsrCapabilityFines } from '@/lib/csr-agent/campaign'
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest) {
     const verified_only = searchParams.get('verified') === 'true'
     
     // Authenticate user for this request
-    const decoded = getTokenClaims(request)
+    const decoded = await getTokenClaims(request)
     if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
@@ -24,13 +25,16 @@ export async function GET(request: NextRequest) {
       const role = String(searchParams.get('role') || 'sent').toLowerCase() === 'received' ? 'received' : 'sent'
       const historyLimit = Math.min(Math.max(Number(searchParams.get('limit')) || 100, 1), 300)
 
-      if (role === 'received' && decoded.user_type !== 'ngo') {
-        return NextResponse.json({ error: 'Only NGOs can view received payment history' }, { status: 403 })
+      // Received ledger is beneficiary-scoped (ngo_user_id). Individuals who create
+      // capability offers are valid payees; companies rarely have inbound rows.
+      const userType = String(decoded.user_type || '').toLowerCase()
+      if (role === 'received' && !['ngo', 'individual', 'company'].includes(userType)) {
+        return NextResponse.json({ error: 'Received payment history is not available for this account type' }, { status: 403 })
       }
 
       try {
         const payments = await fetchUserPaymentHistory({
-          userId: decoded.id,
+          userId: Number(decoded.id),
           userType: decoded.user_type,
           role,
           limit: historyLimit,
@@ -84,6 +88,8 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
+    const auth = authErrorResponse(error)
+    if (auth) return auth
     console.error('API error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

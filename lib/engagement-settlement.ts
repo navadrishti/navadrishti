@@ -11,6 +11,7 @@ import {
   refundDuplicatePayment,
 } from '@/lib/razorpay-route'
 import { recordCapturedPayment } from '@/lib/razorpay/payment-records'
+import { syncWageExpenseFromSettlementSafe } from '@/lib/csr-agent/sync-wage-expense'
 
 type EngagementAssignment = Pick<
   Tables<'service_engagement_assignments'>,
@@ -24,10 +25,70 @@ type EngagementAssignment = Pick<
   | 'assignee_user_id'
   | 'target_type'
   | 'target_id'
->
+> & {
+  status?: string | null
+  completed_at?: string | null
+}
+
+type AttendanceEntryRow = {
+  id: string
+  payment_status: string | null
+  amount_due: number | null
+  attendance_date?: string | null
+  created_at?: string | null
+  paid_order_id?: string | null
+}
+
+export type SettlementPaymentRecord = {
+  razorpay_payment_id: string
+  razorpay_order_id?: string | null
+  amount_inr: number
+  entry_ids: string[]
+  settled_at: string
+  settlement_mode: 'razorpay' | 'waived'
+}
 
 function readMetaField(meta: Json, key: string): Json | undefined {
   return meta && typeof meta === 'object' && !Array.isArray(meta) ? meta[key] : undefined
+}
+
+function money(value: unknown): number {
+  const n = Number(value)
+  return Number.isFinite(n) ? Number(n.toFixed(2)) : 0
+}
+
+function isOpenAttendanceStatus(status: string | null | undefined): boolean {
+  const normalized = String(status || '').toLowerCase()
+  return normalized === 'pending' || normalized === 'billed'
+}
+
+export function listSettlementPayments(meta: unknown): SettlementPaymentRecord[] {
+  const raw = parseJsonObject(meta).settlement_payments
+  if (!Array.isArray(raw)) return []
+  const rows: SettlementPaymentRecord[] = []
+  for (const row of raw) {
+    const item = parseJsonObject(row)
+    const paymentId = String(item.razorpay_payment_id || '')
+    if (!paymentId && String(item.settlement_mode || '') !== 'waived') continue
+    rows.push({
+      razorpay_payment_id: paymentId || `waived:${String(item.settled_at || '')}`,
+      razorpay_order_id: item.razorpay_order_id != null ? String(item.razorpay_order_id) : null,
+      amount_inr: money(item.amount_inr),
+      entry_ids: Array.isArray(item.entry_ids) ? item.entry_ids.map(String) : [],
+      settled_at: String(item.settled_at || ''),
+      settlement_mode: String(item.settlement_mode || '').toLowerCase() === 'waived' ? 'waived' : 'razorpay',
+    })
+  }
+  return rows
+}
+
+export function settlementPaymentAlreadyRecorded(meta: unknown, razorpayPaymentId: string): boolean {
+  const paymentId = String(razorpayPaymentId || '')
+  if (!paymentId) return false
+  const parsed = parseJsonObject(meta)
+  if (String(parsed.settlement_payment_id || '') === paymentId) return true
+  if (String(parsed.razorpay_payment_id || '') === paymentId) return true
+  return listSettlementPayments(parsed).some((row) => row.razorpay_payment_id === paymentId)
 }
 
 export type EngagementSettlementParties =
@@ -62,34 +123,105 @@ export function resolveEngagementSettlementParties(
 export function getAssignmentOutstandingAmount(assignment: Pick<EngagementAssignment, 'meta'>) {
   const meta = parseJsonObject(assignment.meta)
   const summary = formatAttendanceSummary(meta)
-  const outstanding = Math.max(0, summary.totalDue - summary.paidTotal)
   return {
     ...summary,
-    outstanding,
+    outstanding: summary.outstanding,
     settlementStatus: String(meta.settlement_status || '').toLowerCase(),
   }
+}
+
+export function summarizeAttendanceLedger(entries: AttendanceEntryRow[] | null | undefined) {
+  let totalDue = 0
+  let paidTotal = 0
+  let outstanding = 0
+  let waivedTotal = 0
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    const amount = money(entry.amount_due)
+    const status = String(entry.payment_status || '').toLowerCase()
+    totalDue = money(totalDue + amount)
+    if (status === 'paid') paidTotal = money(paidTotal + amount)
+    else if (status === 'waived') waivedTotal = money(waivedTotal + amount)
+    else if (status === 'pending' || status === 'billed') outstanding = money(outstanding + amount)
+  }
+  return { totalDue, paidTotal, outstanding, waivedTotal }
 }
 
 /** What is still owed, read from the attendance rows themselves rather than the cached summary. */
 export async function loadAssignmentOutstanding(assignmentId: string) {
   const { data, error } = await supabase
     .from('service_attendance_entries')
-    .select('amount_due, payment_status')
+    .select('id, amount_due, payment_status, attendance_date, created_at, paid_order_id')
     .eq('assignment_id', assignmentId)
   if (error) throw error
+  const entries = (data || []) as AttendanceEntryRow[]
+  return { ...summarizeAttendanceLedger(entries), entries }
+}
 
-  let totalDue = 0
-  let paidTotal = 0
-  let outstanding = 0
-  for (const entry of data || []) {
-    const amount = Number(entry.amount_due || 0)
-    const status = String(entry.payment_status || '').toLowerCase()
-    totalDue += amount
-    if (status === 'paid') paidTotal += amount
-    else if (status === 'pending' || status === 'billed') outstanding += amount
+/**
+ * Allocate whole attendance rows to a settlement amount (FIFO by date/created_at).
+ * Never splits a single attendance row — partial day payment would need a schema change.
+ */
+export function allocateOutstandingEntries(
+  entries: AttendanceEntryRow[],
+  options: { requestedAmountInr?: number | null; entryIds?: string[] | null } = {}
+): { selected: AttendanceEntryRow[]; allocatedInr: number; remainingOutstandingInr: number } {
+  const open = entries
+    .filter((entry) => isOpenAttendanceStatus(entry.payment_status))
+    .slice()
+    .sort((a, b) => {
+      const dateA = String(a.attendance_date || a.created_at || '')
+      const dateB = String(b.attendance_date || b.created_at || '')
+      if (dateA !== dateB) return dateA.localeCompare(dateB)
+      return String(a.id).localeCompare(String(b.id))
+    })
+
+  const requestedIds = Array.isArray(options.entryIds)
+    ? [...new Set(options.entryIds.map(String).filter(Boolean))]
+    : null
+
+  let candidates = open
+  if (requestedIds && requestedIds.length > 0) {
+    const openById = new Map(open.map((entry) => [String(entry.id), entry]))
+    candidates = []
+    for (const id of requestedIds) {
+      const entry = openById.get(id)
+      if (!entry) {
+        throw new Error('One or more selected attendance rows are not outstanding for settlement')
+      }
+      candidates.push(entry)
+    }
   }
-  const round = (value: number) => Number(value.toFixed(2))
-  return { totalDue: round(totalDue), paidTotal: round(paidTotal), outstanding: round(outstanding) }
+
+  const outstandingTotal = money(open.reduce((sum, entry) => sum + money(entry.amount_due), 0))
+  const requestedRaw = options.requestedAmountInr
+  const requested =
+    requestedRaw == null || !Number.isFinite(Number(requestedRaw))
+      ? outstandingTotal
+      : money(requestedRaw)
+
+  if (requested <= 0) {
+    return { selected: [], allocatedInr: 0, remainingOutstandingInr: outstandingTotal }
+  }
+
+  const selected: AttendanceEntryRow[] = []
+  let allocated = 0
+  for (const entry of candidates) {
+    const due = money(entry.amount_due)
+    if (due <= 0) continue
+    if (money(allocated + due) > requested + 0.001) break
+    selected.push(entry)
+    allocated = money(allocated + due)
+  }
+
+  if (requestedIds && requestedIds.length > 0 && selected.length !== requestedIds.length) {
+    throw new Error('Selected attendance rows exceed the settlement amount that can be allocated safely')
+  }
+
+  return {
+    selected,
+    allocatedInr: allocated,
+    remainingOutstandingInr: money(outstandingTotal - allocated),
+  }
 }
 
 export function isDailyRentalAssignment(
@@ -100,56 +232,171 @@ export function isDailyRentalAssignment(
   return billingCycle === 'daily' || paymentMode === 'daily_due'
 }
 
+/** Thrown when a captured payment no longer has open attendance rows to settle (concurrent settle race). */
+export class EngagementSettlementNoRowsError extends Error {
+  constructor(message = 'No outstanding attendance rows remained for this settlement payment') {
+    super(message)
+    this.name = 'EngagementSettlementNoRowsError'
+  }
+}
+
 export async function finalizeEngagementSettlement(assignment: EngagementAssignment, input: {
   settledAmount: number
   settlementMode: 'razorpay' | 'waived'
   razorpayOrderId?: string | null
   razorpayPaymentId?: string | null
+  /** When set, only these outstanding rows are marked paid/waived. */
+  entryIds?: string[] | null
 }) {
   const nowIso = new Date().toISOString()
   const meta = parseJsonObject(assignment.meta)
   const summary = formatAttendanceSummary(meta)
 
-  const { data: entries } = await supabase
+  const { data: entries, error: entriesError } = await supabase
     .from('service_attendance_entries')
-    .select('id, payment_status, amount_due')
+    .select('id, payment_status, amount_due, attendance_date, created_at, paid_order_id')
     .eq('assignment_id', assignment.id)
+  if (entriesError) throw entriesError
 
-  for (const entry of entries || []) {
+  const allEntries = (entries || []) as AttendanceEntryRow[]
+  const explicitIds = Array.isArray(input.entryIds) ? input.entryIds.map(String).filter(Boolean) : null
+
+  let targetIds: Set<string>
+  if (input.settlementMode === 'waived' && money(input.settledAmount) <= 0 && (!explicitIds || explicitIds.length === 0)) {
+    // Zero-outstanding waive: clear any leftover open rows.
+    targetIds = new Set(
+      allEntries.filter((entry) => isOpenAttendanceStatus(entry.payment_status)).map((entry) => String(entry.id))
+    )
+  } else if (explicitIds && explicitIds.length > 0) {
+    targetIds = new Set(explicitIds)
+    // Refuse to settle a subset that another payment already covered — avoids double-pay and partial marks.
+    const byId = new Map(allEntries.map((entry) => [String(entry.id), entry]))
+    for (const id of explicitIds) {
+      const entry = byId.get(id)
+      if (!entry || !isOpenAttendanceStatus(entry.payment_status)) {
+        throw new EngagementSettlementNoRowsError(
+          'One or more attendance rows for this settlement were already paid or are no longer outstanding'
+        )
+      }
+    }
+  } else {
+    // Backward-compatible full settlement of every open row.
+    targetIds = new Set(
+      allEntries.filter((entry) => isOpenAttendanceStatus(entry.payment_status)).map((entry) => String(entry.id))
+    )
+  }
+
+  let markedAmount = 0
+  for (const entry of allEntries) {
+    const entryId = String(entry.id)
+    if (!targetIds.has(entryId)) continue
     if (['paid', 'waived'].includes(String(entry.payment_status || '').toLowerCase())) continue
+    markedAmount = money(markedAmount + money(entry.amount_due))
     await supabase
       .from('service_attendance_entries')
       .update({
         payment_status: input.settlementMode === 'waived' ? 'waived' : 'paid',
+        paid_order_id: input.razorpayOrderId || entry.paid_order_id || null,
         updated_at: nowIso,
       })
-      .eq('id', entry.id)
+      .eq('id', entryId)
+      .in('payment_status', ['pending', 'billed'])
+  }
+
+  // Razorpay settlements must attach to at least one newly paid row; otherwise refund upstream.
+  if (input.settlementMode === 'razorpay' && money(input.settledAmount) > 0 && markedAmount <= 0) {
+    throw new EngagementSettlementNoRowsError()
+  }
+
+  const { data: refreshed, error: refreshError } = await supabase
+    .from('service_attendance_entries')
+    .select('id, amount_due, payment_status, attendance_date, created_at, paid_order_id')
+    .eq('assignment_id', assignment.id)
+  if (refreshError) throw refreshError
+  const ledger = summarizeAttendanceLedger((refreshed || []) as AttendanceEntryRow[])
+  const fullySettled = ledger.outstanding <= 0
+  const settlementStatus = fullySettled ? 'settled' : 'partial'
+  // Attendance marks are authoritative — never trust a larger checkout base after a race.
+  const settledThisPayment =
+    input.settlementMode === 'razorpay'
+      ? markedAmount
+      : money(input.settledAmount) > 0
+        ? money(input.settledAmount)
+        : markedAmount
+
+  const priorPayments = listSettlementPayments(meta)
+  const paymentKey =
+    input.razorpayPaymentId ||
+    (input.settlementMode === 'waived' ? `waived:${nowIso}` : `settlement:${nowIso}`)
+  const alreadyListed = priorPayments.some((row) => row.razorpay_payment_id === paymentKey)
+  const settlementPayments = alreadyListed
+    ? priorPayments
+    : [
+        ...priorPayments,
+        {
+          razorpay_payment_id: paymentKey,
+          razorpay_order_id: input.razorpayOrderId || null,
+          amount_inr: settledThisPayment,
+          entry_ids: [...targetIds],
+          settled_at: nowIso,
+          settlement_mode: input.settlementMode,
+        } satisfies SettlementPaymentRecord,
+      ]
+
+  const cumulativeSettled = money(
+    settlementPayments.reduce((sum, row) => sum + money(row.amount_inr), 0)
+  )
+
+  const nextSummary = {
+    ...summary,
+    total_due: ledger.totalDue,
+    paid_total: ledger.paidTotal,
+    waived_total: ledger.waivedTotal,
+    outstanding: ledger.outstanding,
+    payment_progress:
+      ledger.totalDue > 0 ? Math.min(100, Math.round((ledger.paidTotal / ledger.totalDue) * 100)) : 100,
   }
 
   const nextMeta = {
     ...meta,
-    settlement_status: 'settled',
+    settlement_status: settlementStatus,
     settlement_mode: input.settlementMode,
-    settled_amount: input.settledAmount,
+    settled_amount: cumulativeSettled,
     settled_at: nowIso,
-    attendance_summary: {
-      ...summary,
-      paid_total: summary.totalDue,
-      payment_progress: summary.totalDue > 0 ? 100 : 100,
-    },
+    settlement_payments: settlementPayments,
+    // Clear in-flight claim so another partial cycle can start.
+    settlement_claim_payment_id: null,
+    attendance_summary: nextSummary,
     razorpay_order_id: input.razorpayOrderId || meta.razorpay_order_id || null,
     razorpay_payment_id: input.razorpayPaymentId || meta.razorpay_payment_id || null,
+    settlement_payment_id: input.razorpayPaymentId || meta.settlement_payment_id || null,
+  }
+
+  const assignmentPatch = {
+    meta: nextMeta as Json,
+    updated_at: nowIso,
+    ...(fullySettled
+      ? {
+          // Only mark the assignment completed when wages are fully settled (or already completed).
+          status: 'completed',
+          completed_at: assignment.completed_at || nowIso,
+        }
+      : {}),
   }
 
   await supabase
     .from('service_engagement_assignments')
-    .update({
-      status: 'completed',
-      completed_at: nowIso,
-      meta: nextMeta,
-      updated_at: nowIso,
-    })
+    .update(assignmentPatch)
     .eq('id', assignment.id)
+
+  const mirrorSettlement = {
+    settlement_status: settlementStatus,
+    settlement_mode: input.settlementMode,
+    settled_amount: cumulativeSettled,
+    settled_at: nowIso,
+    attendance_summary: nextSummary,
+    settlement_payments: settlementPayments,
+  }
 
   if (assignment.application_table === 'service_request_applications' && assignment.application_id) {
     const { data: volunteerRow } = await supabase
@@ -160,16 +407,16 @@ export async function finalizeEngagementSettlement(assignment: EngagementAssignm
 
     const volunteerMeta = parseJsonObject(volunteerRow?.response_meta)
     await db.serviceRequestApplications.update(Number(assignment.application_id), {
-      status: 'completed',
-      ngo_confirmed_at: nowIso,
       response_meta: {
         ...volunteerMeta,
-        settlement_status: 'settled',
-        settlement_mode: input.settlementMode,
-        settled_amount: input.settledAmount,
-        settled_at: nowIso,
-        attendance_summary: nextMeta.attendance_summary,
+        ...mirrorSettlement,
       },
+      ...(fullySettled
+        ? {
+            status: 'completed',
+            ngo_confirmed_at: nowIso,
+          }
+        : {}),
     })
   }
 
@@ -185,19 +432,35 @@ export async function finalizeEngagementSettlement(assignment: EngagementAssignm
     await supabase
       .from('service_clients')
       .update({
-        status: 'completed',
-        completed_at: nowIso,
         response_meta: {
           ...clientMeta,
-          settlement_status: 'settled',
-          settlement_mode: input.settlementMode,
-          settled_amount: input.settledAmount,
-          settled_at: nowIso,
-          attendance_summary: nextMeta.attendance_summary,
+          ...mirrorSettlement,
         },
         updated_at: nowIso,
+        ...(fullySettled
+          ? {
+              status: 'completed',
+              completed_at: nowIso,
+            }
+          : {}),
       })
       .eq('id', clientId)
+  }
+
+  // After settlement is finalized: sync CSR project wage expense when a project link exists.
+  // Failures are logged only — they must not undo a confirmed settlement/payment.
+  if (settledThisPayment > 0) {
+    const parties = resolveEngagementSettlementParties(assignment)
+    await syncWageExpenseFromSettlementSafe({
+      assignment,
+      settledAmount: settledThisPayment,
+      settlementMode: input.settlementMode,
+      razorpayOrderId: input.razorpayOrderId,
+      razorpayPaymentId: input.razorpayPaymentId,
+      payerUserId: parties.settleable ? parties.payerUserId : null,
+      payeeUserId: parties.settleable ? parties.payeeUserId : Number(assignment.assignee_user_id || 0) || null,
+      entryIds: [...targetIds],
+    })
   }
 
   return nextMeta
@@ -205,16 +468,33 @@ export async function finalizeEngagementSettlement(assignment: EngagementAssignm
 
 export async function createEngagementSettlementOrder(
   assignment: EngagementAssignment,
-  parties: { payerUserId: number; payeeUserId: number }
+  parties: { payerUserId: number; payeeUserId: number },
+  options: { requestedAmountInr?: number | null; entryIds?: string[] | null } = {}
 ) {
   const { payerUserId, payeeUserId } = parties
-  const { outstanding } = await loadAssignmentOutstanding(String(assignment.id))
-  if (outstanding <= 0) {
+  const ledger = await loadAssignmentOutstanding(String(assignment.id))
+  if (ledger.outstanding <= 0) {
     const meta = await finalizeEngagementSettlement(assignment, {
       settledAmount: 0,
       settlementMode: 'waived',
     })
     return { paymentRequired: false, outstanding: 0, meta }
+  }
+
+  let allocation: ReturnType<typeof allocateOutstandingEntries>
+  try {
+    allocation = allocateOutstandingEntries(ledger.entries, {
+      requestedAmountInr: options.requestedAmountInr,
+      entryIds: options.entryIds,
+    })
+  } catch (error) {
+    throw new Error(getErrorMessage(error) || 'Unable to allocate attendance rows for settlement')
+  }
+
+  if (allocation.allocatedInr <= 0 || allocation.selected.length === 0) {
+    throw new Error(
+      'Settlement amount must cover at least one full attendance day. Partial payment of a single day is not supported.'
+    )
   }
 
   const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID
@@ -223,10 +503,13 @@ export async function createEngagementSettlementOrder(
     throw new Error('Razorpay is not configured on this environment')
   }
 
+  const settleBaseInr = allocation.allocatedInr
+  const entryIds = allocation.selected.map((entry) => String(entry.id))
+
   const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret })
   const { order, pricing, orderNotes } = await createPlatformPricedOrder({
     razorpay,
-    baseAmountInr: outstanding,
+    baseAmountInr: settleBaseInr,
     receipt: `asg_${String(assignment.id).slice(0, 8)}_${Date.now()}`,
     paymentKind: 'engagement_settlement',
     beneficiaryUserId: payeeUserId,
@@ -237,6 +520,9 @@ export async function createEngagementSettlementOrder(
       target_id: String(assignment.target_id || ''),
       payer_user_id: String(payerUserId),
       settlement_scope: 'daily_rental',
+      settlement_entry_ids: entryIds.join(','),
+      settlement_base_amount_inr: String(settleBaseInr),
+      settlement_remaining_after_inr: String(allocation.remainingOutstandingInr),
     },
   })
 
@@ -262,6 +548,9 @@ export async function createEngagementSettlementOrder(
       assignment_id: assignment.id,
       target_type: assignment.target_type,
       settlement_scope: 'daily_rental',
+      settlement_entry_ids: entryIds,
+      settlement_base_amount_inr: settleBaseInr,
+      settlement_remaining_after_inr: allocation.remainingOutstandingInr,
       ...orderNotes,
     },
     updated_at: nowIso,
@@ -270,7 +559,10 @@ export async function createEngagementSettlementOrder(
 
   return {
     paymentRequired: true,
-    outstanding,
+    outstanding: ledger.outstanding,
+    settleAmount: settleBaseInr,
+    remainingAfter: allocation.remainingOutstandingInr,
+    entryIds,
     orderId: order.id,
     ...buildPricingResponse(pricing),
     currency: order.currency,
@@ -288,6 +580,17 @@ export function isEngagementSettlementOrder(orderNotes: unknown): boolean {
 export type EngagementPaymentResult =
   | { ok: true; alreadyProcessed: boolean; settledAmount: number; paidInr: number; meta: Record<string, unknown> | null }
   | { ok: false; status: number; error: string }
+
+function parseSettlementEntryIds(orderNotes: unknown): string[] | null {
+  const notes = parseJsonObject(orderNotes)
+  if (Array.isArray(notes.settlement_entry_ids)) {
+    return notes.settlement_entry_ids.map(String).filter(Boolean)
+  }
+  if (typeof notes.settlement_entry_ids === 'string' && notes.settlement_entry_ids.trim()) {
+    return notes.settlement_entry_ids.split(',').map((id) => id.trim()).filter(Boolean)
+  }
+  return null
+}
 
 /**
  * Applies a captured settlement payment to its engagement. Both the checkout verify call and the
@@ -354,44 +657,88 @@ export async function settleEngagementFromCapturedPayment(input: {
     }
   }
 
-  const resolveSettled = (meta: Record<string, unknown>): EngagementPaymentResult => {
-    const settledBy = String(meta.settlement_payment_id || meta.razorpay_payment_id || '')
-    if (settledBy === input.razorpayPaymentId) {
-      return {
-        ok: true,
-        alreadyProcessed: true,
-        settledAmount: Number(meta.settled_amount || amountCheck.baseAmountInr),
-        paidInr: amountCheck.paidInr,
-        meta,
-      }
+  const resolveSettled = async (
+    assignmentRow: EngagementAssignment,
+    meta: Record<string, unknown>
+  ): Promise<EngagementPaymentResult> => {
+    const settledAmount = Number(
+      listSettlementPayments(meta).find((row) => row.razorpay_payment_id === input.razorpayPaymentId)?.amount_inr ||
+        meta.settled_amount ||
+        amountCheck.baseAmountInr
+    )
+    // Heal a missed ledger write after an earlier successful settle.
+    const parties = resolveEngagementSettlementParties(assignmentRow)
+    await syncWageExpenseFromSettlementSafe({
+      assignment: assignmentRow,
+      settledAmount,
+      settlementMode: String(meta.settlement_mode || '').toLowerCase() === 'waived' ? 'waived' : 'razorpay',
+      razorpayOrderId: input.razorpayOrderId,
+      razorpayPaymentId: input.razorpayPaymentId,
+      payerUserId: parties.settleable ? parties.payerUserId : null,
+      payeeUserId: parties.settleable ? parties.payeeUserId : Number(assignmentRow.assignee_user_id || 0) || null,
+      entryIds: parseSettlementEntryIds(storedNotes),
+    })
+    return {
+      ok: true,
+      alreadyProcessed: true,
+      settledAmount,
+      paidInr: amountCheck.paidInr,
+      meta,
     }
-    return { ok: false, status: 409, error: 'This engagement is already being settled by another payment' }
   }
 
   const assignment = await loadAssignment()
   if (!assignment) return { ok: false, status: 404, error: 'Assignment not found' }
   const currentMeta = parseJsonObject(assignment.meta)
-  const claimedBy = String(currentMeta.settlement_payment_id || '')
-  if (claimedBy === input.razorpayPaymentId) return resolveSettled(currentMeta)
-  if (claimedBy || String(currentMeta.settlement_status || '').toLowerCase() === 'settled') return refundDuplicate()
 
-  const { data: claimed, error: claimError } = await supabase
-    .from('service_engagement_assignments')
-    .update({
-      meta: { ...currentMeta, settlement_payment_id: input.razorpayPaymentId },
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', assignmentId)
-    .is('meta->>settlement_payment_id', null)
-    .select('*')
-    .maybeSingle()
-  if (claimError) throw claimError
-  if (!claimed) {
-    const latest = await loadAssignment()
-    const latestMeta = parseJsonObject(latest?.meta)
-    if (String(latestMeta.settlement_payment_id || '') === input.razorpayPaymentId) return resolveSettled(latestMeta)
+  if (settlementPaymentAlreadyRecorded(currentMeta, input.razorpayPaymentId)) {
+    return resolveSettled(assignment, currentMeta)
+  }
+  if (String(currentMeta.settlement_status || '').toLowerCase() === 'settled') {
     return refundDuplicate()
   }
+
+  const claimHolder = String(currentMeta.settlement_claim_payment_id || '')
+  if (claimHolder && claimHolder !== input.razorpayPaymentId) {
+    return { ok: false, status: 409, error: 'Another settlement payment is already being processed for this engagement' }
+  }
+
+  let claimed: EngagementAssignment | null = null
+  if (claimHolder === input.razorpayPaymentId) {
+    claimed = assignment
+  } else {
+    const { data: claimedRow, error: claimError } = await supabase
+      .from('service_engagement_assignments')
+      .update({
+        meta: { ...currentMeta, settlement_claim_payment_id: input.razorpayPaymentId },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', assignmentId)
+      .is('meta->>settlement_claim_payment_id', null)
+      .select('*')
+      .maybeSingle()
+    if (claimError) throw claimError
+    claimed = claimedRow
+  }
+
+  if (!claimed) {
+    const latest = await loadAssignment()
+    if (!latest) return { ok: false, status: 404, error: 'Assignment not found' }
+    const latestMeta = parseJsonObject(latest.meta)
+    if (settlementPaymentAlreadyRecorded(latestMeta, input.razorpayPaymentId)) {
+      return resolveSettled(latest, latestMeta)
+    }
+    if (String(latestMeta.settlement_status || '').toLowerCase() === 'settled') {
+      return refundDuplicate()
+    }
+    if (String(latestMeta.settlement_claim_payment_id || '') === input.razorpayPaymentId) {
+      claimed = latest
+    } else {
+      return { ok: false, status: 409, error: 'Unable to claim this engagement for settlement' }
+    }
+  }
+
+  const entryIds = parseSettlementEntryIds(storedNotes)
 
   let meta: Record<string, unknown>
   try {
@@ -400,6 +747,7 @@ export async function settleEngagementFromCapturedPayment(input: {
       settlementMode: 'razorpay',
       razorpayOrderId: input.razorpayOrderId,
       razorpayPaymentId: input.razorpayPaymentId,
+      entryIds,
     })
   } catch (finalizeError) {
     await supabase
@@ -407,10 +755,14 @@ export async function settleEngagementFromCapturedPayment(input: {
       .update({
         status: assignment.status,
         completed_at: assignment.completed_at,
-        meta: currentMeta,
+        meta: { ...currentMeta, settlement_claim_payment_id: null },
         updated_at: new Date().toISOString(),
       })
       .eq('id', assignmentId)
+    if (finalizeError instanceof EngagementSettlementNoRowsError) {
+      // Rows already settled by another payment — refund this capture instead of double-counting.
+      return refundDuplicate()
+    }
     throw finalizeError
   }
 

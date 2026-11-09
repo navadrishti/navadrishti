@@ -100,13 +100,18 @@ export async function createPlatformPricedOrder(params: CreatePlatformPricedOrde
     ...(params.beneficiaryUserId ? { beneficiary_user_id: String(params.beneficiaryUserId) } : {}),
   });
 
+  // Default: require an active linked account. Callers may opt out (e.g. CSR milestone
+  // checkout when Razorpay Route is disabled and funds settle to the platform merchant).
+  // Opt-out must skip assertBeneficiaryRouteReady even when beneficiaryUserId is set for notes.
   const requirePayee = params.requirePayeeConnection ?? true;
   if (requirePayee && !params.beneficiaryUserId) {
     throw new PayeeNotConnectedError('This payment has no recipient on file, so it cannot be collected.');
   }
-  const linkedAccountId = params.beneficiaryUserId
-    ? (await assertBeneficiaryRouteReady(params.beneficiaryUserId, params.beneficiaryName)).linkedAccountId
-    : null;
+  const linkedAccountId =
+    requirePayee && params.beneficiaryUserId
+      ? (await assertBeneficiaryRouteReady(params.beneficiaryUserId, params.beneficiaryName))
+          .linkedAccountId
+      : null;
 
   if (linkedAccountId && isRazorpayRouteEnabled()) {
     const order = await createRoutedRazorpayOrder({

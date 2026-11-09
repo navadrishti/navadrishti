@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { POST } from '@/app/api/documents/generate/route'
 import { jsonRequest, tokenFor } from './support/requests'
-import { supabaseFake } from './support/supabase-fake'
+import { businessQueries, supabaseFake } from './support/supabase-fake'
 import { resetDb, respond } from './support/documents-fixtures'
+import './support/install-test-auth'
 
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db', async () => {
@@ -44,7 +45,7 @@ describe('POST /api/documents/generate', () => {
     const { status, body } = await send(payload, company)
     expect(status).toBe(400)
     expect(typeof body.error).toBe('string')
-    expect(supabaseFake.queries).toHaveLength(0)
+    expect(businessQueries(supabaseFake.queries)).toHaveLength(0)
   })
 
   it.each([
@@ -58,17 +59,32 @@ describe('POST /api/documents/generate', () => {
     expect(body.error).toBe(error)
   })
 
-  it('returns the generated document', async () => {
+  it('returns the generated HTML document', async () => {
     const { status, body } = await send({ documentType: 'csr_compliance_profile' }, company)
     expect(status).toBe(200)
     expect(body).toMatchObject({
       success: true,
       documentType: 'csr_compliance_profile',
+      format: 'html',
       filename: 'acme-industries-csr-compliance-profile.html',
       label: 'CSR Compliance Profile',
     })
     expect(body.entityTitle).toBeUndefined()
     expect(String(body.html)).toContain('<!DOCTYPE html>')
+    expect(String(body.html)).toContain('data:image/svg+xml;base64,')
+    expect(String(body.html)).toContain('Powered by')
+  })
+
+  it('returns NGO compliance pack HTML', async () => {
+    const { status, body } = await send({ documentType: 'ngo_compliance_pack' }, ngo)
+    expect(status).toBe(200)
+    expect(body).toMatchObject({
+      success: true,
+      documentType: 'ngo_compliance_pack',
+      format: 'html',
+    })
+    expect(String(body.html)).toContain('<!DOCTYPE html>')
+    expect(String(body.html)).toContain('data:image/svg+xml;base64,')
   })
 
   it('includes the entity title for impact reports', async () => {
@@ -76,7 +92,18 @@ describe('POST /api/documents/generate', () => {
     expect(status).toBe(200)
     expect(body.entityTitle).toBe('Clean Water & Sanitation')
     expect(body.label).toBe('Quarterly Impact Report')
+    expect(body.format).toBe('html')
   })
+
+  it.each(['impact_report', 'utilization_certificate', 'implementing_agency_report'])(
+    'does not generate %s for the assigned NGO when it is not the campaign lead',
+    async (documentType) => {
+      const { status, body } = await send({ documentType, projectId: 'p2' }, tokenFor(13, 'ngo'))
+      expect(status).toBe(403)
+      expect(body.error).toBe('Insufficient permissions')
+      expect(body.html).toBeUndefined()
+    }
+  )
 
   it.each([
     [rival, { documentType: 'impact_report', campaignId: 'c1' }, 'Campaign not found or not owned by this company'],

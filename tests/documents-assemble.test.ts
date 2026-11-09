@@ -203,10 +203,44 @@ describe('impact report', () => {
     expectCleanOutput(result.html)
   })
 
+  it('scopes company impact reports to one project without sibling campaign projects', async () => {
+    const result = await generate(company, { documentType: 'impact_report', projectId: 'p1' })
+    expect(result.label).toBe('Project Impact Report')
+    expect('entityTitle' in result && result.entityTitle).toBe('Wells')
+    expect(fieldValue(result.html, 'Funds Utilized')).toBe('₹1,50,000')
+    expect(fieldValue(result.html, 'Beneficiaries')).toBe('300')
+    expect(fieldValue(result.html, 'Progress')).toBe('60%')
+    expect(fieldValue(result.html, 'Implementing Partner')).toBe('Seva Trust')
+    expect(result.html).toContain('Wells')
+    expect(result.html).not.toContain('Toilets')
+    // Campaign-wide aggregation would be ₹2,00,000 / 350 — project path must stay project-only.
+    expect(fieldValue(result.html, 'Funds Utilized')).not.toBe('₹2,00,000')
+    expect(fieldValue(result.html, 'Beneficiaries')).not.toBe('350')
+    expectCleanOutput(result.html)
+  })
+
+  it('rejects company impact for a project owned by another company', async () => {
+    await expect(
+      generate(rival, { documentType: 'impact_report', projectId: 'p1' })
+    ).rejects.toThrow('Project not owned by this company')
+  })
+
   it('reports a lead campaign for its lead NGO', async () => {
     const result = await generate(ngo, { documentType: 'impact_report', campaignId: 'c1' })
     expect(fieldValue(result.html, 'Implementing Partner')).toBe('Acme &lt;Industries&gt;')
     expect(fieldValue(result.html, 'Prepared For')).toBe('Lead NGO / Implementing Partner')
+    // NGO-scoped: Wells only (₹1,50,000 / 300) — must not include sibling Toilets project.
+    expect(fieldValue(result.html, 'Funds Utilized')).toBe('₹1,50,000')
+    expect(fieldValue(result.html, 'Beneficiaries')).toBe('300')
+    expect(fieldValue(result.html, 'Funds Utilized')).not.toBe('₹2,00,000')
+  })
+
+  it('does not use campaign-wide impact metrics for a lead NGO impact report', async () => {
+    db.campaigns = [{ ...campaign, impact_metrics: { funds_utilized: 999999, beneficiaries: 9999, progress_percentage: 99 } }]
+    const result = await generate(ngo, { documentType: 'impact_report', campaignId: 'c1' })
+    expect(fieldValue(result.html, 'Funds Utilized')).toBe('₹1,50,000')
+    expect(fieldValue(result.html, 'Beneficiaries')).toBe('300')
+    expect(fieldValue(result.html, 'Progress')).toBe('60%')
   })
 
   it.each([
@@ -225,9 +259,11 @@ describe('utilization certificate', () => {
   it('sums confirmed payments across a company campaign', async () => {
     const result = await generate(company, { documentType: 'utilization_certificate', campaignId: 'c1' })
     expect(result.filename).toBe('acme-industries-utilization-clean-water-sanitation.html')
-    expect(fieldValue(result.html, 'Amount Received (Confirmed)')).toBe('₹2,60,000')
+    expect(fieldValue(result.html, 'Amount Received (Net Confirmed)')).toBe('₹2,60,000')
     expect(fieldValue(result.html, 'Amount Utilized')).toBe('₹2,00,000')
     expect(fieldValue(result.html, 'Unutilized Balance (Received − Utilized)')).toBe('₹60,000')
+    expect(result.html).toContain('brand-logo')
+    expect(result.html).toContain('not digitally signed')
     expect(fieldValue(result.html, 'Utilization vs Budget')).toBe('40.0%')
     expect(fieldValue(result.html, 'Implementing Agency / NGO')).toBe('Seva Trust')
     expect(result.html.match(/<td>Payment \d<\/td>/g)).toEqual(['<td>Payment 1</td>', '<td>Payment 2</td>', '<td>Payment 1</td>'])
@@ -251,10 +287,35 @@ describe('utilization certificate', () => {
 
   it('covers a single company project', async () => {
     const result = await generate(company, { documentType: 'utilization_certificate', projectId: 'p1' })
-    expect(fieldValue(result.html, 'Amount Received (Confirmed)')).toBe('₹2,00,000')
+    expect(fieldValue(result.html, 'Amount Received (Net Confirmed)')).toBe('₹2,00,000')
     expect(fieldValue(result.html, 'Unutilized Balance (Received − Utilized)')).toBe('₹50,000')
     expect(fieldValue(result.html, 'Utilization vs Budget')).toBe('30.0%')
     expect(result.html).not.toContain('Data Completeness Notes')
+  })
+
+  it('nets processed refunds and never treats pending refunds as confirmed', async () => {
+    db.projects = [
+      {
+        ...projects[0],
+        csr_payment_confirmations: [
+          { amount: 200000, payment_status: 'confirmed', payment_reference: 'UTR-1' },
+        ],
+        csr_impact_metrics: [{ funds_utilized: 150000, last_updated: '2026-09-01' }],
+      },
+    ]
+    const { setRefundLedger } = await import('./support/documents-fixtures')
+    setRefundLedger({
+      payments: [{ id: 'rp1', razorpay_payment_id: 'UTR-1' }],
+      refunds: [
+        { id: 'rr1', payment_id: 'rp1', amount_inr: 40000, refund_status: 'processed', razorpay_refund_id: 'rfnd_1' },
+        { id: 'rr2', payment_id: 'rp1', amount_inr: 10000, refund_status: 'pending', razorpay_refund_id: 'rfnd_2' },
+      ],
+    })
+    const result = await generate(company, { documentType: 'utilization_certificate', projectId: 'p1' })
+    expect(fieldValue(result.html, 'Amount Received (Net Confirmed)')).toBe('₹1,60,000')
+    expect(fieldValue(result.html, 'Unutilized Balance (Received − Utilized)')).toBe('₹10,000')
+    expect(result.html).toContain('Net after processed refund ₹40,000')
+    expectCleanOutput(result.html)
   })
 
   it('flags a project without payments or utilization', async () => {
@@ -267,8 +328,38 @@ describe('utilization certificate', () => {
   it('limits a lead NGO campaign certificate to its own projects', async () => {
     const result = await generate(ngo, { documentType: 'utilization_certificate', campaignId: 'c1' })
     expect(fieldValue(result.html, 'Funding Company')).toBe('Acme &lt;Industries&gt;')
-    expect(fieldValue(result.html, 'Amount Received (Confirmed)')).toBe('₹2,00,000')
+    expect(fieldValue(result.html, 'Amount Received (Net Confirmed)')).toBe('₹2,00,000')
     expect(fieldValue(result.html, 'Amount Utilized')).toBe('₹1,50,000')
+  })
+
+  it('does not fall back to campaign utilization for a lead NGO certificate', async () => {
+    db.projects = [{ ...projects[0], csr_impact_metrics: [] }]
+    db.campaigns = [{ ...campaign, impact_metrics: { funds_utilized: 7500 } }]
+    const result = await generate(ngo, { documentType: 'utilization_certificate', campaignId: 'c1' })
+    expect(fieldValue(result.html, 'Amount Utilized')).toBe('—')
+    expect(fieldValue(result.html, 'Amount Utilized')).not.toBe('₹7,500')
+  })
+
+  it('keeps Amount Received as dash when refund enrichment is missing', async () => {
+    const { confirmedFunds } = await import('@/lib/document-generation/assemble/project-data')
+    expect(
+      confirmedFunds({
+        csr_payment_confirmations: [
+          {
+            amount: 100000,
+            payment_status: 'confirmed',
+            payment_reference: 'UTR-x',
+          } as never,
+        ],
+      })
+    ).toBeNull()
+  })
+
+  it('shows dash for missing project utilization instead of fabricating ₹0', async () => {
+    db.projects = [{ ...projects[0], csr_impact_metrics: [], csr_payment_confirmations: [] }]
+    const result = await generate(company, { documentType: 'utilization_certificate', projectId: 'p1' })
+    expect(fieldValue(result.html, 'Amount Utilized')).toBe('—')
+    expect(fieldValue(result.html, 'Amount Received (Net Confirmed)')).toBe('₹0')
   })
 
   it.each([
@@ -296,7 +387,7 @@ describe('NGO documents', () => {
   it('builds the implementing agency report for a project', async () => {
     const result = await generate(ngo, { documentType: 'implementing_agency_report', projectId: 'p1' })
     expect(result.filename).toBe('seva-trust-implementing-agency-wells.html')
-    expect(fieldValue(result.html, 'Received')).toBe('₹2,00,000')
+    expect(fieldValue(result.html, 'Received (Net Confirmed)')).toBe('₹2,00,000')
     expect(fieldValue(result.html, 'Utilized')).toBe('₹1,50,000')
     expect(result.html).toContain('<li>12A recorded on GRAM</li>')
     expect(result.html).toContain('<li>CSR-1 recorded on GRAM</li>')
@@ -307,7 +398,8 @@ describe('NGO documents', () => {
   it('builds the implementing agency report for a lead campaign', async () => {
     const result = await generate(ngo, { documentType: 'implementing_agency_report', campaignId: 'c1' })
     expect(fieldValue(result.html, 'Lead Campaign')).toBe('Clean Water &amp; Sanitation')
-    expect(fieldValue(result.html, 'Received')).toBe('—')
+    expect(fieldValue(result.html, 'Received (Net Confirmed)')).toBe('₹2,00,000')
+    expect(fieldValue(result.html, 'Utilized')).toBe('₹1,50,000')
     expect(result.html).toContain('<td>15 October 2026</td>')
     expectCleanOutput(result.html)
   })
@@ -316,7 +408,7 @@ describe('NGO documents', () => {
     await expect(generate(otherNgo, { documentType: 'implementing_agency_report' })).rejects.toThrow(
       'Select a project or lead campaign for the implementing agency report'
     )
-    db.projects = [{ ...projects[1] }]
+    db.projects = [{ ...projects[1], campaigns: { ...campaign, lead_ngo_user_id: 13 } }]
     const result = await generate(otherNgo, { documentType: 'implementing_agency_report', projectId: 'p2' })
     expect(result.html).toContain('CSR-1 tag not live')
   })

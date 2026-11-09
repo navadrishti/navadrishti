@@ -7,6 +7,7 @@ import {
   type ServiceSuggestion,
   INITIAL_ASSISTANT_MESSAGE,
   buildEmptySession,
+  hasMeaningfulSessionContent,
 } from "./session"
 import type { CampaignState } from "./use-campaign-state"
 
@@ -87,7 +88,7 @@ export function useSessionActions({
     setRecommendationError(null)
     setGenerationError(null)
     setInput("")
-    if (canPersist) persistSessions([fresh, ...sessions], fresh.id)
+    if (canPersist) persistSessions([fresh, ...sessions.filter(hasMeaningfulSessionContent)], fresh.id)
   }
 
   const applySession = (session: CSRAgentSession, nextSessions: CSRAgentSession[] = sessions, persistSelection = true) => {

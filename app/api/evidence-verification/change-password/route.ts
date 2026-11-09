@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { supabase } from '@/lib/db';
 import { comparePassword, hashPassword } from '@/lib/auth';
 import { getCompanyCAFromRequest } from '@/lib/server-auth';
+import { zodIssuesToUserMessage } from '@/lib/user-facing-error';
 
 const changePasswordSchema = z.object({
   current_password: z.string().min(1),
@@ -17,7 +18,7 @@ export async function POST(request: NextRequest) {
     const parsed = changePasswordSchema.safeParse(body);
 
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.issues[0]?.message || 'Invalid payload' }, { status: 400 });
+      return NextResponse.json({ error: zodIssuesToUserMessage(parsed.error.issues) || 'Please check your details and try again.' }, { status: 400 });
     }
 
     const { current_password, new_password } = parsed.data;
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
       .eq('id', companyCA.user.id);
 
     if (updateError) {
-      console.error('Failed to change Company CA password:', updateError);
+      console.error('Failed to change Evidence Verifier password:', updateError);
       return NextResponse.json({ error: 'Failed to change password' }, { status: 500 });
     }
 
@@ -72,16 +73,16 @@ export async function POST(request: NextRequest) {
     if (
       error instanceof Error &&
       [
-        'Company CA authentication required',
+        'Evidence Verifier authentication required',
         'Invalid company CA token',
-        'Company CA identity not found',
-        'Company CA identity is not active'
+        'Evidence Verifier identity not found',
+        'Evidence Verifier identity is not active'
       ].includes(error.message)
     ) {
       return NextResponse.json({ error: error.message }, { status: 401 });
     }
 
-    console.error('Company CA change password error:', error);
+    console.error('Evidence Verifier change password error:', error);
     return NextResponse.json({ error: 'Failed to change password' }, { status: 500 });
   }
 }

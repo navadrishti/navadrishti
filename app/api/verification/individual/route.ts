@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getTokenClaims, requireBankStatementDocument } from '@/lib/auth';
+import { authErrorResponse } from '@/lib/server-auth';
 import { getErrorMessage, parseJsonObject } from '@/lib/utils';
 import type { TablesUpdate } from '@/lib/database.types';
 import { untrustedDocumentResponse } from '@/lib/ca-review/document-urls';
@@ -9,7 +10,7 @@ import { initiateBlockedByStatus } from '@/lib/ca-review/submission-guards';
 
 export async function POST(req: NextRequest) {
   try {
-    const claims = getTokenClaims(req);
+    const claims = await getTokenClaims(req);
     if (!claims) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -55,6 +56,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Individual verification error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
@@ -83,6 +86,7 @@ async function initiateVerification(
       updated_at: new Date().toISOString(),
       aadhaar_verified: false,
       pan_verified: false,
+      rejection_reason: null,
     };
     if (entered.aadhaar) verificationPayload.aadhaar_number = entered.aadhaar;
     if (entered.pan) verificationPayload.pan_number = entered.pan;
@@ -110,7 +114,8 @@ async function initiateVerification(
             documents: documents || {},
             entered_fields: entered,
             submitted_at: new Date().toISOString(),
-            status: 'pending'
+            status: 'pending',
+            rejection_reason: '',
           }
         }
       };
@@ -178,6 +183,7 @@ async function reverifyVerification(
           individual: {
             ...(existingVerificationDocs.individual || {}),
             reverification_status: 'pending',
+            reverification_rejection_reason: '',
             reverification_documents: documents || {},
             reverification_submitted_at: new Date().toISOString(),
             reverification_entered_fields: {
@@ -206,7 +212,7 @@ async function reverifyVerification(
 
 export async function GET(req: NextRequest) {
   try {
-    const claims = getTokenClaims(req);
+    const claims = await getTokenClaims(req);
     if (!claims) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -269,9 +275,11 @@ export async function GET(req: NextRequest) {
       level: user.verification_level || 'basic'
     });
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Get verification status error:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch verification status', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to fetch verification status' },
       { status: 500 }
     );
   }

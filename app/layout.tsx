@@ -43,6 +43,7 @@ export const metadata: Metadata = {
     'CSR platform India',
     'NGO directory India',
     'app.navadrishti.in',
+    'gram.navadrishti.in',
   ],
   authors: [{ name: COMPANY_LEGAL_NAME }],
   creator: COMPANY_LEGAL_NAME,

@@ -1,4 +1,7 @@
 "use client"
+import { toast } from 'sonner'
+import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 
 import { use, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -20,7 +23,6 @@ import {
 } from '@/lib/service-request-allocation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { SkeletonHeader, SkeletonForm, SkeletonButton } from '@/components/ui/skeleton'
-import { useToast } from '@/hooks/use-toast'
 import type { Tables } from '@/lib/database.types'
 
 type ServiceRequestProject = Tables<'service_request_projects'>
@@ -29,7 +31,8 @@ export default function EditProjectPage({ params }: { params: Promise<{ id: stri
   const { id } = use(params)
   const router = useRouter()
   const { user } = useAuth()
-  const { toast } = useToast()
+  const userId = user?.id
+  const userType = user?.user_type
   const csrEligible = ngoIsCsrEligible(user?.verification_status, user?.profile_data || user?.profile)
 
   const [loading, setLoading] = useState(true)
@@ -47,9 +50,9 @@ export default function EditProjectPage({ params }: { params: Promise<{ id: stri
   const [projectAddress, setProjectAddress] = useState<ProjectExactAddress>({ ...EMPTY_PROJECT_ADDRESS })
 
   useEffect(() => {
-    if (!user) return
-    if (user.user_type !== 'ngo') {
-      toast({ title: 'Access Denied', description: 'Only NGO owners can edit projects', variant: 'destructive' })
+    if (userId == null) return
+    if (userType !== 'ngo') {
+      toast.error('Access Denied', { description: 'Only NGO owners can edit projects' })
       router.push('/service-requests')
       return
     }
@@ -57,14 +60,14 @@ export default function EditProjectPage({ params }: { params: Promise<{ id: stri
     const load = async () => {
       setLoading(true)
       try {
-        const token = localStorage.getItem('token')
-        const resp = await fetch(`/api/service-request-projects?ngoId=${user.id}`, { headers: { Authorization: `Bearer ${token}` } })
+        const token = getClientSessionToken()
+        const resp = await fetch(`/api/service-request-projects?ngoId=${userId}`, { headers: { Authorization: `Bearer ${token}` } })
         const data = await resp.json()
         if (resp.ok && data.success) {
           const projects: ServiceRequestProject[] = data.data || []
           const found = projects.find((p) => String(p.id) === String(id))
           if (!found) {
-            toast({ title: 'Not found', description: 'Project not found or you are not the owner', variant: 'destructive' })
+            toast.error('Not found', { description: 'Project not found or you are not the owner' })
             router.push('/service-requests')
             return
           }
@@ -75,31 +78,31 @@ export default function EditProjectPage({ params }: { params: Promise<{ id: stri
           })
           setProjectAddress(parseProjectExactAddress(found.exact_address || found.location))
         } else {
-          toast({ title: 'Error', description: 'Failed to load project', variant: 'destructive' })
+          toast.error('Error', { description: 'Failed to load project' })
         }
       } catch {
-        toast({ title: 'Error', description: 'Failed to load project', variant: 'destructive' })
+        toast.error('Error', { description: 'Failed to load project' })
       } finally {
         setLoading(false)
       }
     }
 
     void load()
-  }, [id, router, toast, user])
+  }, [id, router, userId, userType])
 
   const handleProjectSave = async () => {
     if (!project) return
     if (!csrEligible) {
-      toast({ title: 'Edit locked', description: CSR_PROJECT_CREATE_REQUIRED_MESSAGE, variant: 'destructive' })
+      toast.error('Edit locked', { description: CSR_PROJECT_CREATE_REQUIRED_MESSAGE })
       return
     }
     if (!canEditProject) {
-      toast({ title: 'Edit locked', description: CSR_OWN_PROJECT_TIMELINE_MESSAGE, variant: 'destructive' })
+      toast.error('Edit locked', { description: CSR_OWN_PROJECT_TIMELINE_MESSAGE })
       return
     }
     setSavingProject(true)
     try {
-      const token = localStorage.getItem('token')
+      const token = getClientSessionToken()
       const resp = await fetch(`/api/service-request-projects/${project.id}`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -120,12 +123,12 @@ export default function EditProjectPage({ params }: { params: Promise<{ id: stri
           csr_project_available_for_csr: data.data.csr_project_available_for_csr !== false,
         })
         setProjectAddress(parseProjectExactAddress(data.data.exact_address || data.data.location))
-        toast({ title: 'Saved', description: 'Project updated' })
+        toast.success('Saved', { description: 'Project updated' })
       } else {
-        toast({ title: 'Error', description: data.error || 'Failed to update project', variant: 'destructive' })
+        toast.error('Error', { description: readApiError(data, 'Failed to update project') })
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to update project', variant: 'destructive' })
+      toast.error('Error', { description: 'Failed to update project' })
     } finally {
       setSavingProject(false)
     }

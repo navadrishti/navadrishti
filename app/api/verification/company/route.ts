@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
 import { getTokenClaims, requireBankStatementDocument } from '@/lib/auth';
+import { authErrorResponse } from '@/lib/server-auth';
 import { getErrorMessage, parseJsonObject } from '@/lib/utils';
 import type { TablesUpdate } from '@/lib/database.types';
 import { untrustedDocumentResponse } from '@/lib/ca-review/document-urls';
@@ -9,7 +10,7 @@ import { initiateBlockedByStatus } from '@/lib/ca-review/submission-guards';
 
 export async function POST(req: NextRequest) {
   try {
-    const claims = getTokenClaims(req);
+    const claims = await getTokenClaims(req);
     if (!claims) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -54,6 +55,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Company verification error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
@@ -84,6 +87,7 @@ async function initiateCompanyVerification(
     const verificationPayload: TablesUpdate<'company_verifications'> = {
       company_name: companyName,
       verification_status: 'pending',
+      rejection_reason: null,
     };
     if (entered.gst) verificationPayload.gst_number = entered.gst;
     if (entered.registration_number) verificationPayload.registration_number = entered.registration_number;
@@ -130,7 +134,8 @@ async function initiateCompanyVerification(
             documents: documents || {},
             entered_fields: entered,
             submitted_at: new Date().toISOString(),
-            status: 'pending'
+            status: 'pending',
+            rejection_reason: '',
           }
         }
       },
@@ -220,6 +225,7 @@ async function reverifyCompanyVerification(
             company: {
               ...(existingVerificationDocs.company || {}),
               reverification_status: 'pending',
+              reverification_rejection_reason: '',
               reverification_documents: documents || {},
               reverification_submitted_at: new Date().toISOString(),
               reverification_entered_fields: entered,
@@ -251,7 +257,7 @@ async function reverifyCompanyVerification(
 
 export async function GET(req: NextRequest) {
   try {
-    const claims = getTokenClaims(req);
+    const claims = await getTokenClaims(req);
     if (!claims) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -311,6 +317,8 @@ export async function GET(req: NextRequest) {
       verifiedAt: record.verification_date
     });
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Get company verification status error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },

@@ -16,6 +16,12 @@ export type ServiceOfferLite = {
   provider_name?: string | null
   verified?: boolean | null
   verification_status?: string | null
+  city?: string | null
+  state_province?: string | null
+  location?: string | null
+  coverage_area?: string | null
+  location_scope?: string | null
+  price_amount?: number | string | null
 }
 
 export type CoverageLabel = 'full' | 'partial' | 'possible'

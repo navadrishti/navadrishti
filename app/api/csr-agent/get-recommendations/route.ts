@@ -7,7 +7,8 @@ import {
   type CapabilityMatch,
 } from "@/lib/csr-agent/find-service-offers";
 import { buildRequirementDetails } from "@/lib/csr-agent/recommendation-utils";
-import { findAuthUser } from "@/lib/server-auth";
+import { authErrorResponse, getAuthUserFromRequest } from "@/lib/server-auth";
+import { toUserFacingError, zodIssuesToUserMessage } from "@/lib/user-facing-error";
 
 type RecommendationResponse =
   | { success: true; data: CapabilityMatch[] }
@@ -26,11 +27,11 @@ const RequestCoercionSchema = z
     requirementDetails: z.coerce.string().trim().optional().default(""),
   })
   .refine((data) => Number.isFinite(data.budget) && data.budget > 0, {
-    message: "budget must be a positive number",
+    message: "Enter a budget greater than zero.",
     path: ["budget"],
   })
-  .refine((data) => data.start_date < data.end_date, {
-    message: "start_date must be before end_date",
+  .refine((data) => data.end_date.getTime() >= data.start_date.getTime(), {
+    message: "The campaign end date needs to be after the start date.",
     path: ["end_date"],
   });
 
@@ -151,7 +152,6 @@ const findServiceOffersFallback = async (input: z.infer<typeof RequestCoercionSc
     .from("service_offers")
     .select("id,title,description,offer_type,transaction_type,impact_area,city,state_province,price_amount,price_type,tags,requirements")
     .eq("status", "active")
-    .eq("admin_status", "approved")
     .or(`price_type.neq.fixed,price_amount.lte.${input.budget}`)
     .limit(200);
 
@@ -177,14 +177,8 @@ const findServiceOffersFallback = async (input: z.infer<typeof RequestCoercionSc
 };
 
 export async function POST(request: NextRequest) {
-  if (!findAuthUser(request, { allowCookie: true })) {
-    return NextResponse.json<RecommendationResponse>(
-      { success: false, error: "Login required" },
-      { status: 401 }
-    );
-  }
-
   try {
+    await getAuthUserFromRequest(request);
     const body = await request.json();
 
     const coerced = RequestCoercionSchema.safeParse(body);
@@ -192,8 +186,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json<RecommendationResponse>(
         {
           success: false,
-          error: "Validation failed",
-          details: coerced.error.flatten().fieldErrors,
+          error: zodIssuesToUserMessage(coerced.error.issues),
         },
         { status: 400 }
       );
@@ -213,8 +206,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json<RecommendationResponse>(
         {
           success: false,
-          error: "Validation failed",
-          details: validation.error.flatten().fieldErrors,
+          error: zodIssuesToUserMessage(validation.error.issues),
         },
         { status: 400 }
       );
@@ -228,7 +220,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json<RecommendationResponse>(
         {
           success: false,
-          error: err instanceof Error ? err.message : "Failed to fetch recommendations",
+          error: toUserFacingError(err instanceof Error ? err.message : "Failed to fetch recommendations"),
         },
         { status: 500 }
       );
@@ -257,6 +249,8 @@ export async function POST(request: NextRequest) {
       data: fallbackMatches,
     });
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error("get-recommendations route error:", error);
     return NextResponse.json<RecommendationResponse>(
       {

@@ -46,20 +46,19 @@ export async function syncPaymentRefundStatus(
 }
 
 /**
- * Stores the refund as pending if it is new. The refunds table must allow nullable
- * service_request_id because several supported payment types are not tied to a service request.
+ * Stores the refund as pending if it is new. service_request_id may be null for
+ * payment types that are not tied to a service request (e.g. CSR milestones).
  */
 export async function recordRefund(record: RefundRecord): Promise<{ recorded: boolean }> {
   const nowIso = new Date().toISOString();
   const { error } = await supabase.from('razorpay_refunds').upsert(
-    // The generated type predates the nullable column; a null here fails with 23502 until it is migrated.
-    { ...record, service_request_id: record.service_request_id as number, refund_status: 'pending', initiated_at: nowIso, updated_at: nowIso },
+    { ...record, refund_status: 'pending', initiated_at: nowIso, updated_at: nowIso },
     { onConflict: 'razorpay_refund_id', ignoreDuplicates: true }
   );
   if (!error) return { recorded: true };
   if (error.code === '23502' && record.service_request_id === null) {
     throw new Error(
-      'Refund ledger cannot record a payment without a service request. Apply the refunds schema migration before processing this refund.'
+      'Refund ledger rejected a null service_request_id. The razorpay_refunds schema must allow nullable service_request_id.'
     );
   }
   throw error;

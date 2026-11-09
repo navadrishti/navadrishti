@@ -1,8 +1,10 @@
+import { toast } from 'sonner'
+import { readApiError } from '@/lib/user-facing-error'
 import { useEffect, useEffectEvent, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { isCaVerifiedAccount } from '@/lib/auth'
 import { useAuth } from '@/lib/auth-context'
 import { useNow } from '@/hooks/use-now'
-import { useToast } from '@/hooks/use-toast'
 import { getCapabilityNeedRequestTypes, isCapabilityRentalTransaction } from '@/lib/service-offers'
 import { isNeedOpenForListing } from '@/lib/service-request-allocation'
 import { openRazorpayCheckout } from '@/lib/razorpay-checkout'
@@ -12,7 +14,6 @@ import type { ClientApplication, NgoNeedOption, ServiceOffer, ServiceRequestList
 export function useServiceOffer(offerId: string) {
   const router = useRouter()
   const { user, token, loading: authLoading } = useAuth()
-  const { toast } = useToast()
   const [offer, setOffer] = useState<ServiceOffer | null>(null)
   const [userApplication, setUserApplication] = useState<ClientApplication | null>(null)
   const [loading, setLoading] = useState(true)
@@ -41,20 +42,12 @@ export function useServiceOffer(offerId: string) {
         const data = await response.json()
         setOffer(data)
       } else {
-        toast({
-          title: "Error",
-          description: "Failed to load service offer details",
-          variant: "destructive"
-        })
+        toast.error("Error", { description: "Failed to load service offer details" })
         router.push('/service-offers')
       }
     } catch (error) {
       console.error('Error fetching offer:', error)
-      toast({
-        title: "Error",
-        description: "Failed to load service offer details",
-        variant: "destructive"
-      })
+      toast.error("Error", { description: "Failed to load service offer details" })
     } finally {
       setLoading(false)
     }
@@ -123,7 +116,7 @@ export function useServiceOffer(offerId: string) {
 
   useEffect(() => {
     if (offerId && !authLoading) loadOffer()
-  }, [offerId, authLoading, isAuthenticated, user])
+  }, [offerId, authLoading, isAuthenticated, user?.id])
 
   const loadNgoNeeds = useEffectEvent(() => {
     if (isAuthenticated && user?.user_type === 'ngo' && offer) {
@@ -137,59 +130,35 @@ export function useServiceOffer(offerId: string) {
 
   const handleApply = async () => {
     if (!isAuthenticated || !user) {
-      toast({
-        title: "Authentication Required",
-        description: "Please log in to apply for this service offer",
-        variant: "destructive"
-      })
+      toast.error("Authentication Required", { description: "Please log in to apply for this service offer" })
       router.push('/login')
       return
     }
 
-    if (offer && user.id === offer.creator_id) {
-      toast({
-        title: "Not Allowed",
-        description: "You cannot apply to your own capability offer",
-        variant: "destructive"
-      })
+    if (offer && Number(user.id) === Number(offer.creator_id)) {
+      toast.error("Not Allowed", { description: "You cannot apply to your own capability offer" })
       return
     }
 
     if (user.user_type !== 'ngo') {
-      toast({
-        title: 'NGO only',
-        description: 'Only NGOs can apply from this offer details page.',
-        variant: 'destructive'
-      })
+      toast.error('NGO only', { description: 'Only NGOs can apply from this offer details page.' })
       return
     }
 
     if (isOfferExpired) {
-      toast({
-        title: 'Offer expired',
-        description: 'This capability offer has already expired.',
-        variant: 'destructive'
-      })
+      toast.error('Offer expired', { description: 'This capability offer has already expired.' })
       return
     }
 
     if (selectedNeedIds.length === 0) {
-      toast({
-        title: 'Select a need',
-        description: 'Please select one active need before submitting.',
-        variant: "destructive"
-      })
+      toast.error('Select a need', { description: 'Please select one active need before submitting.' })
       return
     }
 
     const isRentalOffer = isCapabilityRentalTransaction(offer?.transaction_type)
     const offerAmount = Number(offer?.price_amount || 0)
     if (!isRentalOffer && Number.isFinite(offerAmount) && offerAmount > 0 && selectedNeedTotal > offerAmount) {
-      toast({
-        title: 'Selection exceeds offer value',
-        description: 'Please choose needs whose total value fits within the offer amount.',
-        variant: 'destructive'
-      })
+      toast.error('Selection exceeds offer value', { description: 'Please choose needs whose total value fits within the offer amount.' })
       return
     }
 
@@ -214,39 +183,26 @@ export function useServiceOffer(offerId: string) {
         const newApplication = await response.json()
         setUserApplication(newApplication)
         setSelectedNeedIds([])
-        toast({
-          title: "Application Submitted",
-          description: "Your request has been submitted for the selected needs.",
-        })
+        toast.success("Application Submitted", { description: "Your request has been submitted for the selected needs." })
       } else {
         const error = await response.json()
-        const errorMsg = error.error || 'Failed to submit application'
+        const errorMsg = readApiError(error, 'Failed to submit application')
 
         if (error.requiresVerification || response.status === 403) {
-          const verificationMessage = error.message || 'Please complete account verification before hiring services.'
-          toast({
-            title: "Verification Required",
-            description: verificationMessage,
-            variant: "destructive"
-          })
+          const verificationMessage = typeof error.message === 'string' && error.message.trim()
+            ? error.message
+            : 'Please complete account verification before hiring services.'
+          toast.error("Verification Required", { description: verificationMessage })
           setTimeout(() => {
             router.push('/verification')
           }, 3000)
         } else {
-          toast({
-            title: "Application Failed",
-            description: errorMsg,
-            variant: "destructive"
-          })
+          toast.error("Application Failed", { description: errorMsg })
         }
       }
     } catch (error) {
       console.error('Error applying:', error)
-      toast({
-        title: "Error",
-        description: "Failed to submit application",
-        variant: "destructive"
-      })
+      toast.error("Error", { description: "Failed to submit application" })
     } finally {
       setApplying(false)
     }
@@ -254,6 +210,7 @@ export function useServiceOffer(offerId: string) {
 
   const handlePayForApplication = async () => {
     if (!offer || !user || !token || !userApplication) return
+    if (!isCaVerifiedAccount(user.verification_status)) return
 
     setPaying(true)
     try {
@@ -266,12 +223,15 @@ export function useServiceOffer(offerId: string) {
       })
 
       const orderPayload = await orderResponse.json()
-      if (!orderResponse.ok || !orderPayload?.success || !orderPayload?.data?.paymentRequired) {
-        toast({
-          title: 'Unable to start payment',
-          description: orderPayload?.error || 'This application does not require payment.',
-          variant: 'destructive'
-        })
+      if (!orderResponse.ok || !orderPayload?.success) {
+        toast.error('Unable to start payment', { description: readApiError(orderPayload, 'This application does not require payment.') })
+        return
+      }
+
+      if (!orderPayload?.data?.paymentRequired) {
+        toast.success('No payment due', { description: orderPayload?.data?.message || 'This application does not require payment.' })
+        checkExistingApplication()
+        fetchOfferDetails()
         return
       }
 
@@ -299,37 +259,22 @@ export function useServiceOffer(offerId: string) {
 
           const verifyPayload = await verifyResponse.json()
           if (!verifyResponse.ok || !verifyPayload?.success) {
-            toast({
-              title: 'Payment verification failed',
-              description: verifyPayload?.error || 'Please contact support with the payment reference.',
-              variant: 'destructive'
-            })
+            toast.error('Payment verification failed', { description: readApiError(verifyPayload, 'Please contact support with the payment reference.') })
             return
           }
 
-          toast({
-            title: 'Payment successful',
-            description: verifyPayload?.data?.message || 'Your linked service request has been updated.'
-          })
+          toast.success('Payment successful', { description: verifyPayload?.data?.message || 'Your linked service request has been updated.' })
 
           checkExistingApplication()
           fetchOfferDetails()
         },
         onFailure: (error) => {
-          toast({
-            title: 'Payment failed',
-            description: error.description || error.reason || 'The payment provider could not complete the payment.',
-            variant: 'destructive'
-          })
+          toast.error('Payment failed', { description: error.description || error.reason || 'The payment provider could not complete the payment.' })
         },
       })
     } catch (error) {
       console.error('Error starting offer payment:', error)
-      toast({
-        title: 'Payment failed',
-        description: error instanceof Error ? error.message : 'Could not open online payment.',
-        variant: 'destructive'
-      })
+      toast.error('Payment failed', { description: readApiError(error, 'Could not open online payment.') })
     } finally {
       setPaying(false)
     }

@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GET as listEngagements } from '@/app/api/service-assignments/route'
 import { GET, POST, PUT } from '@/app/api/service-request-assignments/route'
 import { jsonRequest, tokenFor } from './support/requests'
-import { callsOf, createSupabaseFake, eqsOf, unknownColumns, type FakeQuery, type FakeResult } from './support/supabase-fake'
+import './support/install-test-auth'
+import { businessQueries, callsOf, createSupabaseFake, eqsOf, unknownColumns, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => {
   const handler = (name: string) => vi.fn(async () => NextResponse.json({ handler: name }))
@@ -105,7 +106,7 @@ describe('GET /api/service-request-assignments', () => {
     useDb(() => ({ data: [{ id: 1 }] }))
     const { json } = await read(await GET(jsonRequest(`${URL_BASE}?view=${view}`, { token: tokenFor(7, 'individual') })))
     expect(json).toEqual({ success: true, data: [{ id: 1 }] })
-    const [query] = fake.queries
+    const [query] = businessQueries(fake.queries)
     expect(query.table).toBe('service_request_applications')
     expect(eqsOf(query)).toEqual({ applicant_user_id: 7 })
     expect(callsOf(query, 'in')).toEqual(statusFilter)
@@ -115,6 +116,9 @@ describe('GET /api/service-request-assignments', () => {
     useDb((query) => {
       if (query.table === 'service_requests') {
         return { data: [{ id: 11, status: 'active' }, { id: 12, status: 'completed' }] }
+      }
+      if (query.table === 'service_request_contributions') {
+        return { data: [] }
       }
       return {
         data: [
@@ -128,12 +132,90 @@ describe('GET /api/service-request-assignments', () => {
 
     const { json } = await read(await GET(jsonRequest(URL_BASE, { token: tokenFor(1, 'ngo') })))
 
-    const [requests, applications] = fake.queries
+    const requests = fake.queries.find((query) => query.table === 'service_requests')
+    const applications = fake.queries.find((query) => query.table === 'service_request_applications')
     expect(eqsOf(requests)).toEqual({ ngo_id: 1 })
     expect(callsOf(applications, 'in')).toEqual([['service_request_id', [11, 12]]])
     expect(json.data).toHaveLength(1)
     expect(json.data[0]).toMatchObject({ id: 11, accepted_count: 2, pending_count: 1, completed_count: 1 })
     expect(json.data[0].assignments[0]).toMatchObject({ message: 'hi' })
+  })
+
+  it('keeps leftover pending skill applications while remaining units are still open', async () => {
+    useDb((query) => {
+      if (query.table === 'service_requests') {
+        return {
+          data: [{
+            id: 11,
+            status: 'active',
+            request_type: 'Skill / Service Need',
+            target_quantity: 201,
+            remaining_quantity: 200,
+          }],
+        }
+      }
+      if (query.table === 'service_request_contributions') {
+        return { data: [] }
+      }
+      return {
+        data: [
+          { id: 1, service_request_id: 11, status: 'completed' },
+          { id: 2, service_request_id: 11, status: 'pending', response_meta: {} },
+        ],
+      }
+    })
+
+    const { json } = await read(await GET(jsonRequest(URL_BASE, { token: tokenFor(1, 'ngo') })))
+    expect(json.data[0]).toMatchObject({ accepted_count: 1, pending_count: 1 })
+    expect(json.data[0].assignments.map((item: { id: number; status: string }) => [item.id, item.status])).toEqual([
+      [1, 'completed'],
+      [2, 'pending'],
+    ])
+    expect(
+      fake.queries.some((query) => query.table === 'service_request_applications' && query.op === 'update' && query.payload)
+    ).toBe(false)
+  })
+
+  it('closes leftover pending applications once remaining target is zero', async () => {
+    useDb((query) => {
+      if (query.table === 'service_requests' && query.op === 'select') {
+        return {
+          data: [{
+            id: 11,
+            status: 'active',
+            request_type: 'Skill / Service Need',
+            target_quantity: 1,
+            remaining_quantity: 0,
+          }],
+        }
+      }
+      if (query.table === 'service_request_contributions') {
+        return { data: [] }
+      }
+      if (query.table === 'service_requests' && query.op === 'update') {
+        return { data: [{ id: 11, status: 'completed' }] }
+      }
+      return {
+        data: [
+          { id: 1, service_request_id: 11, status: 'accepted' },
+          { id: 2, service_request_id: 11, status: 'pending', response_meta: {} },
+        ],
+      }
+    })
+
+    const { json } = await read(await GET(jsonRequest(`${URL_BASE}?view=history`, { token: tokenFor(1, 'ngo') })))
+    expect(json.data[0]).toMatchObject({ accepted_count: 1, pending_count: 0 })
+    expect(json.data[0].assignments.map((item: { id: number; status: string }) => [item.id, item.status])).toEqual([
+      [1, 'accepted'],
+      [2, 'rejected'],
+    ])
+    const autoReject = fake.queries.find(
+      (query) => query.table === 'service_request_applications' && query.op === 'update' && query.payload
+    )
+    expect(autoReject?.payload).toMatchObject({
+      status: 'rejected',
+      response_meta: { auto_rejected_reason: 'need_fully_allocated' },
+    })
   })
 
   it('shows an NGO its finished needs in history', async () => {
@@ -142,10 +224,107 @@ describe('GET /api/service-request-assignments', () => {
     expect(json.data.map((item: { id: number }) => item.id)).toEqual([12])
   })
 
+  it('keeps a fully assigned material need on ongoing until Delhivery reports delivered', async () => {
+    useDb((query) => {
+      if (query.table === 'service_requests') {
+        return {
+          data: [
+            {
+              id: 11,
+              status: 'completed',
+              request_type: 'Material Need',
+              target_quantity: 1,
+              remaining_quantity: 0,
+            },
+          ],
+        }
+      }
+      if (query.table === 'service_request_contributions') {
+        return { data: [] }
+      }
+      return { data: [{ id: 1, service_request_id: 11, status: 'accepted' }] }
+    })
+
+    const ongoing = await read(await GET(jsonRequest(`${URL_BASE}?view=ongoing`, { token: tokenFor(1, 'ngo') })))
+    const history = await read(await GET(jsonRequest(`${URL_BASE}?view=history`, { token: tokenFor(1, 'ngo') })))
+    expect(ongoing.json.data.map((item: { id: number }) => item.id)).toEqual([11])
+    expect(history.json.data).toEqual([])
+    expect(
+      fake.queries.some((query) => query.table === 'service_requests' && query.op === 'update' && (query.payload as { status?: string })?.status === 'completed')
+    ).toBe(false)
+  })
+
+  it('moves a delivered material need into history even while its row is still active', async () => {
+    useDb((query) => {
+      if (query.table === 'service_requests' && query.op === 'select') {
+        return {
+          data: [
+            {
+              id: 11,
+              status: 'active',
+              request_type: 'Material Need',
+              target_quantity: 1,
+              remaining_quantity: 0,
+            },
+          ],
+        }
+      }
+      if (query.table === 'service_request_contributions') {
+        return { data: [] }
+      }
+      if (query.table === 'service_requests' && query.op === 'update') {
+        return { data: [{ id: 11, status: 'completed' }] }
+      }
+      return {
+        data: [{
+          id: 1,
+          service_request_id: 11,
+          status: 'accepted',
+          response_meta: { delivery_tracking_last_status: 'Delivered' },
+        }],
+      }
+    })
+
+    const history = await read(await GET(jsonRequest(`${URL_BASE}?view=history`, { token: tokenFor(1, 'ngo') })))
+    expect(history.json.data.map((item: { id: number }) => item.id)).toEqual([11])
+    const complete = fake.queries.find(
+      (query) => query.table === 'service_requests' && query.op === 'update'
+    )
+    expect(complete?.payload).toMatchObject({ status: 'completed' })
+    expect(callsOf(complete, 'in')).toEqual([['status', ['active', 'in_progress']]])
+  })
+
+  it('keeps a need with remaining units on ongoing even if a volunteer already finished', async () => {
+    useDb((query) => {
+      if (query.table === 'service_requests') {
+        return {
+          data: [
+            {
+              id: 11,
+              status: 'completed',
+              request_type: 'Skill / Service Need',
+              target_quantity: 201,
+              remaining_quantity: 200,
+            },
+          ],
+        }
+      }
+      if (query.table === 'service_request_contributions') {
+        return { data: [] }
+      }
+      return { data: [{ id: 1, service_request_id: 11, status: 'completed' }] }
+    })
+
+    const ongoing = await read(await GET(jsonRequest(`${URL_BASE}?view=ongoing`, { token: tokenFor(1, 'ngo') })))
+    const history = await read(await GET(jsonRequest(`${URL_BASE}?view=history`, { token: tokenFor(1, 'ngo') })))
+    expect(ongoing.json.data.map((item: { id: number }) => item.id)).toEqual([11])
+    expect(history.json.data).toEqual([])
+  })
+
   it('skips the application lookup for an NGO without needs', async () => {
     useDb(() => ({ data: [] }))
     await GET(jsonRequest(URL_BASE, { token: tokenFor(1, 'ngo') }))
-    expect(fake.queries.map((query) => query.table)).toEqual(['service_requests'])
+    expect(businessQueries(fake.queries).map((query) => query.table)).toEqual(['service_requests'])
   })
 
   it('refuses the default listing for companies', async () => {
@@ -232,7 +411,7 @@ describe('GET /api/service-assignments', () => {
     useDb(() => ({ data: [{ id: 'a1' }] }))
     const { json } = await read(await listEngagements(jsonRequest(`${ENGAGEMENTS}${query}`, { token: tokenFor(4, 'ngo') })))
     expect(json).toEqual({ success: true, data: [{ id: 'a1' }] })
-    const [select] = fake.queries
+    const [select] = businessQueries(fake.queries)
     expect(select.table).toBe('service_engagement_assignments')
     expect(eqsOf(select)).toEqual(eqs)
     expect(callsOf(select, 'or')).toEqual(or)
@@ -242,7 +421,7 @@ describe('GET /api/service-assignments', () => {
 
   it('filters by target type', async () => {
     await listEngagements(jsonRequest(`${ENGAGEMENTS}?role=owned&targetType=campaign`, { token: tokenFor(4, 'company') }))
-    expect(eqsOf(fake.queries[0])).toEqual({ owner_user_id: 4, target_type: 'campaign' })
+    expect(eqsOf(businessQueries(fake.queries)[0])).toEqual({ owner_user_id: 4, target_type: 'campaign' })
   })
 
   it('returns a generic 500 on query errors and logs the detail', async () => {

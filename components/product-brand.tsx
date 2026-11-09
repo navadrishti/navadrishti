@@ -1,6 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { cn } from '@/lib/utils';
+import { cn, getCalendarYearIst } from '@/lib/utils';
 import {
   PRODUCT_BRAND_CLASSNAME,
   PRODUCT_LOGO_SRC,
@@ -119,7 +119,7 @@ export function ProductCopyright({
         className
       )}
     >
-      <span>© {new Date().getFullYear()}</span>
+      <span>© {getCalendarYearIst()}</span>
       <Image
         src={PRODUCT_LOGO_SRC}
         alt=""
@@ -143,7 +143,7 @@ export function ConsoleFooter() {
     <footer className="mt-auto bg-platform-sidebar text-white">
       <div className="udaan-container px-4 py-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-center gap-3 text-sm text-white">
-          <span>© {new Date().getFullYear()}</span>
+          <span>© {getCalendarYearIst()}</span>
           <ProductBrand size="xs" className="text-white" />
         </div>
       </div>

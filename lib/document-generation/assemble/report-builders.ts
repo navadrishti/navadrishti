@@ -7,7 +7,7 @@ import {
   type UtilizationCertificateData,
 } from '@/lib/document-generation/templates/company/csr-compliance-profile'
 import { parseJsonObject } from '@/lib/utils'
-import { milestonesFromCampaign, milestonesFromProject, pickLatestImpact } from './project-data'
+import { milestonesFromCampaign, milestonesFromProject, nullableMetric, pickLatestImpact } from './project-data'
 import type { CampaignRow, CsrProjectDetail } from './types'
 import { asNumber, asString, defaultPeriodBounds, periodLabel, slugify } from './values'
 
@@ -97,9 +97,9 @@ export function buildImpactFromProject(args: {
     scheduleVii: asString(args.project.schedule_vii || campaign.schedule_vii) || null,
     sdgAlignment: Array.isArray(campaign.sdg_alignment) ? campaign.sdg_alignment : [],
     budgetInr: asNumber(args.project.budget_inr ?? campaign.budget_inr),
-    fundsUtilized: asNumber(impact?.funds_utilized),
-    beneficiaries: asNumber(impact?.beneficiaries),
-    progressPercentage: asNumber(impact?.progress_percentage),
+    fundsUtilized: nullableMetric(impact?.funds_utilized),
+    beneficiaries: nullableMetric(impact?.beneficiaries),
+    progressPercentage: nullableMetric(impact?.progress_percentage),
     status: asString(args.project.project_status || args.project.status) || null,
     partnerName: args.partnerName || null,
     description: asString(args.project.description || campaign.description) || null,

@@ -18,12 +18,14 @@ import {
 } from '@/lib/service-engagement'
 import { razorpaySignature } from './support/requests'
 import { argOf, createSupabaseFake, eqValue, hasCall, type FakeQuery } from './support/supabase-fake'
+import './support/install-test-auth'
 
 const mocks = vi.hoisted(() => ({
   supabase: { from: vi.fn() },
   razorpay: { orders: { create: vi.fn(), fetch: vi.fn() }, payments: { fetch: vi.fn(), refund: vi.fn() } },
 }))
 
+vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db', () => ({ supabase: mocks.supabase, db: {} }))
 vi.mock('@/lib/email', () => ({ emailService: {} }))
 vi.mock('razorpay', () => ({
@@ -45,7 +47,11 @@ function matchesUpdatedAtGuard(query: FakeQuery, campaign: Row) {
   return !nullGuard || campaign.updated_at == null
 }
 
-function useCampaignDb(initial: Row, offerOverrides: Row = { id: 7, creator_id: 40, offer_type: 'service', unit_rate: 2000 }) {
+function useCampaignDb(
+  initial: Row,
+  offerOverrides: Row = { id: 7, creator_id: 40, offer_type: 'service', unit_rate: 2000 },
+  userRow: Row = {},
+) {
   const offer = { status: 'active', ...offerOverrides }
   const state = { campaign: { ...initial } }
   const fake = createSupabaseFake((query) => {
@@ -60,11 +66,27 @@ function useCampaignDb(initial: Row, offerOverrides: Row = { id: 7, creator_id: 
     }
     if (query.table === 'service_offers') return { data: offer }
     if (query.table === 'service_clients') {
-      const isAvailabilityCheck = eqValue(query, 'status') === 'accepted' && !hasCall(query, 'insert') && !hasCall(query, 'upsert')
-      return isAvailabilityCheck ? { data: acceptedClients } : { data: { id: 81 } }
+      if (hasCall(query, 'insert') || query.op === 'insert' || hasCall(query, 'update') || query.op === 'update') {
+        return { data: { id: 81 } }
+      }
+      const isAvailabilityCheck = eqValue(query, 'status') === 'accepted'
+      if (isAvailabilityCheck) return { data: acceptedClients }
+      if (eqValue(query, 'client_id')) return { data: null }
+      return { data: { id: 81 } }
     }
-    if (query.table === 'service_engagement_assignments') return { data: { id: 'asg_1' } }
-    if (query.table === 'users') return { data: { profile_data: { razorpay_linked_account_id: 'acc_provider', razorpay_link_status: 'active' } } }
+    if (query.table === 'service_engagement_assignments') {
+      if (hasCall(query, 'insert') || query.op === 'insert') return { data: { id: 'asg_1' } }
+      return { data: null }
+    }
+    if (query.table === 'users') {
+      return {
+        data: {
+          verification_status: 'verified',
+          profile_data: { razorpay_linked_account_id: 'acc_provider', razorpay_link_status: 'active' },
+          ...userRow,
+        },
+      }
+    }
     return undefined
   })
   mocks.supabase.from.mockImplementation(fake.from)
@@ -205,6 +227,14 @@ describe('update-campaign route', () => {
   ])('requires a company login (%s)', async (_label, token, expected) => {
     const { status } = await send(POST, request('POST', { action: 'capability_rental_create_order' }, token))
     expect(status).toBe(expected)
+  })
+
+  it('refuses unverified companies the same way as NGO network payments', async () => {
+    useCampaignDb(baseCampaign, undefined, { verification_status: 'unverified' })
+    const { status, body } = await send(POST, request('POST', { action: 'capability_rental_create_order', campaign_id: CAMPAIGN_ID, offer_id: 7 }))
+    expect(status).toBe(403)
+    expect(String(body.error)).toMatch(/CA-verified/i)
+    expect(mocks.razorpay.orders.create).not.toHaveBeenCalled()
   })
 
   it('maps a missing lead NGO to 409', async () => {
@@ -511,10 +541,13 @@ describe('update-campaign route', () => {
     expect(body.error).toBe('No update fields provided')
   })
 
-  it('PUT refuses to edit an active campaign', async () => {
-    useCampaignDb({ ...baseCampaign, status: 'active' })
-    const { status } = await send(PUT, request('PUT', { campaign_id: CAMPAIGN_ID, company_id: 3, campaign: { title: 'x' } }))
-    expect(status).toBe(409)
+  it('PUT updates an active campaign without changing its status', async () => {
+    const { fake, state } = useCampaignDb({ ...baseCampaign, status: 'active' })
+    const { status, body } = await send(PUT, request('PUT', { campaign_id: CAMPAIGN_ID, company_id: 3, campaign: { title: 'x' } }))
+    expect(status).toBe(200)
+    expect(body).toMatchObject({ success: true, data: [{ status: 'active' }] })
+    expect(state.campaign.title).toBe('x')
+    expect(fake.writes('campaigns')).toHaveLength(1)
   })
 })
 

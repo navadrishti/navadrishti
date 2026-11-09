@@ -2,6 +2,14 @@ export const CA_QUEUE_TYPES = ['individuals', 'companies', 'ngos'] as const
 
 export type CAQueueType = (typeof CA_QUEUE_TYPES)[number]
 
+/** Returns a literal queue key so request strings never reach logs or queries. */
+export function parseCAQueueType(value: unknown): CAQueueType | null {
+  if (value === 'individuals') return 'individuals'
+  if (value === 'companies') return 'companies'
+  if (value === 'ngos') return 'ngos'
+  return null
+}
+
 export type CAReviewDocument = {
   id: string
   key: string

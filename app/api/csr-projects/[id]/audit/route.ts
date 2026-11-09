@@ -1,43 +1,69 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isCompanyCaAssignedToProject } from '@/lib/company-ca';
 import { supabase } from '@/lib/db';
-import { findAuthUser, hasActiveCASession, getCompanyCAFromRequest } from '@/lib/server-auth';
+import { findAuthUser, getAuthUserFromRequest, hasActiveCASession, getCompanyCAFromRequest, authErrorResponse } from '@/lib/server-auth';
 import type { UserData } from '@/lib/auth';
 import type { Tables } from '@/lib/database.types';
+import { isProjectFinancialLead } from '@/lib/csr-agent/project-financial-access';
+import { resolveNgoProjectViewer } from '@/lib/csr-agent/ngo-project-viewer';
 
 type IdRow = { id: string };
 
 type ProjectViewer = {
   isPlatformCA: boolean;
-  companyCAUserId: number | null;
+  companyCACompanyUserId: number | null;
+  companyCALoginUserId: number | null;
   user: UserData | null;
 };
 
 async function resolveProjectViewer(request: NextRequest): Promise<ProjectViewer | null> {
+  const ngo = await resolveNgoProjectViewer(request);
+  if (ngo) {
+    return { isPlatformCA: false, companyCACompanyUserId: null, companyCALoginUserId: null, user: ngo };
+  }
   if (await hasActiveCASession(request)) {
-    return { isPlatformCA: true, companyCAUserId: null, user: null };
+    return {
+      isPlatformCA: true,
+      companyCACompanyUserId: null,
+      companyCALoginUserId: null,
+      user: null,
+    };
   }
 
-  let companyCAUserId: number | null = null;
+  let companyCACompanyUserId: number | null = null;
+  let companyCALoginUserId: number | null = null;
   try {
-    companyCAUserId = (await getCompanyCAFromRequest(request)).identity.company_user_id;
+    const companyCA = await getCompanyCAFromRequest(request);
+    companyCACompanyUserId = companyCA.identity.company_user_id;
+    companyCALoginUserId = companyCA.user.id;
   } catch {
     // Fall through to user token auth.
   }
 
-  const user = findAuthUser(request);
-  if (companyCAUserId === null && !user) {
+  const user = findAuthUser(request) ? await getAuthUserFromRequest(request) : null;
+  if (companyCACompanyUserId === null && !user) {
     return null;
   }
 
-  return { isPlatformCA: false, companyCAUserId, user };
+  return { isPlatformCA: false, companyCACompanyUserId, companyCALoginUserId, user };
 }
 
-function canAccessProject(
+async function canAccessProject(
   viewer: ProjectViewer,
-  project: Pick<Tables<'csr_projects'>, 'company_user_id' | 'ngo_user_id'>
-): boolean {
-  if (viewer.isPlatformCA || viewer.companyCAUserId === project.company_user_id) {
-    return true;
+  project: Pick<Tables<'csr_projects'>, 'id' | 'company_user_id' | 'ngo_user_id'>
+): Promise<boolean> {
+  if (viewer.isPlatformCA) return true;
+
+  if (
+    viewer.companyCACompanyUserId != null &&
+    viewer.companyCALoginUserId != null &&
+    viewer.companyCACompanyUserId === project.company_user_id
+  ) {
+    return isCompanyCaAssignedToProject({
+      companyCaUserId: viewer.companyCALoginUserId,
+      companyUserId: viewer.companyCACompanyUserId,
+      projectId: String(project.id),
+    });
   }
 
   const { user } = viewer;
@@ -65,7 +91,7 @@ export async function GET(
 
     const { data: project, error: projectError } = await supabase
       .from('csr_projects')
-      .select('*')
+      .select('*, campaigns(lead_ngo_user_id)')
       .eq('id', projectId)
       .single();
 
@@ -73,7 +99,11 @@ export async function GET(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    if (!canAccessProject(viewer, project)) {
+    if (!(await canAccessProject(viewer, project))) {
+      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
+    }
+    if (viewer.user?.user_type === 'ngo' && !viewer.isPlatformCA &&
+        viewer.companyCACompanyUserId === null && !isProjectFinancialLead(project, viewer.user.id)) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
 
@@ -93,7 +123,7 @@ export async function GET(
         : Promise.resolve({ data: [] as IdRow[] }),
       milestoneIds.length > 0
         ? supabase.from('csr_payment_confirmations').select('id').in('milestone_id', milestoneIds)
-        : Promise.resolve({ data: [] as IdRow[] })
+        : Promise.resolve({ data: [] as IdRow[] }),
     ]);
 
     const auditEntityIds = [
@@ -101,7 +131,7 @@ export async function GET(
       ...(milestoneIds ?? []),
       ...((evidence.data ?? []).map((item) => item.id)),
       ...((reviews.data ?? []).map((item) => item.id)),
-      ...((payments.data ?? []).map((item) => item.id))
+      ...((payments.data ?? []).map((item) => item.id)),
     ];
 
     const { data: logs, error: logError } = await supabase
@@ -118,6 +148,8 @@ export async function GET(
 
     return NextResponse.json({ success: true, data: logs ?? [] });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error('CSR project audit history error:', error);
     return NextResponse.json({ error: 'Failed to fetch CSR audit history' }, { status: 500 });
   }

@@ -1,3 +1,5 @@
+import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 import { useState, type Dispatch, type SetStateAction } from 'react'
 import { parseImageUrls, withoutIndex } from './helpers'
 import type { NeedDraft, UploadProgressState } from './types'
@@ -34,7 +36,7 @@ export function useNeedImageUpload(
   const handleNeedImageFiles = async (index: number, files: FileList | null) => {
     if (!files || files.length === 0) return
 
-    const token = localStorage.getItem('token')
+    const token = getClientSessionToken()
     const uploadedUrls: string[] = []
     const failedFiles: string[] = []
     const total = files.length
@@ -58,7 +60,7 @@ export function useNeedImageUpload(
 
         const data = await response.json()
         if (!response.ok || !data.success || !data.data?.url) {
-          throw new Error(data.error || 'Failed to upload image')
+          throw new Error(readApiError(data, 'Failed to upload image'))
         }
 
         uploadedUrls.push(data.data.url)

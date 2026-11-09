@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import CompanyRegistration from '@/app/companies/register/page'
+import { router } from './mocks/navigation'
 import { jsonResponse, mockFetch } from './helpers'
 
 const user = userEvent.setup({ delay: null })
@@ -36,6 +37,7 @@ async function verifyEmail(email = 'hr@acme.com') {
 describe('CompanyRegistration', () => {
   beforeEach(() => {
     auth.error = null
+    auth.signup.mockReset().mockResolvedValue(undefined)
     supabaseAuth.signInWithOtp.mockResolvedValue({ error: null })
     supabaseAuth.verifyOtp.mockResolvedValue({ error: null })
   })
@@ -107,6 +109,45 @@ describe('CompanyRegistration', () => {
 
     await user.type(screen.getByLabelText('Company Name'), 'Acme')
     expect(screen.queryByText('Company name is required')).not.toBeInTheDocument()
+  })
+
+  it('creates the company account after OTP and required fields', async () => {
+    mockFetch(() => jsonResponse({ success: true }))
+    auth.signup.mockResolvedValue(undefined)
+    render(<CompanyRegistration />)
+    await verifyEmail()
+
+    await user.type(screen.getByLabelText('Company Name'), 'Acme Ltd')
+    await user.click(screen.getByText('Select industry').closest('button')!)
+    await user.click(await screen.findByRole('option', { name: 'Technology' }))
+    await user.click(screen.getByText('Select company size').closest('button')!)
+    await user.click(await screen.findByRole('option', { name: '11-50 employees' }))
+    await user.type(screen.getByLabelText('Phone Number'), '9876543210')
+    await user.type(screen.getByLabelText('Password'), 'secret123')
+    await user.type(screen.getByLabelText('Confirm Password'), 'secret123')
+    await user.type(screen.getByLabelText('Registered office address'), '9 Marine Drive')
+    await user.type(screen.getByLabelText('City / Town'), 'Mumbai')
+    await user.click(document.getElementById('state')!)
+    await user.click(await screen.findByRole('option', { name: 'Maharashtra' }))
+    await user.type(screen.getByLabelText('Pincode'), '400001')
+    await user.click(screen.getByRole('button', { name: 'Create Company Account' }))
+
+    expect(auth.signup).toHaveBeenCalledWith(expect.objectContaining({
+      email: 'hr@acme.com',
+      name: 'Acme Ltd',
+      user_type: 'company',
+      phone: '9876543210',
+      city: 'Mumbai',
+      state_province: 'Maharashtra',
+      pincode: '400001',
+      country: 'India',
+      profile_data: expect.objectContaining({
+        company_name: 'Acme Ltd',
+        industry: 'technology',
+        company_size: '11-50',
+      }),
+    }))
+    expect(router.push).toHaveBeenCalledWith('/companies/dashboard')
   })
 
   it('resets verification when the email changes', async () => {

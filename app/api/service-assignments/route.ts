@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { authErrorResponse, getAuthUserFromRequest } from '@/lib/server-auth';
+import { isCampaignVolunteerAssignment, isCsrCapabilityRentalAssignment } from '@/lib/campaign-volunteer-attendance';
 export async function GET(request: NextRequest) {
   try {
-    const user = getAuthUserFromRequest(request);
+    const user = await getAuthUserFromRequest(request);
     const { searchParams } = new URL(request.url);
     const role = String(searchParams.get('role') || 'assigned');
     const targetType = searchParams.get('targetType');
@@ -30,7 +31,13 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    return NextResponse.json({ success: true, data: data || [] });
+    const visible = (data || []).filter((assignment) =>
+      user.user_type !== 'ngo' ||
+      assignment.assignee_user_id !== user.id ||
+      !isCampaignVolunteerAssignment(assignment) ||
+      isCsrCapabilityRentalAssignment(assignment)
+    );
+    return NextResponse.json({ success: true, data: visible });
   } catch (error) {
     const authResponse = authErrorResponse(error);
     if (authResponse) return authResponse;

@@ -95,7 +95,8 @@ describe('PublishStatusSection', () => {
     actionsEnabled: true,
     onPublish: vi.fn(),
   }
-  const waiting = 'Waiting for a lead NGO to accept the invite from their dashboard.'
+  const waiting =
+    'Waiting for a lead NGO to accept the invite from their dashboard. After acceptance, allot an Evidence Verifier so Catalyst can draft.'
 
   it('shows waiting status when a pending invite exists', () => {
     render(<PublishStatusSection {...base} invites={[{ ngoId: 1, name: 'A', email: 'a@x.org', status: 'invited' }]} />)
@@ -115,21 +116,21 @@ describe('PublishStatusSection', () => {
     expect(screen.queryByRole('button', { name: 'Publish' })).not.toBeInTheDocument()
   })
 
-  it('shows publish button once lead accepted and drafts exist', async () => {
+  it('opens draft review then publishes once lead accepted, Evidence Verifier allotted, and drafts exist', async () => {
     const onPublish = vi.fn()
     const campaign = {
-      title: 'T',
-      description: '',
-      category: '',
-      location: '',
-      budget_inr: 0,
+      title: 'Education Campaign — Pune',
+      description: 'Assembled draft for review',
+      category: 'Education',
+      location: 'Pune, MH',
+      budget_inr: 100000,
       budget_breakdown: { infrastructure: 0, training: 0, materials: 0, monitoring: 0, contingency: 0 },
       schedule_vii: '',
       sdg_alignment: [],
-      start_date: '',
-      end_date: '',
-      impact_metrics: { beneficiaries: 0, duration: '' },
-      milestones: [],
+      start_date: '2026-01-01',
+      end_date: '2026-06-30',
+      impact_metrics: { beneficiaries: 50, duration: '' },
+      milestones: [{ title: 'Phase 1', description: 'Kickoff', budget_allocated: 100000, deliverables: [] }],
     }
     render(
       <PublishStatusSection
@@ -138,13 +139,20 @@ describe('PublishStatusSection', () => {
         campaigns={[campaign]}
         invites={[]}
         acceptedLead={{ ngoId: 1, name: 'A', email: 'a@x.org', status: 'accepted' }}
+        evidenceVerifierIdentityId="ev-1"
       />,
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Publish' }))
+    expect(screen.queryByText('Catalyst draft')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Review and publish' }))
+    expect(screen.getByRole('heading', { name: 'Review campaign draft' })).toBeInTheDocument()
+    expect(screen.getByText('Education Campaign — Pune')).toBeInTheDocument()
+    expect(screen.getByText(/Phase 1/)).toBeInTheDocument()
+    expect(onPublish).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm publish' }))
     expect(onPublish).toHaveBeenCalled()
   })
 
-  it('shows generating message after lead accepted without drafts', () => {
+  it('asks to allot Evidence Verifier after lead accepted before drafting', () => {
     render(
       <PublishStatusSection
         {...base}
@@ -152,8 +160,21 @@ describe('PublishStatusSection', () => {
         acceptedLead={{ ngoId: 1, name: 'Green Earth', email: 'a@x.org', status: 'accepted' }}
       />,
     )
-    expect(screen.getByText(/Green Earth accepted\. Generating your campaign draft/)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Publish' })).not.toBeInTheDocument()
+    expect(screen.getByText(/Allot an Evidence Verifier above/)).toBeInTheDocument()
+    expect(screen.queryByText(/Generating your campaign draft/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Review and publish/ })).not.toBeInTheDocument()
+  })
+
+  it('shows Catalyst drafting status once Evidence Verifier is allotted', () => {
+    render(
+      <PublishStatusSection
+        {...base}
+        invites={[]}
+        acceptedLead={{ ngoId: 1, name: 'Green Earth', email: 'a@x.org', status: 'accepted' }}
+        evidenceVerifierIdentityId="ev-1"
+      />,
+    )
+    expect(screen.getByText(/Evidence Verifier allotted\. Catalyst is assembling your campaign draft/)).toBeInTheDocument()
   })
 
   it('replaces the spinner with the error and a retry when generation failed', async () => {
@@ -164,10 +185,11 @@ describe('PublishStatusSection', () => {
         error="Budget is required before generating campaign drafts."
         invites={[]}
         acceptedLead={{ ngoId: 1, name: 'Green Earth', email: 'a@x.org', status: 'accepted' }}
+        evidenceVerifierIdentityId="ev-1"
         onRetry={onRetry}
       />,
     )
-    expect(screen.queryByText(/Generating your campaign draft/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Catalyst is assembling your campaign draft/)).not.toBeInTheDocument()
     expect(screen.getAllByText('Budget is required before generating campaign drafts.')).toHaveLength(1)
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
     expect(onRetry).toHaveBeenCalled()
@@ -182,14 +204,21 @@ describe('PublishStatusSection', () => {
       impact_metrics: { beneficiaries: 0, duration: '' }, milestones: [],
     }
     const { rerender } = render(
-      <PublishStatusSection {...base} campaigns={[campaign]} invites={[]} acceptedLead={accepted} publishing />,
+      <PublishStatusSection
+        {...base}
+        campaigns={[campaign]}
+        invites={[]}
+        acceptedLead={accepted}
+        evidenceVerifierIdentityId="ev-1"
+        publishing
+      />,
     )
     expect(screen.getByRole('button', { name: /Publishing/ })).toBeDisabled()
 
     rerender(
       <PublishStatusSection {...base} campaigns={[campaign]} invites={[]} acceptedLead={accepted} publishedCampaignId="c-9" />,
     )
-    expect(screen.queryByRole('button', { name: 'Publish' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Review and publish/ })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'View campaign' })).toHaveAttribute('href', '/csr-campaigns/c-9')
   })
 })
@@ -212,6 +241,12 @@ describe('ServiceMatchesSection', () => {
     render(<ServiceMatchesSection {...base} leadAccepted={false} onPayAndReserve={vi.fn()} />)
     expect(screen.getByRole('button', { name: 'Pay & reserve' })).toBeDisabled()
     expect(screen.getByText(hint)).toBeInTheDocument()
+  })
+
+  it('disables Pay & reserve until the company is CA-verified', () => {
+    render(<ServiceMatchesSection {...base} leadAccepted payerVerified={false} onPayAndReserve={vi.fn()} />)
+    expect(screen.getByRole('button', { name: 'Pay & reserve' })).toBeDisabled()
+    expect(screen.getByText(/CA-verified/i)).toBeInTheDocument()
   })
 
   it('enables Pay & reserve once lead accepted', async () => {

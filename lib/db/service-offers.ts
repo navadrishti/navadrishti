@@ -72,7 +72,7 @@ export const serviceOffers = {
       .from('service_offers')
       .select(`
         *,
-        ngo:users!creator_id(name, email, user_type, location, verification_status, profile_image)
+        ngo:users!creator_id(name, email, user_type, location, verification_status, profile_image, profile_data)
       `)
       .eq('id', id)
       .single();

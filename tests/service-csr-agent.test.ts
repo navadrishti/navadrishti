@@ -52,10 +52,13 @@ describe('find service offers InputSchema', () => {
     expect(parsed.budget).toBe(50000)
   })
 
+  it('allows a campaign that starts and ends on the same day', () => {
+    expect(InputSchema.safeParse({ ...offerInput, end_date: '2026-07-01' }).success).toBe(true)
+  })
+
   it.each([
     ['zero budget', { budget: 0 }, 'budget'],
     ['end before start', { end_date: '2026-06-01' }, 'end_date'],
-    ['same start and end', { end_date: '2026-07-01' }, 'end_date'],
     ['missing title', { title: undefined }, 'title'],
   ])('rejects %s', (_label, overrides, path) => {
     const result = InputSchema.safeParse({ ...offerInput, ...overrides })
@@ -248,35 +251,36 @@ describe('buildFallbackCampaigns', () => {
     ],
   }
 
-  it('drafts three campaigns whose budgets add up', () => {
+  it('assembles exactly one campaign whose budgets add up', () => {
     const campaigns = buildFallbackCampaigns(input)
-    expect(campaigns.map((campaign) => campaign.title)).toEqual([
-      'Infrastructure-first Education Program 1',
-      'Capability-first Education Program 2',
-      'Access-first Education Program 3',
-    ])
-    for (const campaign of campaigns) {
-      expect(campaign.location).toBe('Pune, Maharashtra')
-      const breakdown = Object.values(campaign.budget_breakdown).reduce((sum, value) => sum + value, 0)
-      expect(breakdown).toBe(100000)
-      expect(campaign.milestones.reduce((sum, milestone) => sum + milestone.budget_allocated, 0)).toBe(100000)
-    }
-    expect(campaigns[0].budget_breakdown).toEqual({ infrastructure: 45000, training: 15000, materials: 20000, monitoring: 12000, contingency: 8000 })
+    expect(campaigns).toHaveLength(1)
+    expect(campaigns[0].title).toBe('Education Campaign — Pune')
+    expect(campaigns[0].location).toBe('Pune, Maharashtra')
+    const breakdown = Object.values(campaigns[0].budget_breakdown).reduce((sum, value) => sum + value, 0)
+    expect(breakdown).toBe(100000)
+    expect(campaigns[0].milestones.reduce((sum, milestone) => sum + milestone.budget_allocated, 0)).toBe(100000)
+    expect(campaigns[0].budget_breakdown).toEqual({
+      infrastructure: 40000,
+      training: 20000,
+      materials: 20000,
+      monitoring: 12000,
+      contingency: 8000,
+    })
   })
 
-  it('scales user milestone budgets for the direct plan and splits evenly otherwise', () => {
-    const [direct, capacity] = buildFallbackCampaigns(input)
-    expect(direct.milestones.map((milestone) => milestone.budget_allocated)).toEqual([75000, 25000])
-    expect(capacity.milestones.map((milestone) => milestone.budget_allocated)).toEqual([50000, 50000])
-    expect(direct.milestones.map((milestone) => milestone.title)).toEqual(['Build', 'Milestone 2: Execution'])
-    expect(capacity.milestones[1].description).toBe('Train local stakeholders and institutions in Pune, Maharashtra to operationalize: Train teachers')
+  it('scales user milestone budgets into the single assembled draft', () => {
+    const [draft] = buildFallbackCampaigns(input)
+    expect(draft.milestones.map((milestone) => milestone.budget_allocated)).toEqual([75000, 25000])
+    expect(draft.milestones.map((milestone) => milestone.title)).toEqual(['Build', 'Milestone 2'])
+    expect(draft.milestones[1].description).toBe('Train teachers')
   })
 
   it('creates default milestones and a minimum beneficiary estimate', () => {
     const campaigns = buildFallbackCampaigns({ ...input, milestone_info: undefined, milestones: 3, budget: 10001 })
+    expect(campaigns).toHaveLength(1)
     expect(campaigns[0].milestones).toHaveLength(3)
     expect(campaigns[0].milestones[0].description).toBe('Phase 1 implementation for community impact')
     expect(campaigns[0].milestones.map((milestone) => milestone.budget_allocated)).toEqual([3334, 3334, 3333])
-    expect(campaigns.map((campaign) => campaign.impact_metrics.beneficiaries)).toEqual([50, 50, 52])
+    expect(campaigns[0].impact_metrics.beneficiaries).toBe(50)
   })
 })

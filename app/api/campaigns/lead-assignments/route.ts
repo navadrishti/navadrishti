@@ -8,23 +8,43 @@ import {
   linkCsrCapabilityRentalTracking,
   listCsrCapabilityRentalsForUser,
   loadCampaignRentalByOffer,
+  previewCsrCapabilityDelhiveryParties,
   retryCsrCapabilityDelhiveryBooking,
   syncCsrCapabilityRentalDelhivery,
 } from '@/lib/csr-agent/campaign'
 import { getErrorMessage, parseJsonObject } from '@/lib/utils'
 import type { Tables } from '@/lib/database.types'
+import { isProjectFinancialLead } from '@/lib/csr-agent/project-financial-access'
 
 type CompanySummary = Pick<Tables<'users'>, 'id' | 'name' | 'email' | 'verification_status'>
 
+async function authorizedLeadCampaigns(campaignIds: string[], userId: number) {
+  if (!campaignIds.length) return new Set<string>()
+  const { data: projects, error } = await supabase
+    .from('csr_projects')
+    .select('campaign_id, ngo_user_id, campaigns(lead_ngo_user_id)')
+    .in('campaign_id', campaignIds)
+  if (error) throw error
+  return new Set(campaignIds.filter((campaignId) => {
+    const linked = (projects || []).filter((project) => project.campaign_id === campaignId)
+    return linked.length > 0 && linked.every((project) => isProjectFinancialLead(project, userId))
+  }))
+}
+
 export async function GET(request: NextRequest) {
   try {
-    const user = getAuthUserFromRequest(request)
+    const user = await getAuthUserFromRequest(request)
     assertUserType(user, ['ngo', 'company'])
 
     const rentalsOnly = request.nextUrl.searchParams.get('rentals') === '1'
     if (rentalsOnly) {
       const rentals = await listCsrCapabilityRentalsForUser(Number(user.id))
-      return NextResponse.json({ success: true, data: rentals })
+      const campaignIds = [...new Set(rentals.filter((rental) => rental.role === 'lead_ngo').map((rental) => rental.campaign_id))]
+      const authorized = await authorizedLeadCampaigns(campaignIds, user.id)
+      return NextResponse.json({
+        success: true,
+        data: rentals.filter((rental) => rental.role !== 'lead_ngo' || authorized.has(rental.campaign_id)),
+      })
     }
 
     assertUserType(user, ['ngo'])
@@ -89,7 +109,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const user = getAuthUserFromRequest(request)
+    const user = await getAuthUserFromRequest(request)
     assertUserType(user, ['ngo', 'company'])
 
     const body = await request.json().catch(() => ({}))
@@ -107,6 +127,13 @@ export async function POST(request: NextRequest) {
 
     const { rental } = await loadCampaignRentalByOffer(campaignId, offerId)
     assertCsrCapabilityDeliveryAccess({ userId: Number(user.id), rental, leg })
+    if (Number(rental.lead_ngo_user_id) === user.id &&
+      Number(rental.company_user_id) !== user.id) {
+      const authorized = await authorizedLeadCampaigns([campaignId], user.id)
+      if (!authorized.has(campaignId)) {
+        return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+      }
+    }
 
     if (action === 'capability_rental_link_tracking') {
       const trackingId = String(body?.tracking_id || body?.trackingId || '').trim()
@@ -130,6 +157,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, data: { rental: updated } })
     }
 
+    if (action === 'capability_rental_preview_parties') {
+      const parties = await previewCsrCapabilityDelhiveryParties({ campaignId, offerId, leg })
+      return NextResponse.json({ success: true, data: parties })
+    }
+
     if (action === 'capability_rental_retry_booking') {
       const updated = await retryCsrCapabilityDelhiveryBooking({
         campaignId,
@@ -137,6 +169,8 @@ export async function POST(request: NextRequest) {
         leg,
         bookedByUserId: Number(user.id),
         companyId: Number(rental.company_user_id || 0) || undefined,
+        pickup: body?.pickup,
+        consignee: body?.consignee,
       })
       return NextResponse.json({ success: true, data: { rental: updated } })
     }
@@ -147,7 +181,14 @@ export async function POST(request: NextRequest) {
     if (authResponse) return authResponse
     console.error('CSR capability rental delivery error:', error)
     const message = getErrorMessage(error) || 'Failed to update CSR capability delivery'
-    const status = message.toLowerCase().includes('permission') ? 403 : 500
+    const text = message.toLowerCase()
+    const status = text.includes('not found')
+      ? 404
+      : (text.includes('permission') || text.includes('only the') || text.includes('insufficient'))
+        ? 403
+        : (text.includes('required') || text.includes('must ') || text.includes('applies to') || text.includes('unsupported'))
+          ? 400
+          : 500
     return NextResponse.json({ error: message }, { status })
   }
 }

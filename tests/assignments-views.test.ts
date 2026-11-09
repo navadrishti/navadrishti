@@ -10,14 +10,10 @@ import {
 } from '@/lib/service-request-assignments/shared'
 import { callsOf, createSupabaseFake, eqsOf, unknownColumns, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
-const mocks = vi.hoisted(() => ({ from: vi.fn(), eligible: vi.fn() }))
+const mocks = vi.hoisted(() => ({ from: vi.fn() }))
 
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db/client', () => ({ supabase: { from: mocks.from } }))
-vi.mock('@/lib/auth', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/lib/auth')>()),
-  ngoIsCsrEligibleForProject: mocks.eligible,
-}))
 
 let fake = createSupabaseFake()
 
@@ -29,7 +25,6 @@ function useDb(responder: (query: FakeQuery) => FakeResult | undefined) {
 
 beforeEach(() => {
   useDb(() => undefined)
-  mocks.eligible.mockReset().mockImplementation((status: unknown) => status === 'verified')
 })
 
 afterEach(() => {
@@ -106,9 +101,29 @@ describe('getCompanyProjects', () => {
       item.company_application_eligible,
     ])).toEqual([
       ['open', 'none', true],
+      ['ineligible', 'none', true],
       ['applied', 'pending', false],
     ])
-    expect(json.data[1]).toMatchObject({ note: 'Keen', latest_application_at: '2026-01-02', ngo_name: 'Seva', ngo_verified: true })
+    expect(json.data.find((item: { project_id: string }) => item.project_id === 'applied')).toMatchObject({
+      note: 'Keen',
+      latest_application_at: '2026-01-02',
+      ngo_name: 'Seva',
+      ngo_verified: true,
+    })
+  })
+
+  it('lets a rejected company apply again', async () => {
+    companyDb([
+      project('rejected', {
+        description: withProjectMeta('Build', { pending_company_applications: [app(COMPANY, 'rejected')] }),
+      }),
+    ])
+    const { json } = await read(await getCompanyProjects(ctx(COMPANY, 'company')))
+    expect(json.data[0]).toMatchObject({
+      project_id: 'rejected',
+      company_application_status: 'rejected',
+      company_application_eligible: true,
+    })
   })
 
   it('explains why an unverified company cannot apply', async () => {
@@ -189,18 +204,20 @@ describe('getNgoCompanyApplications', () => {
     const [contributions] = fake.find('service_request_contributions')
     expect(callsOf(contributions, 'in')[0]).toEqual(['service_request_id', [11]])
     expect(eqsOf(contributions)).toEqual({ contribution_type: COMPANY_PROJECT_CONTRIBUTION_TYPE })
-    expect(callsOf(fake.find('users')[0], 'in')).toEqual([['id', [COMPANY, 6, 9]]])
+    expect(callsOf(fake.find('users')[0], 'in')).toEqual([['id', [COMPANY, 6, 7, 9]]])
 
     expect(json.data.map((entry: { project_id: string; company_id: number; status: string; note: string }) => [
       entry.project_id, entry.company_id, entry.status, entry.note,
     ])).toEqual([
       ['p1', COMPANY, 'pending', ''],
-      ['p1', 6, 'accepted', 'We fund'],
       ['p2', 9, 'pending', 'Legacy pledge'],
+      ['p1', 6, 'accepted', 'We fund'],
+      ['p1', 7, 'rejected', ''],
     ])
     expect(json.data[0]).toMatchObject({ company_name: 'Acme', company_email: 'acme@example.org', company_location: 'Pune, MH', company_verified: true })
-    expect(json.data[1]).toMatchObject({ company_name: 'Beta', company_location: 'Mumbai', company_verified: false })
-    expect(json.data[2]).toMatchObject({ company_name: 'Gamma', project_title: 'Legacy', needs: [{ id: 11, request_type: 'infra' }] })
+    expect(json.data[1]).toMatchObject({ company_name: 'Gamma', project_title: 'Legacy', needs: [{ id: 11, request_type: 'infra' }] })
+    expect(json.data[2]).toMatchObject({ company_name: 'Beta', company_location: 'Mumbai', company_verified: false })
+    expect(json.data[3]).toMatchObject({ company_id: 7, status: 'rejected' })
   })
 
   it('skips the contribution lookup without legacy needs', async () => {
@@ -241,7 +258,8 @@ describe('getNgoLeadInvitations', () => {
 
     const [invites] = fake.find('service_request_contributions')
     expect(eqsOf(invites)).toEqual({ contribution_type: LEAD_NGO_INVITE_CONTRIBUTION_TYPE, contributor_id: NGO })
-    expect(callsOf(fake.find('service_request_projects')[0], 'in')).toEqual([['id', ['p1']]])
+    const projectLookups = fake.find('service_request_projects').filter((query) => callsOf(query, 'in').length > 0)
+    expect(callsOf(projectLookups[0], 'in')).toEqual([['id', ['p1']]])
     expect(fake.find('users')[0].columns).toBe('id, name, email')
     expect(json.data).toEqual([
       {
@@ -255,10 +273,75 @@ describe('getNgoLeadInvitations', () => {
     ])
   })
 
-  it('makes no lookups without invites', async () => {
+  it('hides lead invites for the NGO that owns the project', async () => {
+    useDb((query) => {
+      if (query.table === 'service_request_contributions') {
+        return {
+          data: [
+            { id: 'i-owner', status: 'pending', reference_text: null, created_at: '2026-01-05', meta: { project_id: 'p1', inviting_company_id: COMPANY } },
+          ],
+        }
+      }
+      if (query.table === 'service_request_projects') {
+        return { data: [{ id: 'p1', ngo_id: NGO, title: 'Library', location: 'Pune', exact_address: 'Ward 4' }] }
+      }
+      if (query.table === 'users') return { data: [{ id: COMPANY, name: 'Acme', email: 'acme@example.org' }] }
+      return undefined
+    })
+
+    const { json } = await read(await getNgoLeadInvitations(ctx(NGO, 'ngo')))
+    expect(json.data).toEqual([])
+  })
+
+  it('includes pending project-meta invites for the NGO', async () => {
+    const invitedAt = '2026-02-01T00:00:00.000Z'
+    useDb((query) => {
+      if (query.table === 'service_request_contributions') return { data: [] }
+      if (query.table === 'service_request_projects') {
+        return {
+          data: [{
+            id: 'p9',
+            title: 'Well',
+            location: 'Nashik',
+            exact_address: null,
+            timeline: '3 months',
+            description: withProjectMeta('Well', {
+              pending_lead_ngo_invites: [{
+                id: `lead-invite:p9:${NGO}:${COMPANY}`,
+                ngo_id: NGO,
+                inviting_company_id: COMPANY,
+                invited_at: invitedAt,
+                status: 'pending',
+                note: 'Lead this',
+              }, {
+                id: `lead-invite:p9:${NGO}:8`,
+                ngo_id: NGO,
+                inviting_company_id: 8,
+                invited_at: invitedAt,
+                status: 'rejected',
+              }],
+            }),
+          }],
+        }
+      }
+      if (query.table === 'users') return { data: [{ id: COMPANY, name: 'Acme', email: 'acme@example.org' }] }
+      return undefined
+    })
+
+    const { json } = await read(await getNgoLeadInvitations(ctx(NGO, 'ngo')))
+    const assigned = fake.find('service_request_projects').find((query) => callsOf(query, 'not').length > 0)
+    expect(callsOf(assigned, 'not')).toEqual([['assigned_company_user_id', 'is', null]])
+    expect(json.data.map((row: { id: string; status: string; company_id: number }) => [row.id, row.status, row.company_id])).toEqual([
+      [`lead-invite:p9:${NGO}:${COMPANY}`, 'pending', COMPANY],
+      [`lead-invite:p9:${NGO}:8`, 'rejected', 8],
+    ])
+  })
+
+  it('makes no user lookups without invites', async () => {
     useDb(() => ({ data: [] }))
     await getNgoLeadInvitations(ctx(NGO, 'ngo'))
-    expect(fake.queries.map((query) => query.table)).toEqual(['service_request_contributions'])
+    expect(fake.find('users')).toHaveLength(0)
+    expect(fake.find('service_request_contributions')).toHaveLength(1)
   })
 
   it('throws invite query errors', async () => {
@@ -319,6 +402,45 @@ describe('getCsrTracking', () => {
     expect(fake.queries).toHaveLength(0)
   })
 
+  it('tracks a standalone takeover with no child needs', async () => {
+    const standalone = { ...trackedProject, lead_ngo_user_id: null }
+    trackingDb({
+      assigned: [standalone],
+      projects: [{
+        ...standalone,
+        description: withProjectMeta('Library', {
+          pending_lead_ngo_invites: [{
+            id: 'lead-invite:p1:2:5',
+            ngo_id: 2,
+            inviting_company_id: COMPANY,
+            status: 'accepted',
+            invited_at: '2026-02-02',
+          }],
+        }),
+      }],
+    })
+
+    const owner = await read(await getCsrTracking(ctx(NGO, 'ngo')))
+    expect(owner.json.data).toHaveLength(1)
+    expect(owner.json.data[0]).toMatchObject({
+      project_id: 'p1',
+      assigned_company_id: COMPANY,
+      ngo_dashboard_role: 'request_owner',
+      selected_lead_ngo_id: null,
+      project_description: 'Library',
+      need_progress: { total: 0, open: 0, in_progress: 0, completed: 0 },
+    })
+    expect(owner.json.data[0].lead_ngo_invites).toEqual([
+      expect.objectContaining({ ngo_id: 2, status: 'accepted', selected_as_lead: true }),
+    ])
+
+    const company = await read(await getCsrTracking(ctx(COMPANY, 'company')))
+    expect(company.json.data[0]).toMatchObject({
+      assigned_company_id: COMPANY,
+      selected_lead_ngo_id: null,
+    })
+  })
+
   it('returns nothing when the company has no handoffs', async () => {
     trackingDb({})
     await expect(read(await getCsrTracking(ctx(COMPANY, 'company')))).resolves.toEqual({ status: 200, json: { success: true, data: [] } })
@@ -348,6 +470,7 @@ describe('getCsrTracking', () => {
     expect(json.data[0]).toMatchObject({
       project_id: 'p1',
       project_category: 'Infrastructure Project',
+      need_progress: { total: 1, open: 1, in_progress: 0, completed: 0 },
       lead_ngo_id: NGO,
       lead_ngo_name: 'Seva',
       assigned_company_id: COMPANY,
@@ -406,13 +529,27 @@ describe('getCsrTracking', () => {
     expect(json.data.map((row: { ngo_dashboard_role: string }) => row.ngo_dashboard_role)).toEqual(['selected_lead'])
   })
 
+  it('does not treat the owner NGO as the selected lead', async () => {
+    trackingDb({
+      assigned: [{ ...trackedProject, lead_ngo_user_id: NGO }],
+      projects: [{ ...trackedProject, lead_ngo_user_id: NGO }],
+    })
+
+    const { json } = await read(await getCsrTracking(ctx(COMPANY, 'company')))
+    expect(json.data[0]).toMatchObject({
+      lead_ngo_id: NGO,
+      selected_lead_ngo_id: null,
+      selected_lead_ngo_name: null,
+    })
+  })
+
   it('repairs a project whose accepted handoff never set the assigned company', async () => {
     const unassigned = { ...trackedProject, assigned_company_user_id: null, assignment_status: null, lead_ngo_user_id: null, status: 'active' }
     trackingDb({
       contributions: [{ id: 'c1', service_request_id: 11, contributor_id: COMPANY, status: 'accepted', meta: { review_note: 'Welcome' } }],
       needs: [{ id: 11, project_id: 'p1', ngo_id: NGO }],
       projects: [unassigned],
-      repaired: { ...unassigned, assigned_company_user_id: COMPANY, assignment_status: 'accepted', lead_ngo_user_id: NGO, status: 'in_progress' },
+      repaired: { ...unassigned, assigned_company_user_id: COMPANY, assignment_status: 'accepted', lead_ngo_user_id: null, status: 'in_progress' },
     })
 
     const { json } = await read(await getCsrTracking(ctx(COMPANY, 'company')))
@@ -421,11 +558,11 @@ describe('getCsrTracking', () => {
     expect(repair.payload).toMatchObject({
       assigned_company_user_id: COMPANY,
       assignment_status: 'accepted',
-      lead_ngo_user_id: NGO,
       status: 'in_progress',
     })
+    expect(repair.payload).not.toHaveProperty('lead_ngo_user_id')
     expect(eqsOf(repair)).toEqual({ id: 'p1' })
     expect(callsOf(repair, 'is')).toEqual([['assigned_company_user_id', null]])
-    expect(json.data[0]).toMatchObject({ assigned_company_id: COMPANY, review_note: 'Welcome', selected_lead_ngo_id: NGO })
+    expect(json.data[0]).toMatchObject({ assigned_company_id: COMPANY, review_note: 'Welcome', selected_lead_ngo_id: null })
   })
 })

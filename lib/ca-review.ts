@@ -6,6 +6,7 @@ import type { PlatformCATokenPayload } from '@/lib/platform-ca-auth'
 import { CAReviewError } from './ca-review/errors'
 
 export { listCAQueue } from './ca-review/queue'
+export { listCAHistory } from './ca-review/history'
 export { getCAReview } from './ca-review/review'
 export { applyCAVerificationAction } from './ca-review/verification-action'
 export { CAReviewError }

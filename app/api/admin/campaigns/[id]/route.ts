@@ -4,6 +4,7 @@ import { assertAdminUser, authErrorResponse } from '@/lib/server-auth';
 import { deleteCampaignWithDependencies, formatCampaignDeleteError } from '@/lib/campaign-delete';
 import { parseJsonObject, getErrorMessage } from '@/lib/utils';
 import type { TablesUpdate } from '@/lib/database.types';
+import { newsletterEventId, withNewsletterHistory } from '@/lib/platform-newsletter/history';
 
 function parseJsonField(value: unknown, fallback: unknown) {
   if (value === undefined) return undefined;
@@ -104,13 +105,35 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       updatePayload.milestones = parseJsonField(body.milestones, []);
     }
 
-    const becameCompleted =
-      updatePayload.status === 'completed' && String(existing.status || '') !== 'completed';
-    if (becameCompleted) {
-      updatePayload.impact_metrics = {
-        ...parseJsonObject(updatePayload.impact_metrics ?? existing.impact_metrics),
-        completed_at: updatePayload.updated_at,
-      };
+    const previousStatus = String(existing.status || '').toLowerCase();
+    const nextStatus = String(updatePayload.status || existing.status || '').toLowerCase();
+    const becameCompleted = nextStatus === 'completed' && previousStatus !== 'completed';
+    const becamePublished = nextStatus !== 'draft' && previousStatus === 'draft' && Boolean(updatePayload.status);
+    if (becameCompleted || becamePublished) {
+      const at = String(updatePayload.updated_at);
+      let impact = parseJsonObject(updatePayload.impact_metrics ?? existing.impact_metrics);
+      if (becameCompleted) {
+        impact = withNewsletterHistory(
+          { ...impact, completed_at: at },
+          {
+            id: newsletterEventId('campaign_finished', id, at),
+            kind: 'campaign_finished',
+            at,
+            source: 'admin',
+            href: `/csr-campaigns/${id}`,
+          }
+        );
+      }
+      if (becamePublished) {
+        impact = withNewsletterHistory(impact, {
+          id: newsletterEventId('campaign', id, at),
+          kind: 'campaign',
+          at,
+          source: 'admin',
+          href: `/csr-campaigns/${id}`,
+        });
+      }
+      updatePayload.impact_metrics = impact;
     }
 
     const { data, error } = await supabase

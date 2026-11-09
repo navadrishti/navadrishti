@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   try {
     companyUserId = (await getCompanyCAFromRequest(request)).identity.company_user_id
   } catch {
-    return NextResponse.json({ error: 'Company CA authentication required' }, { status: 401 })
+    return NextResponse.json({ error: 'Evidence Verifier authentication required' }, { status: 401 })
   }
 
   try {

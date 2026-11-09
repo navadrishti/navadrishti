@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTokenClaims } from '@/lib/auth';
-import { resolveEffectiveVerificationStatus } from '@/lib/server-auth';
+import { authErrorResponse, resolveEffectiveVerificationStatus } from '@/lib/server-auth';
 import { listServiceRequests } from '@/lib/service-requests/list-query';
 import { createNeed } from '@/lib/service-requests/create-need';
 
@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
 
     let authenticatedUserId: number | null = null;
     if (view === 'my-requests' || view === 'my-responses') {
-      const claims = getTokenClaims(request);
+      const claims = await getTokenClaims(request);
       if (!claims) {
         return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
       }
@@ -39,6 +39,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error('Error fetching service requests:', error);
     return NextResponse.json(
       { error: 'Failed to fetch service requests' },
@@ -50,7 +52,7 @@ export async function GET(request: NextRequest) {
 // Creates a need (verified NGOs).
 export async function POST(request: NextRequest) {
   try {
-    const decoded = getTokenClaims(request);
+    const decoded = await getTokenClaims(request);
     if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
@@ -62,14 +64,14 @@ export async function POST(request: NextRequest) {
 
     if (!action || action === 'create') {
       if (userType !== 'ngo') {
-        return NextResponse.json({
+        return NextResponse.json({ 
           error: 'Only verified NGOs can create service requests'
         }, { status: 403 });
       }
-
+      
       const effectiveVerificationStatus = await resolveEffectiveVerificationStatus(userId, userType);
       if (effectiveVerificationStatus !== 'verified') {
-        return NextResponse.json({
+        return NextResponse.json({ 
           error: 'You need to complete verification before creating service requests.',
           requiresVerification: true
         }, { status: 403 });
@@ -94,6 +96,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error('Error processing service request:', error);
     return NextResponse.json(
       { error: 'Failed to process service request' },

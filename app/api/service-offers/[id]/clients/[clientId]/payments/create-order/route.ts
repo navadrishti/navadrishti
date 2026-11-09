@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 import { db, supabase } from '@/lib/db';
 import { getTokenClaims } from '@/lib/auth';
+import { authErrorResponse, requireCaVerifiedPayer } from '@/lib/server-auth';
 import { parseAmountToInr, getErrorMessage, parseJsonObject } from '@/lib/utils';
 import {
   buildPricingResponse,
@@ -15,7 +16,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string; clientId: string }> }
 ) {
   try {
-    const decoded = getTokenClaims(request);
+    const decoded = await getTokenClaims(request);
     if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
@@ -34,6 +35,11 @@ export async function POST(
 
     if (decoded.id !== payerUserId) {
       return NextResponse.json({ error: 'You can only pay for your own application' }, { status: 403 });
+    }
+
+    const payerGate = await requireCaVerifiedPayer(decoded.id, decoded.user_type);
+    if (!payerGate.ok) {
+      return NextResponse.json({ error: payerGate.error }, { status: 403 });
     }
 
     const offer = await db.serviceOffers.getById(offerId);
@@ -156,6 +162,8 @@ export async function POST(
       }
     });
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     if (error instanceof PayeeNotConnectedError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
     }

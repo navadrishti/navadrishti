@@ -1,3 +1,5 @@
+import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 import type { User } from '@/lib/auth-context';
 import { PHONE_VERIFICATION_ENABLED } from '@/lib/auth';
 import { parseJsonObject } from '@/lib/utils';
@@ -72,17 +74,32 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 export function getUserFormDefaults(user: User): Partial<VerificationFormData> {
   const profileData: Record<string, unknown> = parseJsonObject(user.profile_data);
+  const category = resolveCategory(user.user_type);
   const documentExpiries = asRecord(profileData.document_expiries) as Record<
     string,
     { valid_until?: string; number?: string } | undefined
   >;
-  const entered = asRecord(asRecord(asRecord(profileData.verification_documents).ngo).entered_fields);
+  const typeBlock = asRecord(asRecord(profileData.verification_documents)[category]);
+  const entered = asRecord(typeBlock.entered_fields);
+  const gst = String(entered.gst || '').trim();
+  const registrationType = String(entered.registration_type || '').trim();
 
   return {
     entityName: user.name || '',
     contactNumber: user.phone || '',
     email: user.email || '',
-    category: resolveCategory(user.user_type),
+    category,
+    panNumber: String(entered.pan || ''),
+    aadhaarNumber: String(entered.aadhaar || ''),
+    registrationNumber: String(entered.registration_number || ''),
+    ngoAssociationNumber: String(entered.association_number || ''),
+    ngoRegistrationType:
+      registrationType === 'Trust' || registrationType === 'Society' || registrationType === 'Section 8'
+        ? registrationType
+        : 'Trust',
+    companyCinNumber: String(entered.cin || ''),
+    companyGstNumber: gst,
+    companyGstApplicable: Boolean(gst),
     ngoTwelveANumber: String(profileData.twelve_a_number || entered.twelve_a || ''),
     ngoEightyGNumber: String(profileData.eighty_g_number || entered.eighty_g || ''),
     ngoCsr1RegistrationNumber: String(profileData.csr1_registration_number || entered.csr1 || ''),
@@ -181,7 +198,7 @@ export async function uploadVerificationDocument(
   key: DocumentKey,
   category: VerificationCategory
 ): Promise<string> {
-  const token = localStorage.getItem('token');
+  const token = getClientSessionToken();
   if (!token) {
     throw new Error('Authentication required. Please log in again.');
   }
@@ -199,10 +216,18 @@ export async function uploadVerificationDocument(
 
   const result = await response.json();
   if (!response.ok) {
-    throw new Error(result.details || result.error || 'Failed to upload one or more documents');
+    throw new Error(readApiError(result, 'Failed to upload one or more documents'));
   }
 
-  return result.data?.url as string;
+  // Authenticated KYC uploads return an opaque documentRef (not a durable CDN URL).
+  const documentRef = typeof result.data?.documentRef === 'string' ? result.data.documentRef.trim() : '';
+  if (documentRef) return documentRef;
+
+  const url = typeof result.data?.url === 'string' ? result.data.url.trim() : '';
+  if (!url) {
+    throw new Error('Upload succeeded but no document reference was returned');
+  }
+  return url;
 }
 
 export function buildInitiatePayload(

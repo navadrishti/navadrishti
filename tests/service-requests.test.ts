@@ -4,6 +4,7 @@ import { listServiceRequests, type ListingParams } from '@/lib/service-requests/
 import {
   isCompanyAssignedNeed,
   isProjectLocked,
+  redactNeedForViewer,
   shapeListingRequest,
   type ListingSource,
 } from '@/lib/service-requests/list-shape'
@@ -162,9 +163,61 @@ describe('shapeListingRequest', () => {
 
   it('summarises the project from the project context', () => {
     const shaped = shapeListingRequest(listingRow({
-      project_context: { project: { id: 'p1', exact_address: 'Pune' }, project_title: 'Library', project_timeline: '6 months' },
+      project_context: { project: { id: 'p1', location: 'Pune' }, project_title: 'Library', project_timeline: '6 months' },
     }))
     expect(shaped.project).toEqual({ id: 'p1', title: 'Library', location: 'Pune', timeline: '6 months', category: '' })
+  })
+
+  it('omits requester contact details and street addresses from public listings', () => {
+    const shaped = shapeListingRequest(listingRow({
+      requester: {
+        id: 2,
+        name: 'Asha',
+        email: 'asha@ngo.org',
+        phone: '99999',
+        user_type: 'ngo',
+        verification_status: 'verified',
+        profile_data: { role: 'company_ca' },
+      },
+      project: { id: 'p1', title: 'Library', location: 'Pune', exact_address: '12 Secret Lane' },
+    }))
+    expect(shaped.requester).toMatchObject({ id: 2, name: 'Asha', user_type: 'ngo', verification_status: 'verified' })
+    expect(shaped.requester).not.toHaveProperty('email')
+    expect(shaped.requester).not.toHaveProperty('phone')
+    expect(shaped.requester).not.toHaveProperty('profile_data')
+    expect(shaped.project).toMatchObject({ location: 'Pune' })
+    expect(JSON.stringify(shaped)).not.toContain('asha@ngo.org')
+    expect(JSON.stringify(shaped)).not.toContain('12 Secret Lane')
+  })
+})
+
+describe('redactNeedForViewer', () => {
+  const need = {
+    id: 5,
+    ngo_id: 12,
+    requester: {
+      id: 12,
+      name: 'Asha',
+      email: 'asha@ngo.org',
+      phone: '99999',
+      user_type: 'ngo',
+      profile_data: { payout_account: 'secret' },
+    },
+    project: { id: 'p1', exact_address: '12 Secret Lane', location: 'Pune' },
+  }
+
+  it('keeps contact details for the owning NGO', () => {
+    expect(redactNeedForViewer(need, 12).requester).toEqual(need.requester)
+    expect(redactNeedForViewer(need, 12).project.exact_address).toBe('12 Secret Lane')
+  })
+
+  it('strips account email, phone and street address for everyone else', () => {
+    const publicNeed = redactNeedForViewer({ ...need, contact_info: '99999' }, null)
+    expect(publicNeed.requester).toMatchObject({ id: 12, name: 'Asha', user_type: 'ngo' })
+    expect(publicNeed.requester).not.toHaveProperty('email')
+    expect(publicNeed.contact_info).toBe('99999')
+    expect(publicNeed.project.exact_address).toBeNull()
+    expect(redactNeedForViewer(need, 99).requester).not.toHaveProperty('phone')
   })
 })
 
@@ -197,6 +250,13 @@ describe('listServiceRequests', () => {
     useDb(applicationCounts())
     const result = await listServiceRequests(params)
     // Need 4 has one accepted applicant but 10 units still unallocated.
+    expect(result.map((item) => item.id)).toEqual([1, 4, 6])
+  })
+
+  it('uses the same browse filter when view is omitted', async () => {
+    mocks.getAll.mockResolvedValue(rows)
+    useDb(applicationCounts())
+    const result = await listServiceRequests({ ...params, view: null })
     expect(result.map((item) => item.id)).toEqual([1, 4, 6])
   })
 
@@ -269,6 +329,7 @@ describe('createNeed', () => {
     const fake = useDb({ 'service_offers.select': [{ data: [{ id: 5 }] }] })
     const result = await createNeed(12, { ...body, details: { recommended_offer_ids: [5, 6] } })
     expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/capability offers are invalid/) })
+    expect(fake.queries[0].filters).toContainEqual(['in', 'id', [5, 6]])
     expect(fake.queries[0].filters).toContainEqual(['eq', 'offer_type', 'material'])
   })
 

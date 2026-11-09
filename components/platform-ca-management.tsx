@@ -1,5 +1,6 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useEffect, useState } from 'react';
 import { Check, Copy, KeyRound, Power, RefreshCw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -116,7 +117,7 @@ export function PlatformCAManagement() {
 
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error);
+        throw new Error(readApiError(data));
       }
 
       toast.success(`CA account created successfully with CA ID: ${data.data.ca_id}`);
@@ -178,7 +179,7 @@ export function PlatformCAManagement() {
 
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error);
+        throw new Error(readApiError(data));
       }
 
       toast.success(`Password reset for ${resetTarget.username}. They must change it on next login.`);
@@ -212,7 +213,7 @@ export function PlatformCAManagement() {
 
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error);
+        throw new Error(readApiError(data));
       }
 
       toast.success(`CA account ${action}d successfully`);
@@ -239,7 +240,7 @@ export function PlatformCAManagement() {
 
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error);
+        throw new Error(readApiError(data));
       }
 
       toast.success('CA account permanently deleted');

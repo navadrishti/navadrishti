@@ -14,10 +14,10 @@ interface LeadInvitationsPanelProps {
   loading: boolean;
   respondingCampaignId: string | null;
   onRefresh: () => void;
-  onAccept: (campaignId: string) => void;
+  onRespond: (campaignId: string, decision: 'accepted' | 'rejected') => void;
 }
 
-export function LeadInvitationsPanel({ invitations, loading, respondingCampaignId, onRefresh, onAccept }: LeadInvitationsPanelProps) {
+export function LeadInvitationsPanel({ invitations, loading, respondingCampaignId, onRefresh, onRespond }: LeadInvitationsPanelProps) {
   return (
     <div className="rounded-md border bg-slate-50 p-4 space-y-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -68,10 +68,18 @@ export function LeadInvitationsPanel({ invitations, loading, respondingCampaignI
                   <Button
                     size="sm"
                     className="bg-green-600 hover:bg-green-700"
-                    onClick={() => onAccept(invite.campaign_id)}
+                    onClick={() => onRespond(invite.campaign_id, 'accepted')}
                     disabled={!actionable || respondingCampaignId === invite.campaign_id}
                   >
                     {respondingCampaignId === invite.campaign_id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Accept'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onRespond(invite.campaign_id, 'rejected')}
+                    disabled={!actionable || respondingCampaignId === invite.campaign_id}
+                  >
+                    Decline
                   </Button>
                 </div>
               </div>

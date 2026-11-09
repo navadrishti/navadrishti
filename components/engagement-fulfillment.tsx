@@ -1,10 +1,15 @@
 'use client';
+import { toast } from 'sonner'
 
+import { readApiError } from '@/lib/user-facing-error'
+import { clientAuthFetchInit, getClientSessionToken } from '@/lib/client-session';
 import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/lib/auth-context';
+import { CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE, isCaVerifiedAccount } from '@/lib/auth';
 import { openRazorpayCheckout } from '@/lib/razorpay-checkout';
+import { VerificationRequiredNotice } from '@/components/verification-required-notice';
 import { formatAttendanceSummary, getSkillServiceDailyRate } from '@/lib/service-request-allocation';
 
 function readNestedId(value: unknown) {
@@ -30,7 +35,8 @@ export function InlineSkillServiceFulfillment({
   title?: string;
   onUpdated?: () => void | Promise<void>;
 }) {
-  const { toast } = useToast();
+  const { user } = useAuth();
+  const payerVerified = isCaVerifiedAccount(user?.verification_status);
   const [settling, setSettling] = useState(false);
   const meta: Record<string, unknown> = application.response_meta && typeof application.response_meta === 'object'
     ? application.response_meta
@@ -40,22 +46,25 @@ export function InlineSkillServiceFulfillment({
   const dailyRate = getSkillServiceDailyRate(application);
   const summary = formatAttendanceSummary(meta);
   const settlementStatus = String(meta.settlement_status || '').toLowerCase();
-  const isSettled = settlementStatus === 'settled';
-  const outstanding = Math.max(0, summary.totalDue - summary.paidTotal);
+  const outstanding = summary.outstanding;
+  // Cached settlement_status alone is not enough — outstanding from the attendance summary wins.
+  const isSettled = settlementStatus === 'settled' && outstanding <= 0;
+  const isPartial =
+    settlementStatus === 'partial' || (settlementStatus === 'settled' && outstanding > 0);
 
   const handleSettle = async () => {
+    if (!payerVerified) {
+      toast.error('Verification required', { description: CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE });
+      return;
+    }
     if (!assignmentId) {
-      toast({
-        title: 'Settlement unavailable',
-        description: 'Assignment is not linked yet.',
-        variant: 'destructive',
-      });
+      toast.error('Settlement unavailable', { description: 'Assignment is not linked yet.' });
       return;
     }
 
     setSettling(true);
     try {
-      const token = localStorage.getItem('token');
+      const token = getClientSessionToken();
       if (!token) throw new Error('Please sign in again');
 
       const response = await fetch(`/api/service-assignments/${assignmentId}/settle`, {
@@ -69,22 +78,20 @@ export function InlineSkillServiceFulfillment({
 
       const data = await response.json();
       if (!response.ok || !data?.success) {
-        throw new Error(data?.error || 'Failed to start settlement');
+        throw new Error(readApiError(data, 'Failed to start settlement'));
       }
 
       const payload = data.data;
       if (payload?.settled) {
-        toast({
-          title: 'Service completed',
-          description: payload.settledAmount > 0
+        toast.success('Service completed', { description: payload.settledAmount > 0
             ? `Settlement recorded for INR ${Number(payload.settledAmount).toLocaleString('en-IN')}.`
-            : 'Service marked complete with no payment due.',
-        });
+            : 'Service marked complete with no payment due.' });
         await onUpdated?.();
         return;
       }
 
       if (!payload?.paymentRequired) {
+        toast.success('Service completed', { description: 'Service marked complete with no payment due.' });
         await onUpdated?.();
         return;
       }
@@ -113,29 +120,18 @@ export function InlineSkillServiceFulfillment({
 
           const verifyData = await verifyRes.json();
           if (!verifyRes.ok || !verifyData?.success) {
-            throw new Error(verifyData?.error || 'Payment verification failed');
+            throw new Error(readApiError(verifyData, 'Payment verification failed'));
           }
 
-          toast({
-            title: 'Payment successful',
-            description: `Settled INR ${Number(verifyData.data?.settledAmount || payload.amount).toLocaleString('en-IN')} and marked service complete.`,
-          });
+          toast.success('Payment successful', { description: `Settled INR ${Number(verifyData.data?.settledAmount || payload.amount).toLocaleString('en-IN')} and marked service complete.` });
           await onUpdated?.();
         },
         onFailure: (error) => {
-          toast({
-            title: 'Payment failed',
-            description: error.description || error.reason || 'The payment provider could not complete the payment.',
-            variant: 'destructive',
-          });
+          toast.error('Payment failed', { description: error.description || error.reason || 'The payment provider could not complete the payment.' });
         },
       });
     } catch (error) {
-      toast({
-        title: 'Could not settle',
-        description: error instanceof Error ? error.message : 'Something went wrong',
-        variant: 'destructive',
-      });
+      toast.error('Could not settle', { description: readApiError(error, 'Something went wrong') });
     } finally {
       setSettling(false);
     }
@@ -147,7 +143,7 @@ export function InlineSkillServiceFulfillment({
         <p className="text-sm font-medium text-emerald-950">{title}</p>
         <p className="text-xs text-emerald-900/80">
           {role === 'payer'
-            ? 'Settle the cumulative total when this skill/service engagement ends.'
+            ? 'Settle outstanding wages when this engagement ends. Each payment covers whole attendance days only.'
             : 'Payment is calculated from present days times your quoted daily rate.'}
         </p>
       </div>
@@ -170,37 +166,62 @@ export function InlineSkillServiceFulfillment({
         </p>
       </div>
 
+      {(summary.paidTotal > 0 || summary.waivedTotal > 0 || outstanding > 0) && (
+        <p className="text-xs text-slate-700">
+          Paid INR {summary.paidTotal.toLocaleString('en-IN')}
+          {summary.waivedTotal > 0 ? ` · waived INR ${summary.waivedTotal.toLocaleString('en-IN')}` : ''}
+          {outstanding > 0 ? ` · outstanding INR ${outstanding.toLocaleString('en-IN')}` : ''}
+        </p>
+      )}
+
       {isSettled ? (
         <p className="text-xs font-medium text-emerald-800">
           Settled
           {meta.settled_amount != null ? ` · INR ${Number(meta.settled_amount).toLocaleString('en-IN')}` : ''}
           {meta.settlement_mode ? ` (${meta.settlement_mode})` : ''}
         </p>
-      ) : role === 'payer' ? (
-        <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleSettle}
-            disabled={settling || isSettled}
-          >
-            {settling ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Settling…
-              </>
-            ) : outstanding > 0 ? (
-              `Complete service & pay INR ${outstanding.toLocaleString('en-IN')}`
-            ) : (
-              'Complete service (no payment due)'
-            )}
-          </Button>
-        </div>
-      ) : outstanding > 0 ? (
-        <p className="text-xs text-slate-600">
-          Outstanding: INR {outstanding.toLocaleString('en-IN')}.
-        </p>
-      ) : null}
+      ) : (
+        <>
+          {isPartial ? (
+            <p className="text-xs font-medium text-amber-800">
+              Partially settled
+              {meta.settled_amount != null
+                ? ` · INR ${Number(meta.settled_amount).toLocaleString('en-IN')} paid`
+                : ''}
+              {outstanding > 0 ? ` · INR ${outstanding.toLocaleString('en-IN')} outstanding` : ''}
+            </p>
+          ) : null}
+          {role === 'payer' && !payerVerified ? (
+            <VerificationRequiredNotice description={CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE} />
+          ) : role === 'payer' ? (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleSettle}
+                disabled={settling || isSettled}
+              >
+                {settling ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Settling…
+                  </>
+                ) : outstanding > 0 ? (
+                  isPartial
+                    ? `Pay remaining INR ${outstanding.toLocaleString('en-IN')}`
+                    : `Complete service & pay INR ${outstanding.toLocaleString('en-IN')}`
+                ) : (
+                  'Complete service (no payment due)'
+                )}
+              </Button>
+            </div>
+          ) : outstanding > 0 ? (
+            <p className="text-xs text-slate-600">
+              Outstanding: INR {outstanding.toLocaleString('en-IN')}.
+            </p>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }
@@ -220,7 +241,6 @@ export function InlineInfrastructureAssignment({
   role: 'ngo' | 'individual';
   onUpdated?: () => void | Promise<void>;
 }) {
-  const { toast } = useToast();
   const [completing, setCompleting] = useState(false);
   const status = String(application.status || '').toLowerCase();
   const inProgress = ['accepted', 'active'].includes(status);
@@ -228,37 +248,24 @@ export function InlineInfrastructureAssignment({
   const handleMarkComplete = async () => {
     setCompleting(true);
     try {
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('Please sign in again');
-
       const response = await fetch(
         `/api/service-requests/${serviceRequestId}/volunteers/${application.id}`,
-        {
+        clientAuthFetchInit({
           method: 'PUT',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: 'completed' }),
-        }
+        })
       );
 
-      const data = await response.json();
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to mark complete');
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) {
+        throw new Error(readApiError(data, 'Failed to mark complete'));
       }
 
-      toast({
-        title: 'Infrastructure need completed',
-        description: 'The individual can now apply to other needs.',
-      });
+      toast.success('Infrastructure need completed', { description: 'The individual can now apply to other needs.' });
       await onUpdated?.();
     } catch (error) {
-      toast({
-        title: 'Could not mark complete',
-        description: error instanceof Error ? error.message : 'Something went wrong',
-        variant: 'destructive',
-      });
+      toast.error('Could not mark complete', { description: readApiError(error, 'Something went wrong') });
     } finally {
       setCompleting(false);
     }

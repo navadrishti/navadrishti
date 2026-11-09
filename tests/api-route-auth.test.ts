@@ -3,12 +3,25 @@ import path from 'node:path'
 import jwt from 'jsonwebtoken'
 import { NextRequest } from 'next/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { setLiveUserTypeOverlay } from '@/lib/auth/session'
+import { overlayLiveUserType } from '@/lib/server-auth'
 
 const dbCalls = vi.hoisted(() => [] as string[])
 
 vi.mock('server-only', () => ({}))
 
-vi.mock('@/lib/db', () => {
+vi.mock('@/lib/db', async () => {
+  const { createSupabaseFake, eqValue } = await import('./support/supabase-fake')
+  const fake = createSupabaseFake((query) => {
+    if (query.table === 'users' && query.columns === 'account_status, locked_until, profile_data, user_type, verification_status') {
+      const id = Number(eqValue(query, 'id'))
+      const userType = id === 12 ? 'ngo' : id === 13 ? 'company' : 'individual'
+      return { data: { id, user_type: userType, account_status: 'active', verification_status: 'verified', profile_data: {} } }
+    }
+    if (['company_ca_identities', 'ngo_field_officer_identities', 'company_employee_identities'].includes(query.table) && eqValue(query, 'user_id') !== undefined) return { data: null }
+    dbCalls.push('unexpected query')
+    throw new Error('business database query should not be called')
+  })
   const blocked: object = new Proxy(
     {},
     {
@@ -19,7 +32,7 @@ vi.mock('@/lib/db', () => {
       },
     }
   )
-  return { supabase: blocked, db: blocked }
+  return { supabase: { from: fake.from, rpc: () => { dbCalls.push('rpc'); throw new Error('db should not be called') } }, db: blocked }
 })
 
 const root = path.resolve(import.meta.dirname, '..')
@@ -70,6 +83,7 @@ async function call(route: string, method: Method, request: NextRequest) {
 }
 
 beforeEach(() => {
+  setLiveUserTypeOverlay((claims, pathname) => overlayLiveUserType(claims, pathname))
   dbCalls.length = 0
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
@@ -111,8 +125,6 @@ const adminRoutes: Array<[string, Method]> = [
   ['admin/payments/refund', 'POST'],
   ['admin/reverifications', 'GET'],
   ['admin/service-offers', 'GET'],
-  ['admin/service-offers/auto-reject', 'POST'],
-  ['admin/service-offers/[offerId]/review', 'POST'],
   ['admin/service-request-projects', 'GET'],
   ['admin/service-requests', 'GET'],
   ['admin/settings', 'GET'],
@@ -132,7 +144,7 @@ describe('admin routes', () => {
   it.each(adminRoutes)('%s %s rejects anonymous requests with 401', async (route, method) => {
     const res = await call(route, method, buildRequest(method))
     expect(res.status).toBe(401)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 
   it.each(adminRoutes)('%s %s rejects user tokens with 401', async (route, method) => {
@@ -142,13 +154,13 @@ describe('admin routes', () => {
       const res2 = await call(route, method, buildRequest(method, { cookies: { 'admin-token': token } }))
       expect(res2.status).toBe(401)
     }
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 
   it.each(adminRoutes)('%s %s rejects forged admin tokens with 401', async (route, method) => {
     const res = await call(route, method, buildRequest(method, { cookies: { 'admin-token': forged } }))
     expect(res.status).toBe(401)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 
   it.each(assertAdminRoutes)('%s %s reports the admin auth error', async (route, method) => {
@@ -172,11 +184,13 @@ const loginRoutes: Array<[string, Method]> = [
   ['campaigns/[id]/volunteer', 'POST'],
   ['campaigns/[id]', 'DELETE'],
   ['campaigns/accept-lead', 'POST'],
+  ['campaigns/decline-lead', 'POST'],
   ['campaigns/lead-assignments', 'GET'],
   ['campaigns/lead-assignments', 'POST'],
   ['campaigns/lead-invitations', 'GET'],
   ['campaigns/volunteer-assignments', 'GET'],
   ['csr-agent/generate-campaigns', 'POST'],
+  ['csr-agent/suggest-milestones', 'POST'],
   ['csr-agent/get-recommendations', 'POST'],
   ['csr-agent/lead-ngo-invites', 'GET'],
   ['csr-agent/lead-ngo-invites', 'POST'],
@@ -192,6 +206,19 @@ const loginRoutes: Array<[string, Method]> = [
   ['evidence-verification/accounts', 'POST'],
   ['evidence-verification/accounts/[identityId]', 'PATCH'],
   ['evidence-verification/accounts/[identityId]', 'DELETE'],
+  ['ngo/field-officers', 'GET'],
+  ['ngo/field-officers', 'POST'],
+  ['ngo/field-officers/eligible-projects', 'GET'],
+  ['ngo/field-officers/assignments', 'GET'],
+  ['ngo/field-officers/[identityId]', 'GET'],
+  ['ngo/field-officers/[identityId]', 'PATCH'],
+  ['ngo/field-officers/[identityId]/assignments', 'GET'],
+  ['ngo/field-officers/[identityId]/assignments', 'POST'],
+  ['ngo/field-officers/[identityId]/assignments/[assignmentId]', 'PATCH'],
+  ['ngo/field-devices', 'GET'],
+  ['ngo/field-devices', 'POST'],
+  ['ngo/field-devices/[deviceRowId]', 'GET'],
+  ['ngo/field-devices/[deviceRowId]', 'PATCH'],
   ['help-support/tickets', 'GET'],
   ['help-support/tickets/[ticketId]', 'GET'],
   ['help-support/tickets/[ticketId]', 'POST'],
@@ -228,6 +255,7 @@ const loginRoutes: Array<[string, Method]> = [
   ['service-requests/[id]/volunteers', 'GET'],
   ['service-requests/[id]/volunteers', 'POST'],
   ['service-requests/[id]/volunteers/[volunteerId]', 'PUT'],
+  ['service-requests/[id]/volunteers/[volunteerId]/delivery/sync', 'GET'],
   ['service-requests/[id]/volunteers/[volunteerId]/delivery/sync', 'POST'],
   ['service-requests/recommend', 'POST'],
   ['upload', 'DELETE'],
@@ -246,13 +274,13 @@ describe('logged-in user routes', () => {
   it.each(loginRoutes)('%s %s rejects anonymous requests with 401', async (route, method) => {
     const res = await call(route, method, buildRequest(method))
     expect(res.status).toBe(401)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 
   it.each(loginRoutes)('%s %s rejects forged tokens with 401', async (route, method) => {
     const res = await call(route, method, buildRequest(method, { token: forged }))
     expect(res.status).toBe(401)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 })
 
@@ -261,11 +289,14 @@ const wrongRole: Array<[string, Method, string, string]> = [
   ['campaigns/[id]', 'DELETE', 'ngo', ngo],
   ['campaigns/[id]/volunteer', 'POST', 'company', company],
   ['campaigns/accept-lead', 'POST', 'company', company],
+  ['campaigns/decline-lead', 'POST', 'company', company],
   ['campaigns/lead-assignments', 'GET', 'company', company],
   ['campaigns/lead-invitations', 'GET', 'company', company],
   ['campaigns/volunteer-assignments', 'GET', 'company', company],
   ['csr-agent/generate-campaigns', 'POST', 'ngo', ngo],
   ['csr-agent/generate-campaigns', 'POST', 'individual', individual],
+  ['csr-agent/suggest-milestones', 'POST', 'ngo', ngo],
+  ['csr-agent/suggest-milestones', 'POST', 'individual', individual],
   ['csr-agent/lead-ngo-invites', 'GET', 'ngo', ngo],
   ['csr-agent/lead-ngo-invites', 'POST', 'ngo', ngo],
   ['csr-agent/publish-campaign', 'POST', 'ngo', ngo],
@@ -279,8 +310,17 @@ const wrongRole: Array<[string, Method, string, string]> = [
   ['evidence-verification/accounts/[identityId]', 'DELETE', 'ngo', ngo],
   ['milestones/[id]/evidence', 'POST', 'company', company],
   ['ngos/network', 'POST', 'ngo', ngo],
-  ['service-offers/[id]/clients', 'POST', 'company', company],
-  ['service-offers/[id]/clients', 'POST', 'individual', individual],
+  ['ngo/field-officers/eligible-projects', 'GET', 'company', company],
+  ['ngo/field-officers/assignments', 'GET', 'company', company],
+  ['ngo/field-officers/[identityId]', 'GET', 'company', company],
+  ['ngo/field-officers/[identityId]', 'PATCH', 'company', company],
+  ['ngo/field-officers/[identityId]/assignments', 'GET', 'company', company],
+  ['ngo/field-officers/[identityId]/assignments', 'POST', 'company', company],
+  ['ngo/field-officers/[identityId]/assignments/[assignmentId]', 'PATCH', 'company', company],
+  ['ngo/field-devices', 'GET', 'company', company],
+  ['ngo/field-devices', 'POST', 'company', company],
+  ['ngo/field-devices/[deviceRowId]', 'GET', 'company', company],
+  ['ngo/field-devices/[deviceRowId]', 'PATCH', 'company', company],
   ['service-offers/[id]/clients/[clientId]/payments/create-order', 'POST', 'ngo', ngo],
   ['service-offers/[id]/clients/[clientId]/payments/verify', 'POST', 'ngo', ngo],
   ['service-request-assignments', 'GET', 'company', company],
@@ -294,6 +334,7 @@ const wrongRole: Array<[string, Method, string, string]> = [
   ['service-requests/[id]/refresh-status', 'POST', 'company', company],
   ['service-requests/[id]/volunteers', 'GET', 'company', company],
   ['service-requests/[id]/volunteers/[volunteerId]', 'PUT', 'company', company],
+  ['service-requests/[id]/volunteers/[volunteerId]/delivery/sync', 'GET', 'company', company],
   ['service-requests/[id]/volunteers/[volunteerId]/delivery/sync', 'POST', 'company', company],
 ]
 
@@ -301,24 +342,23 @@ describe('role checks', () => {
   it.each(wrongRole)('%s %s rejects a %s token with 403', async (route, method, _role, token) => {
     const res = await call(route, method, buildRequest(method, { token }))
     expect(res.status).toBe(403)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 
   it('refuses an offer application made on behalf of another NGO', async () => {
     const res = await call('service-offers/[id]/clients', 'POST', buildRequest('POST', { token: ngo, body: JSON.stringify({ client_id: 99, selected_need_ids: [1] }) }))
     expect(res.status).toBe(403)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 
   it("refuses to show another user's offer application", async () => {
     const request = new NextRequest('http://localhost/api/service-offers/1/clients?userId=99', { headers: { authorization: `Bearer ${ngo}` } })
     const res = await call('service-offers/[id]/clients', 'GET', request)
     expect(res.status).toBe(403)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 
   it.each<[string, Method]>([
-    ['csr-agent/generate-campaigns', 'POST'],
     ['csr-agent/update-campaign', 'POST'],
     ['csr-agent/update-campaign', 'PUT'],
     ['csr-agent/publish-campaign', 'POST'],
@@ -326,7 +366,13 @@ describe('role checks', () => {
   ])('%s %s lets a company token past auth', async (route, method) => {
     const res = await call(route, method, buildRequest(method, { token: company }))
     expect(res.status).toBe(400)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
+  })
+
+  it('lets a company token past auth on generate-campaigns (may hit abuse-limit RPC)', async () => {
+    const res = await call('csr-agent/generate-campaigns', 'POST', buildRequest('POST', { token: company }))
+    expect(res.status).toBe(400)
+    expect(dbCalls.filter((call) => call !== 'from' && call !== 'rpc')).toEqual([])
   })
 
   it('accepts the company session cookie on generate-campaigns', async () => {
@@ -334,9 +380,9 @@ describe('role checks', () => {
     expect(res.status).toBe(400)
   })
 
-  it('ignores the session cookie where only bearer auth is supported', async () => {
+  it('accepts the company session cookie on update-campaign', async () => {
     const res = await call('csr-agent/update-campaign', 'POST', buildRequest('POST', { cookies: { token: company } }))
-    expect(res.status).toBe(401)
+    expect(res.status).toBe(400)
   })
 })
 
@@ -346,6 +392,7 @@ describe('CA and evidence verification routes', () => {
     ['ca/auth/verify', 'GET'],
     ['ca/queue', 'GET'],
     ['ca/review', 'GET'],
+    ['ca/history', 'GET'],
     ['ca/verification-action', 'POST'],
     ['evidence-verification/change-password', 'POST'],
     ['evidence-verification/payments/create-order', 'POST'],
@@ -356,17 +403,18 @@ describe('CA and evidence verification routes', () => {
   ])('%s %s rejects anonymous requests', async (route, method) => {
     const res = await call(route, method, buildRequest(method))
     expect(res.status).toBe(401)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 
   it.each<[string, Method]>([
     ['ca/queue', 'GET'],
     ['ca/review', 'GET'],
+    ['ca/history', 'GET'],
     ['ca/verification-action', 'POST'],
   ])('%s %s rejects a regular user token', async (route, method) => {
     const res = await call(route, method, buildRequest(method, { token: ngo }))
     expect(res.status).toBe(401)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 })
 
@@ -379,14 +427,14 @@ describe('cron and webhook routes', () => {
     vi.stubEnv('CRON_SECRET', 'cron-secret')
     const res = await call('cron/daily-cleanup', method, buildRequest(method, { token }))
     expect(res.status).toBe(401)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 
   it('razorpay webhook requires a signature header', async () => {
     vi.stubEnv('RAZORPAY_WEBHOOK_SECRET', 'hook-secret')
     const res = await call('webhooks/razorpay', 'POST', buildRequest('POST'))
     expect(res.status).toBe(400)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 
   it('razorpay webhook rejects a bad signature', async () => {
@@ -395,13 +443,13 @@ describe('cron and webhook routes', () => {
     const signature = crypto.createHmac('sha256', 'other-secret').update(body).digest('hex')
     const res = await call('webhooks/razorpay', 'POST', buildRequest('POST', { body, headers: { 'x-razorpay-signature': signature } }))
     expect(res.status).toBe(401)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 
   it('razorpay webhook refuses to run without a configured secret', async () => {
     vi.stubEnv('RAZORPAY_WEBHOOK_SECRET', '')
     const res = await call('webhooks/razorpay', 'POST', buildRequest('POST', { headers: { 'x-razorpay-signature': 'x' } }))
     expect(res.status).toBe(500)
-    expect(dbCalls).toEqual([])
+    expect(dbCalls.filter((call) => call !== 'from')).toEqual([])
   })
 })

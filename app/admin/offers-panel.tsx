@@ -1,5 +1,6 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast as sonnerToast } from 'sonner';
@@ -7,59 +8,54 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { formatStatusLabel } from '@/lib/format-date';
 import { cn, getErrorMessage } from '@/lib/utils';
 import { OfferFullDetails } from './detail-panels';
-import { adminListButtonClass, statusTone, textMatch } from './helpers';
+import { adminListButtonClass, offerCatalogLabel, offerCatalogTone, textMatch } from './helpers';
 import type { ServiceOffer } from './types';
 
 export function useOffersPanelState({ onReviewed }: { onReviewed: () => Promise<void> }) {
   const [selectedOffer, setSelectedOffer] = useState<ServiceOffer | null>(null);
-  const [reviewComments, setReviewComments] = useState('');
-  const [isReviewing, setIsReviewing] = useState(false);
+  const [isRemoving, setIsRemoving] = useState(false);
   const [offerQuery, setOfferQuery] = useState('');
 
-  const handleReview = async (offerId: number, action: 'approve' | 'reject') => {
-    if (!reviewComments.trim()) {
-      sonnerToast.error('Please add review comments');
+  const handleRemoveOffer = async (offerId: number) => {
+    if (!window.confirm('Remove this offer from the marketplace? Offers with applications are archived so history is preserved.')) {
       return;
     }
 
     try {
-      setIsReviewing(true);
-      const response = await fetch(`/api/admin/service-offers/${offerId}/review`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      setIsRemoving(true);
+      const response = await fetch(`/api/service-offers/${offerId}`, {
+        method: 'DELETE',
         credentials: 'include',
-        body: JSON.stringify({ action, comments: reviewComments }),
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
       if (!response.ok || !data?.success) {
-        throw new Error(data?.error || `Failed to ${action} service offer`);
+        throw new Error(readApiError(data, 'Failed to remove service offer'));
       }
 
-      sonnerToast.success(`Service offer ${action}d successfully`);
-      setReviewComments('');
+      sonnerToast.success(
+        data.mode === 'archived'
+          ? 'Offer archived (application history preserved)'
+          : 'Offer deleted'
+      );
       setSelectedOffer(null);
       await onReviewed();
     } catch (error) {
-      sonnerToast.error(getErrorMessage(error) || `Failed to ${action} service offer`);
+      sonnerToast.error(getErrorMessage(error) || 'Failed to remove service offer');
     } finally {
-      setIsReviewing(false);
+      setIsRemoving(false);
     }
   };
 
   return {
     selectedOffer,
     setSelectedOffer,
-    reviewComments,
-    setReviewComments,
-    isReviewing,
+    isRemoving,
     offerQuery,
     setOfferQuery,
-    handleReview,
+    handleRemoveOffer,
   };
 }
 
@@ -70,12 +66,10 @@ export function OffersPanel({ offers, state }: { offers: ServiceOffer[]; state: 
   const {
     selectedOffer,
     setSelectedOffer,
-    reviewComments,
-    setReviewComments,
-    isReviewing,
+    isRemoving,
     offerQuery,
     setOfferQuery,
-    handleReview,
+    handleRemoveOffer,
   } = state;
 
   const filteredOffers = useMemo(() => {
@@ -94,7 +88,10 @@ export function OffersPanel({ offers, state }: { offers: ServiceOffer[]; state: 
     <div className="h-full min-h-0 space-y-6 overflow-y-auto overflow-x-hidden pr-1">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900">Service Offers</h2>
+          <h2 className="text-2xl font-bold text-slate-900">Capability offers</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Offers publish immediately. Moderate by editing the live page or removing the offer.
+          </p>
         </div>
         <div className="w-full md:w-80">
           <Input
@@ -109,7 +106,7 @@ export function OffersPanel({ offers, state }: { offers: ServiceOffer[]; state: 
       <div className="grid gap-6 overflow-x-hidden xl:grid-cols-[0.9fr_1.1fr]">
         <Card className="border-blue-100 bg-white text-slate-900 min-w-0">
           <CardHeader>
-            <CardTitle className="text-slate-900">Review queue</CardTitle>
+            <CardTitle className="text-slate-900">All offers</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {filteredOffers.length === 0 ? (
@@ -121,7 +118,7 @@ export function OffersPanel({ offers, state }: { offers: ServiceOffer[]; state: 
                     <p className="font-semibold text-slate-900 break-words line-clamp-2">{offer.title}</p>
                     <p className="text-xs text-slate-500 truncate">{offer.organization?.name || 'Unknown organization'}</p>
                   </div>
-                  <Badge className={cn('shrink-0', statusTone(offer.admin_status))}>{formatStatusLabel(offer.admin_status)}</Badge>
+                  <Badge className={cn('shrink-0', offerCatalogTone(offer))}>{offerCatalogLabel(offer)}</Badge>
                 </div>
                 <p className="mt-2 line-clamp-2 break-all text-sm text-slate-600">{offer.description}</p>
               </button>
@@ -135,15 +132,28 @@ export function OffersPanel({ offers, state }: { offers: ServiceOffer[]; state: 
           </CardHeader>
           <CardContent className="space-y-4">
             {!selectedOffer ? (
-              <p className="text-sm text-slate-500">Select an offer to review it.</p>
+              <p className="text-sm text-slate-500">Select an offer to view details or remove it.</p>
             ) : (
               <>
                 <OfferFullDetails offer={selectedOffer} />
-                <Textarea value={reviewComments} onChange={(e) => setReviewComments(e.target.value)} rows={5} placeholder="Write admin review notes" className="border-blue-200 bg-white text-slate-900 placeholder:text-slate-400" />
                 <div className="flex flex-wrap gap-3">
-                  <Button onClick={() => handleReview(selectedOffer.id, 'approve')} disabled={isReviewing} className="bg-emerald-600 hover:bg-emerald-500">Approve</Button>
-                  <Button onClick={() => handleReview(selectedOffer.id, 'reject')} disabled={isReviewing} variant="destructive">Reject</Button>
-                  <Button variant="outline" className="border-gram-border bg-white text-udaan-blue hover:bg-gram-sage" onClick={() => router.push(`/service-offers/${selectedOffer.id}`)}>Open live page</Button>
+                  <Button
+                    variant="outline"
+                    className="border-gram-border bg-white text-udaan-blue hover:bg-gram-sage"
+                    onClick={() => router.push(`/service-offers/edit/${selectedOffer.id}`)}
+                  >
+                    Edit offer
+                  </Button>
+                  <Button variant="outline" className="border-gram-border bg-white text-udaan-blue hover:bg-gram-sage" onClick={() => router.push(`/service-offers/${selectedOffer.id}`)}>
+                    Open live page
+                  </Button>
+                  <Button
+                    onClick={() => handleRemoveOffer(selectedOffer.id)}
+                    disabled={isRemoving}
+                    variant="destructive"
+                  >
+                    Remove offer
+                  </Button>
                 </div>
               </>
             )}

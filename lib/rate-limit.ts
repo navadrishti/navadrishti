@@ -5,6 +5,12 @@ import { authStoreAvailable, switchToMemoryIfMissing } from '@/lib/auth-store';
 type RateLimitOptions = {
   limit: number;
   windowMs: number;
+  /**
+   * When true, deny on missing store / RPC errors instead of falling back to
+   * per-instance memory (required for multi-instance abuse ceilings).
+   * Production always fails closed regardless of this flag.
+   */
+  failClosed?: boolean;
 };
 
 export type RateLimitResult =
@@ -53,11 +59,23 @@ export function rateLimitInMemory(key: string, { limit, windowMs }: RateLimitOpt
 }
 
 /**
- * Sliding-window limit shared across instances through Postgres. Database errors never block a
- * request: they fall back to the per-instance limiter so auth stays available.
+ * Sliding-window limit shared across instances through Postgres. Production fails closed when
+ * the store is missing or the RPC errors; development and tests still use the in-memory fallback.
  */
+function denyRateLimit(): RateLimitResult {
+  return { allowed: false, remaining: 0, retryAfterSeconds: 30 };
+}
+
 export async function rateLimit(key: string, options: RateLimitOptions): Promise<RateLimitResult> {
-  if (!authStoreAvailable()) return rateLimitInMemory(key, options);
+  const production = process.env.NODE_ENV === 'production';
+  const failClosed =
+    Boolean(options.failClosed) ||
+    production ||
+    process.env.RATE_LIMIT_FAIL_CLOSED === '1';
+
+  if (!authStoreAvailable()) {
+    return failClosed ? denyRateLimit() : rateLimitInMemory(key, options);
+  }
 
   try {
     const { data, error } = await supabase.rpc('auth_rate_limit_hit', {
@@ -73,7 +91,9 @@ export async function rateLimit(key: string, options: RateLimitOptions): Promise
       ? { allowed: true, remaining: row.remaining, retryAfterSeconds: 0 }
       : { allowed: false, remaining: 0, retryAfterSeconds: Math.max(1, row.retry_after_seconds) };
   } catch (error) {
-    if (!switchToMemoryIfMissing(error)) console.error('Rate limit store error:', error);
+    const missing = switchToMemoryIfMissing(error);
+    if (!missing) console.error('Rate limit store error:', error);
+    if (failClosed) return denyRateLimit();
     return rateLimitInMemory(key, options);
   }
 }

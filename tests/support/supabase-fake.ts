@@ -36,6 +36,7 @@ export function createSupabaseFake(responder: FakeResponder = {}) {
   const queries: FakeQuery[] = []
   const queues = new Map<string, FakeResult[]>()
   let handler: ((query: FakeQuery) => FakeResult | undefined) | null = null
+  let interceptor: ((query: FakeQuery) => FakeResult | undefined) | null = null
 
   const use = (next: FakeResponder) => {
     queues.clear()
@@ -46,7 +47,7 @@ export function createSupabaseFake(responder: FakeResponder = {}) {
   use(responder)
 
   const respond = (query: FakeQuery) =>
-    handler?.(query) ?? (queues.get(`${query.table}.${query.op}`) ?? queues.get(query.table))?.shift()
+    interceptor?.(query) ?? handler?.(query) ?? (queues.get(`${query.table}.${query.op}`) ?? queues.get(query.table))?.shift()
 
   const settle = (query: FakeQuery) => {
     const result = respond(query) ?? {}
@@ -113,6 +114,9 @@ export function createSupabaseFake(responder: FakeResponder = {}) {
       queues.set(key, [...(queues.get(key) ?? []), ...results])
     },
     respondWith: use,
+    intercept(next: ((query: FakeQuery) => FakeResult | undefined) | null) {
+      interceptor = next
+    },
     reset(next: FakeResponder = {}) {
       queries.length = 0
       use(next)
@@ -246,4 +250,17 @@ export function unknownColumns(queries: FakeQuery[]) {
     }
   }
   return problems
+}
+
+export function isSessionOverlayQuery(query: FakeQuery) {
+  return (
+    query.table === 'users' ||
+    query.table === 'company_ca_identities' ||
+    query.table === 'ngo_field_officer_identities' ||
+    query.table === 'company_employee_identities'
+  )
+}
+
+export function businessQueries(queries: FakeQuery[]) {
+  return queries.filter((query) => !isSessionOverlayQuery(query))
 }

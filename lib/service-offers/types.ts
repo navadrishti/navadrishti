@@ -36,8 +36,12 @@ export type CapabilityOfferUsageRecord = {
   cumulative_due?: number
   paid_total?: number
   last_attendance_at?: string | null
+  attendance_source?: string | null
   settled_amount?: number | null
+  settlement_status?: string | null
   settlement_mode?: string | null
+  delivery_tracking_id?: string | null
+  delivery_tracking_last_status?: string | null
 }
 
 export type CapabilityOfferListItem = {
@@ -48,9 +52,26 @@ export type CapabilityOfferListItem = {
   isAssigned?: boolean
   usage_records?: CapabilityOfferUsageRecord[]
   status?: string | null
+  admin_status?: string | null
+  is_listed?: boolean | null
 }
 
-export type CapabilityOfferPastReason = 'expired' | 'used' | 'expired_and_used' | 'inactive'
+export type CapabilityOfferPastReason = 'expired' | 'used' | 'expired_and_used' | 'inactive' | 'unlisted'
+
+export type CapabilityOfferMyApplication = {
+  id: number
+  status: string
+  isAssigned: boolean
+  message?: string | null
+  assigned_at?: string | null
+  applied_at?: string | null
+  completed_at?: string | null
+  service_request_id?: number | null
+  assignment_id?: string | null
+  response_meta?: Record<string, unknown> | null
+  selected_needs: SelectedNeedSummary[]
+  usage?: CapabilityOfferUsageRecord | null
+}
 
 export type CapabilityOfferSummary = CapabilityOfferListItem & {
   title: string
@@ -71,4 +92,9 @@ export type CapabilityOfferSummary = CapabilityOfferListItem & {
   applications_count?: number | null
   pending_applications?: number | null
   category?: string | null
+  provider_name?: string | null
+  ngo_name?: string | null
+  verification_status?: string | null
+  verified?: boolean | null
+  my_application?: CapabilityOfferMyApplication | null
 }

@@ -1,12 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import {
+  attendanceSummaryFromEntries,
   CAMPAIGN_VOLUNTEER_ENGAGEMENT_KIND,
   filterCampaignVolunteerAssignments,
+  filterCsrCapabilityRentalAssignments,
   getElapsedCampaignDays,
   getInclusiveDayCount,
   getVolunteerApplicationForUser,
   isCampaignVolunteerAssignment,
+  isCsrCapabilityRentalAssignment,
   isVolunteeringBanned,
+  listElapsedCampaignDates,
+  listInclusiveCampaignDates,
+  resolveCampaignLeadNgoProgress,
 } from '@/lib/campaign-volunteer-attendance'
 import { formatLeadNgoInviteStatusLabel, isRemovableLeadInviteStatus } from '@/app/companies/dashboard/format'
 
@@ -22,10 +28,37 @@ describe('campaign volunteer assignments', () => {
     expect(isCampaignVolunteerAssignment(assignment)).toBe(expected)
   })
 
+  it.each([
+    [{ meta: { flow: 'csr_capability_rental' } }, true],
+    [{ meta: JSON.stringify({ flow: 'csr_capability_rental' }) }, true],
+    [{ target_type: 'campaign', meta: { flow: 'other' } }, false],
+    [null, false],
+  ])('%j is CSR capability rental: %s', (assignment, expected) => {
+    expect(isCsrCapabilityRentalAssignment(assignment)).toBe(expected)
+  })
+
   it('filters rows', () => {
     const rows = [{ target_type: 'campaign', id: 1 }, { target_type: 'service_request', id: 2 }]
     expect(filterCampaignVolunteerAssignments(rows).map((row) => row.id)).toEqual([1])
     expect(filterCampaignVolunteerAssignments(null)).toEqual([])
+    expect(
+      filterCsrCapabilityRentalAssignments([
+        { id: 1, meta: { flow: 'csr_capability_rental' } },
+        { id: 2, meta: { flow: 'other' } },
+      ]).map((row) => row.id)
+    ).toEqual([1])
+  })
+
+  it('summarises live attendance entries for a volunteer', () => {
+    expect(
+      attendanceSummaryFromEntries([
+        { attendance_date: '2026-10-02', attendance_status: 'present' },
+        { attendance_date: '2026-10-02T09:00:00Z', attendance_status: 'present' },
+        { attendance_date: '2026-10-03', attendance_status: 'absent' },
+        { attendance_date: '2026-10-04', attendance_status: 'present' },
+      ])
+    ).toEqual({ days_attended: 2, total_entries: 4, last_attendance_at: '2026-10-04' })
+    expect(attendanceSummaryFromEntries(null)).toEqual({ days_attended: 0, total_entries: 0, last_attendance_at: null })
   })
 
   it('finds a volunteer application by user id', () => {
@@ -48,12 +81,31 @@ describe('campaign day counts', () => {
     expect(getInclusiveDayCount(start, end)).toBe(expected)
   })
 
-  it('counts elapsed days up to today or the end date', () => {
-    const reference = new Date(2026, 0, 5, 15)
+  it('counts elapsed days up to today or the end date in IST', () => {
+    const reference = new Date('2026-01-05T09:30:00Z') // 15:00 IST
     expect(getElapsedCampaignDays('2026-01-01', '2026-01-10', reference)).toBe(5)
     expect(getElapsedCampaignDays('2026-01-01', '2026-01-03', reference)).toBe(3)
     expect(getElapsedCampaignDays('2026-02-01', '2026-02-10', reference)).toBe(0)
     expect(getElapsedCampaignDays('2026-01-01', null, reference)).toBe(0)
+  })
+
+  it('uses India calendar day near UTC midnight so today marks stay daily', () => {
+    // 2026-01-05 00:30 IST = 2026-01-04 19:00 UTC
+    const justAfterIstMidnight = new Date('2026-01-04T19:00:00Z')
+    expect(getElapsedCampaignDays('2026-01-01', '2026-01-10', justAfterIstMidnight)).toBe(5)
+    expect(listElapsedCampaignDates('2026-01-01', '2026-01-10', justAfterIstMidnight).at(-1)).toBe('2026-01-05')
+  })
+
+  it('lists every inclusive campaign day from start through end', () => {
+    const dates = listInclusiveCampaignDates('2026-07-01', '2026-10-01')
+    expect(dates).toHaveLength(93)
+    expect(dates[0]).toBe('2026-07-01')
+    expect(dates.at(-1)).toBe('2026-10-01')
+    expect(listElapsedCampaignDates('2026-07-01', '2026-10-01', new Date('2026-07-03T06:30:00Z'))).toEqual([
+      '2026-07-01',
+      '2026-07-02',
+      '2026-07-03',
+    ])
   })
 })
 
@@ -96,5 +148,38 @@ describe('lead invite status formatting', () => {
     expect(formatLeadNgoInviteStatusLabel('awaiting_acceptance')).toBe('Pending')
     expect(formatLeadNgoInviteStatusLabel('assigned')).toBe('Pending')
     expect(formatLeadNgoInviteStatusLabel('accepted')).not.toBe('Pending')
+  })
+})
+
+describe('resolveCampaignLeadNgoProgress', () => {
+  it('asks to invite when nobody has been invited', () => {
+    expect(resolveCampaignLeadNgoProgress({ impact_metrics: {} })).toMatchObject({
+      stage: 'invite',
+      leadNgoLabel: 'Invite an NGO',
+    })
+  })
+
+  it('is pending while invites are outstanding', () => {
+    expect(
+      resolveCampaignLeadNgoProgress({
+        impact_metrics: { lead_ngo_invites: [{ ngo_id: 9, name: 'Hope Foundation NGO', status: 'invited' }] },
+      })
+    ).toMatchObject({
+      stage: 'pending',
+      leadNgoLabel: 'Pending',
+    })
+  })
+
+  it('shows the selected NGO name after acceptance', () => {
+    expect(
+      resolveCampaignLeadNgoProgress({
+        lead_ngo_user_id: 9,
+        selected_lead_ngo_name: 'Hope Foundation NGO',
+        impact_metrics: { lead_ngo_accepted: true },
+      })
+    ).toMatchObject({
+      stage: 'selected',
+      leadNgoLabel: 'Hope Foundation NGO',
+    })
   })
 })

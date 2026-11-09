@@ -7,6 +7,7 @@ import { RegistrationCard } from '@/components/registration/registration-card'
 import { CompanyInfoSection } from './company-info-section'
 import { CompanyLocationSection } from './company-location-section'
 import { CsrProgramSection } from './csr-program-section'
+import { getCalendarYearIst } from '@/lib/utils'
 import { useCompanyRegistration } from './use-company-registration'
 
 export default function CompanyRegistration() {
@@ -59,7 +60,7 @@ export default function CompanyRegistration() {
               name="founded"
               type="number"
               min="1900"
-              max={new Date().getFullYear()}
+              max={getCalendarYearIst()}
               value={formData.founded}
               onChange={handleChange}
               placeholder="2020"

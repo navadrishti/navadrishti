@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type Razorpay from 'razorpay'
 import { createNetworkDonationOrder, verifyNetworkDonation } from '@/lib/ngo-network/donation'
-import { filterNetworkNgos, type NetworkNgo, type NetworkNgoFilters } from '@/lib/ngo-network/listing'
+import { filterNetworkNgos, redactNetworkNgoContact, type NetworkNgo, type NetworkNgoFilters } from '@/lib/ngo-network/listing'
 import {
   buildCompliance,
   buildMission,
@@ -153,6 +153,18 @@ describe('filterNetworkNgos', () => {
     expect(ngo).not.toHaveProperty('search_haystack')
     expect(ngo).not.toHaveProperty('city')
     expect(ngo).not.toHaveProperty('state_province')
+  })
+})
+
+describe('redactNetworkNgoContact', () => {
+  const ngo = { id: 1, name: 'Asha', email: 'asha@ngo.org', phone: '99999', location: 'Pune' }
+
+  it('keeps contact details for signed-in callers', () => {
+    expect(redactNetworkNgoContact(ngo, true)).toEqual(ngo)
+  })
+
+  it('omits email and phone for anonymous callers', () => {
+    expect(redactNetworkNgoContact(ngo, false)).toEqual({ id: 1, name: 'Asha', location: 'Pune' })
   })
 })
 

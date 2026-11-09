@@ -5,11 +5,13 @@ import {
   backfillNgoComplianceProfileData,
   comparePassword,
   generateAdminToken,
+  generateCompanyCAToken,
   generateToken,
   getAccountAccessBlockReason,
   getAccountLockUntil,
   getCaBadgeNumber,
   hashPassword,
+  caVerifiedPayerError,
   isCaVerifiedAccount,
   isPermanentlyBannedAccount,
   isPlatformUserSession,
@@ -19,12 +21,15 @@ import {
   validateCompanyHeadquartersLocation,
   validateNgoHeadquartersLocation,
   verifyAdminToken,
+  verifyCompanyCAToken,
   verifyToken,
   visibleCaBadgeNumber,
   withAuth,
   type UserData,
 } from '@/lib/auth'
 import { toIsoExpiryDate } from '@/lib/auth/normalize'
+import { setLiveUserTypeOverlay } from '@/lib/auth/session'
+import { overlayLiveUserType } from '@/lib/server-auth'
 import {
   applyCaBadgeToProfile,
   generatePlatformCAToken,
@@ -37,6 +42,7 @@ import {
 import { ensureCompanyCaIdAssigned, generateUniqueCompanyCaId } from '@/lib/company-ca'
 import { callsOf, supabaseFake } from './support/supabase-fake'
 
+vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db', async () => {
   const { supabaseFake } = await import('./support/supabase-fake')
   return { supabase: supabaseFake.client, db: {} }
@@ -140,6 +146,13 @@ describe('withAuth', () => {
   const handler = vi.fn((req: NextRequest & { user: UserData }) => Response.json({ id: req.user.id }))
   const wrapped = withAuth(handler)
 
+  beforeEach(() => {
+    supabaseFake.respondWith((query) => query.table === 'users'
+      ? { data: { id: 21, account_status: 'active', user_type: 'company', verification_status: 'verified' } }
+      : { data: null })
+    setLiveUserTypeOverlay((claims, pathname) => overlayLiveUserType(claims, pathname))
+  })
+
   it('passes the user from a bearer token', async () => {
     const response = await wrapped(requestWith({ header: `Bearer ${generateToken(user)}` }))
     expect(await response.json()).toEqual({ id: 21 })
@@ -230,6 +243,22 @@ describe('platform CA tokens', () => {
   })
 })
 
+describe('company CA tokens', () => {
+  it('round-trips a scoped company CA payload that platform verifyToken rejects', () => {
+    const token = generateCompanyCAToken(user)
+    const payload = jwt.decode(token) as { kind: string; iat: number; exp: number }
+    expect(payload.kind).toBe('company_ca')
+    expect(payload.exp - payload.iat).toBe(12 * 3600)
+    expect(verifyCompanyCAToken(token)).toMatchObject({ id: 21, email: 'a@b.org', user_type: 'company' })
+    expect(verifyToken(token)).toBeNull()
+    expect(verifyPlatformCAToken(token)).toBeNull()
+  })
+
+  it('rejects a platform user token', () => {
+    expect(verifyCompanyCAToken(generateToken(user))).toBeNull()
+  })
+})
+
 describe('CA badges', () => {
   it('issues a deterministic ND-CA badge', () => {
     const badge = issueCaBadgeNumber(5)
@@ -263,6 +292,8 @@ describe('CA badges', () => {
     expect(visibleCaBadgeNumber('pending', { ca_badge_number: 'ND-CA-ABCDEF' })).toBeNull()
     expect(isCaVerifiedAccount('VERIFIED')).toBe(true)
     expect(isCaVerifiedAccount(null)).toBe(false)
+    expect(caVerifiedPayerError('verified')).toBeNull()
+    expect(caVerifiedPayerError('unverified')).toMatch(/CA-verified/)
   })
 })
 

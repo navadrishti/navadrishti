@@ -1,7 +1,7 @@
 import {supabase} from '@/lib/db';
+import { isMerchantRazorpayPayoutActive } from '@/lib/razorpay-route'
+import { parseJsonObject } from '@/lib/utils'
 import {z} from "zod";
-
-/* ───────────────── SCHEMAS ───────────────── */
 
 export const InputSchema = z.object({
     title: z.string(),
@@ -14,13 +14,11 @@ export const InputSchema = z.object({
     end_date: z.coerce.date(),
     requirementDetails: z.string(),
 }).refine(
-    (data) => data.start_date < data.end_date,
-    {message: "start_date must be before end_date" , path: ["end_date"]},
+    (data) => data.end_date.getTime() >= data.start_date.getTime(),
+    {message: "The campaign end date needs to be after the start date.", path: ["end_date"]},
 )
 
 export type InputSchemaType = z.infer<typeof InputSchema>;
-
-/* ───────────────── TYPES ───────────────── */
 
 export type CapabilityMatch = {
     capability_id: number
@@ -52,6 +50,7 @@ type ServiceOfferRow = {
     tags: unknown
     valid_until?: string | null
     status?: string | null
+    creator_id?: number | null
 }
 
 const toNumber = (value: unknown): number => {
@@ -156,8 +155,6 @@ const buildSimilarity = (
     return Math.min(0.95, Math.max(0.2, 0.2 + rawSimilarity))
 }
 
-/* ───────────────── SCORING ───────────────── */
-
 const scoreMatch = ( match: Omit<CapabilityMatch, 'score'> , input: InputSchemaType): number => {
     let score = 0
 
@@ -200,8 +197,6 @@ const scoreMatch = ( match: Omit<CapabilityMatch, 'score'> , input: InputSchemaT
     return Math.round(score)
 }
 
-/* ───────────────── SERVICE ───────────────── */
-
 export const findServiceOffers = async (input: InputSchemaType): Promise<CapabilityMatch[]> => {
 
     // validation done in route handler. Input is valid
@@ -229,10 +224,11 @@ export const findServiceOffers = async (input: InputSchemaType): Promise<Capabil
             price_type,
             requirements,
             tags,
-            valid_until
+            valid_until,
+            status,
+            creator_id
         `)
         .eq('status', 'active')
-        .eq('admin_status', 'approved')
         .or(`price_type.neq.fixed,price_amount.lte.${input.budget}`)
         .limit(200)
 
@@ -273,7 +269,7 @@ export const findServiceOffers = async (input: InputSchemaType): Promise<Capabil
         }
     }
 
-    const availableOffers = activeOffers.filter((offer) => {
+    let availableOffers = activeOffers.filter((offer) => {
         if (usedOfferIds.has(Number(offer.id))) return false
         let details: Record<string, unknown> = {}
         if (offer.requirements && typeof offer.requirements === 'object') {
@@ -289,9 +285,33 @@ export const findServiceOffers = async (input: InputSchemaType): Promise<Capabil
         if (lock && typeof lock === 'object' && (lock as Record<string, unknown>).paid_at) {
             return false
         }
-        if (String(offer.status || '').toLowerCase() === 'inactive') return false
+        if (['inactive', 'completed', 'cancelled', 'paused'].includes(String(offer.status || '').toLowerCase())) return false
         return true
     })
+
+    const creatorIds = [...new Set(
+        availableOffers
+            .map((offer) => Number(offer.creator_id))
+            .filter((id) => Number.isFinite(id) && id > 0)
+    )]
+    if (creatorIds.length > 0) {
+        const { data: creators } = await supabase
+            .from('users')
+            .select('id, verification_status, profile_data')
+            .in('id', creatorIds)
+        const readyCreatorIds = new Set<number>()
+        for (const creator of creators || []) {
+            if (
+                String(creator.verification_status || '').toLowerCase() === 'verified'
+                && isMerchantRazorpayPayoutActive(parseJsonObject(creator.profile_data))
+            ) {
+                readyCreatorIds.add(Number(creator.id))
+            }
+        }
+        if ((creators || []).length > 0) {
+            availableOffers = availableOffers.filter((offer) => readyCreatorIds.has(Number(offer.creator_id)))
+        }
+    }
 
     if (availableOffers.length === 0) {
         return []

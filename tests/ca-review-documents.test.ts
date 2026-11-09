@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { extractDocuments } from '@/lib/ca-review/documents'
+import { canCaDecide, isCaReviewLocked } from '@/components/ca-verification-review/helpers'
 import { applyNgoExpiryOverlay, ngoOcrExpiries } from '@/lib/ca-review/ngo-compliance'
 import { notifyUser } from '@/lib/ca-review/notifications'
 import { selectColumns, TYPE_CONFIG, unwrapUser, type CAQueueItem } from '@/lib/ca-review/queue-config'
@@ -43,6 +44,11 @@ function queueItem(extra: Record<string, unknown> = {}): CAQueueItem {
 
 beforeEach(() => {
   mocks.from.mockReset()
+  vi.stubEnv('CLOUDINARY_CLOUD_NAME', 'demo')
+})
+
+afterEach(() => {
+  vi.unstubAllEnvs()
 })
 
 describe('extractDocuments', () => {
@@ -52,8 +58,8 @@ describe('extractDocuments', () => {
         verification_documents: {
           individual: {
             documents: {
-              individualAadhaar: 'https://cdn.example.com/kyc/aadhaar%20front.PNG',
-              individualPanCard: { url: ' https://cdn.example.com/kyc/pan.pdf ' },
+              individualAadhaar: 'https://res.cloudinary.com/demo/raw/upload/kyc/aadhaar%20front.PNG',
+              individualPanCard: { url: ' https://res.cloudinary.com/demo/raw/upload/kyc/pan.pdf ' },
               notAUrl: 'ftp://cdn.example.com/x.pdf',
               blank: '',
             },
@@ -69,7 +75,7 @@ describe('extractDocuments', () => {
         key: 'individualAadhaar',
         label: 'Aadhaar Card',
         file_name: 'aadhaar front.PNG',
-        file_url: 'https://cdn.example.com/kyc/aadhaar%20front.PNG',
+        file_url: 'https://res.cloudinary.com/demo/raw/upload/kyc/aadhaar%20front.PNG',
         is_image: true,
         ocr_fields: [],
         ocr_status: 'pending',
@@ -80,13 +86,13 @@ describe('extractDocuments', () => {
 
   it.each([
     ['https://res.cloudinary.com/demo/image/upload/v1/doc', true],
-    ['https://cdn.example.com/a.webp', true],
-    ['https://cdn.example.com/a.jpeg', true],
-    ['https://cdn.example.com/a.pdf', false],
-    ['https://cdn.example.com/a.png?token=abc&v=2', true],
-    ['https://cdn.example.com/a.JPG#page=1', true],
-    ['https://cdn.example.com/a.pdf?name=scan.png', false],
-    ['https://cdn.example.com/a.pdf#preview.jpg', false],
+    ['https://res.cloudinary.com/demo/raw/upload/a.webp', true],
+    ['https://res.cloudinary.com/demo/raw/upload/a.jpeg', true],
+    ['https://res.cloudinary.com/demo/raw/upload/a.pdf', false],
+    ['https://res.cloudinary.com/demo/raw/upload/a.png?token=abc&v=2', true],
+    ['https://res.cloudinary.com/demo/raw/upload/a.JPG#page=1', true],
+    ['https://res.cloudinary.com/demo/raw/upload/a.pdf?name=scan.png', false],
+    ['https://res.cloudinary.com/demo/raw/upload/a.pdf#preview.jpg', false],
   ])('detects %s as image=%s', (url, expected) => {
     const [first] = extractDocuments(
       { verification_documents: { company: { documents: { companyPanCard: url } } } },
@@ -98,11 +104,31 @@ describe('extractDocuments', () => {
 
   it('falls back to a humanised label and key-based file name', () => {
     const [first] = extractDocuments(
-      { verification_documents: JSON.stringify({ company: { documents: { boardResolution_copy: 'https://cdn.example.com/' } } }) },
+      { verification_documents: JSON.stringify({ company: { documents: { boardResolution_copy: 'https://res.cloudinary.com/demo/raw/upload/copy' } } }) },
       'company',
       'p'
     )
-    expect(first).toMatchObject({ label: 'board Resolution copy', file_name: 'boardResolution_copy.pdf' })
+    expect(first).toMatchObject({ label: 'board Resolution copy', file_name: 'copy' })
+  })
+
+  it('drops document URLs that are not on the Cloudinary cloud', () => {
+    expect(
+      extractDocuments(
+        {
+          verification_documents: {
+            individual: {
+              documents: {
+                attacker: 'https://evil.example/phish.pdf',
+                ftp: 'ftp://res.cloudinary.com/demo/raw/upload/x.pdf',
+                ok: 'https://res.cloudinary.com/demo/raw/upload/pan.pdf',
+              },
+            },
+          },
+        },
+        'individual',
+        'p'
+      ).map((doc) => doc.key)
+    ).toEqual(['ok'])
   })
 
   it('returns nothing for missing blocks', () => {
@@ -114,11 +140,11 @@ describe('extractDocuments', () => {
     const docs = extractDocuments(
       {
         verification_documents: {
-          ngo: { documents: { ngoTwelveACertificate: 'https://cdn.example.com/12a.pdf' } },
+          ngo: { documents: { ngoTwelveACertificate: 'https://res.cloudinary.com/demo/raw/upload/12a.pdf' } },
         },
         compliance_documents: {
-          twelve_a: 'https://cdn.example.com/12a.pdf',
-          eighty_g: { url: 'https://cdn.example.com/80g.pdf' },
+          twelve_a: 'https://res.cloudinary.com/demo/raw/upload/12a.pdf',
+          eighty_g: { url: 'https://res.cloudinary.com/demo/raw/upload/80g.pdf' },
           csr1: '',
         },
       },
@@ -137,45 +163,57 @@ describe('extractDocuments', () => {
         verification_documents: {
           ngo: {
             documents: {
-              ngoPanCard: 'https://cdn.example.com/pan.pdf',
-              ngoFcraPhoto: 'https://cdn.example.com/fcra-old.pdf',
+              ngoPanCard: 'https://res.cloudinary.com/demo/raw/upload/pan.pdf',
+              ngoFcraPhoto: 'https://res.cloudinary.com/demo/raw/upload/fcra-old.pdf',
             },
             reverification_documents: {
-              ngoFcraPhoto: 'https://cdn.example.com/fcra-new.pdf',
-              ngoCsr1Certificate: 'https://cdn.example.com/csr1.pdf',
+              ngoFcraPhoto: 'https://res.cloudinary.com/demo/raw/upload/fcra-new.pdf',
+              ngoCsr1Certificate: 'https://res.cloudinary.com/demo/raw/upload/csr1.pdf',
             },
           },
         },
         compliance_documents: {
-          twelve_a: 'https://cdn.example.com/12a-old.pdf',
-          pending_reverification: { twelve_a: 'https://cdn.example.com/12a-new.pdf' },
+          twelve_a: 'https://res.cloudinary.com/demo/raw/upload/12a-old.pdf',
+          pending_reverification: { twelve_a: 'https://res.cloudinary.com/demo/raw/upload/12a-new.pdf' },
         },
       },
       'ngo',
       'n'
     )
     expect(docs.map((entry) => [entry.key, entry.label, entry.file_url])).toEqual([
-      ['ngoPanCard', 'PAN Card of NGO', 'https://cdn.example.com/pan.pdf'],
-      ['ngoFcraPhoto', 'FCRA Registration Document (updated)', 'https://cdn.example.com/fcra-new.pdf'],
-      ['twelve_a', '12A Certificate (updated)', 'https://cdn.example.com/12a-new.pdf'],
-      ['ngoCsr1Certificate', 'CSR-1 Certificate (updated)', 'https://cdn.example.com/csr1.pdf'],
+      ['ngoPanCard', 'PAN Card of NGO', 'https://res.cloudinary.com/demo/raw/upload/pan.pdf'],
+      ['ngoFcraPhoto', 'FCRA Registration Document (updated)', 'https://res.cloudinary.com/demo/raw/upload/fcra-new.pdf'],
+      ['twelve_a', '12A Certificate (updated)', 'https://res.cloudinary.com/demo/raw/upload/12a-new.pdf'],
+      ['ngoCsr1Certificate', 'CSR-1 Certificate (updated)', 'https://res.cloudinary.com/demo/raw/upload/csr1.pdf'],
     ])
   })
 
-  it('ignores reverification uploads for non-NGO types', () => {
+  it('overlays reverification uploads for companies and individuals', () => {
     const docs = extractDocuments(
       {
         verification_documents: {
           company: {
-            documents: { companyPanCard: 'https://cdn.example.com/pan.pdf' },
-            reverification_documents: { companyPanCard: 'https://cdn.example.com/pan-new.pdf' },
+            documents: { companyPanCard: 'https://res.cloudinary.com/demo/raw/upload/pan.pdf' },
+            reverification_documents: { companyPanCard: 'https://res.cloudinary.com/demo/raw/upload/pan-new.pdf' },
           },
         },
       },
       'company',
       'c'
     )
-    expect(docs.map((entry) => entry.file_url)).toEqual(['https://cdn.example.com/pan.pdf'])
+    expect(docs.map((entry) => [entry.file_url, entry.label])).toEqual([
+      ['https://res.cloudinary.com/demo/raw/upload/pan-new.pdf', 'PAN Card of Company (updated)'],
+    ])
+  })
+})
+
+describe('canCaDecide', () => {
+  it('lets a CA act on pending rows and verified reverifications only', () => {
+    expect(canCaDecide({ verification_status: 'pending' })).toBe(true)
+    expect(canCaDecide({ verification_status: 'verified', reverification_pending: true })).toBe(true)
+    expect(canCaDecide({ verification_status: 'unverified' })).toBe(false)
+    expect(canCaDecide({ verification_status: 'verified' })).toBe(false)
+    expect(isCaReviewLocked({ verification_status: 'unverified' })).toBe(true)
   })
 })
 
@@ -228,28 +266,28 @@ describe('ngoOcrExpiries', () => {
 
   it('prefers pending re-uploads over the original certificate', () => {
     const certUrls = {
-      ngoTwelveACertificate: 'https://cdn.example.com/12a-old.pdf',
-      ngoFcraPhoto: 'https://cdn.example.com/fcra-old.pdf',
-      ngoCsr1Certificate: 'https://cdn.example.com/csr1.pdf',
+      ngoTwelveACertificate: 'https://res.cloudinary.com/demo/raw/upload/12a-old.pdf',
+      ngoFcraPhoto: 'https://res.cloudinary.com/demo/raw/upload/fcra-old.pdf',
+      ngoCsr1Certificate: 'https://res.cloudinary.com/demo/raw/upload/csr1.pdf',
     }
     const docs = extractDocuments(
       {
         verification_documents: {
           ngo: {
             documents: certUrls,
-            reverification_documents: { ngoFcraPhoto: 'https://cdn.example.com/fcra-new.pdf' },
+            reverification_documents: { ngoFcraPhoto: 'https://res.cloudinary.com/demo/raw/upload/fcra-new.pdf' },
           },
         },
-        compliance_documents: { pending_reverification: { twelve_a: 'https://cdn.example.com/12a-new.pdf' } },
+        compliance_documents: { pending_reverification: { twelve_a: 'https://res.cloudinary.com/demo/raw/upload/12a-new.pdf' } },
       },
       'ngo',
       'ngos-2'
     )
     const expiries: Record<string, string> = {
-      'https://cdn.example.com/12a-old.pdf': '2020-01-01',
-      'https://cdn.example.com/12a-new.pdf': '2030-01-01',
-      'https://cdn.example.com/fcra-new.pdf': '2031-01-01',
-      'https://cdn.example.com/csr1.pdf': '2032-01-01',
+      'https://res.cloudinary.com/demo/raw/upload/12a-old.pdf': '2020-01-01',
+      'https://res.cloudinary.com/demo/raw/upload/12a-new.pdf': '2030-01-01',
+      'https://res.cloudinary.com/demo/raw/upload/fcra-new.pdf': '2031-01-01',
+      'https://res.cloudinary.com/demo/raw/upload/csr1.pdf': '2032-01-01',
     }
     const read = docs.map((entry) => ({
       ...entry,

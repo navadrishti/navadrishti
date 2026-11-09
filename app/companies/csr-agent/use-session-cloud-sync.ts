@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { areSameSessionList, keepActiveAndMeaningfulSessions, resolveHydratedActiveSession } from "@/lib/ai-agent-sessions"
 import { type CloudSaveStatus, describeCloudSaveStatus } from "@/lib/cloud-save-status"
 import { type CSRAgentSession, hasMeaningfulSessionContent, normalizeSessionPayload } from "./session"
 
@@ -19,6 +20,11 @@ export function useSessionCloudSync({ mounted, userId, token, activeSessionId, s
   const pendingServerPayloadRef = useRef<string | null>(null)
   const serverRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isServerSyncInFlightRef = useRef(false)
+  const visibleSessionsRef = useRef<CSRAgentSession[]>([])
+  const activeSessionIdRef = useRef(activeSessionId)
+  useLayoutEffect(() => {
+    activeSessionIdRef.current = activeSessionId
+  }, [activeSessionId])
   const syncPendingServerProgressRef = useRef<() => Promise<void>>(async () => {})
 
   const scheduleServerRetry = useCallback((delayMs: number) => {
@@ -72,11 +78,24 @@ export function useSessionCloudSync({ mounted, userId, token, activeSessionId, s
         const body = await response.json().catch(() => null)
         const latest = normalizeSessionPayload<CSRAgentSession>(body?.latest)
         if (latest && latest.sessions.length > 0) {
+          const intendedActiveId =
+            typeof payloadObject?.activeSessionId === "string" ? payloadObject.activeSessionId : activeSessionIdRef.current
+          const resolved = resolveHydratedActiveSession(
+            latest.sessions,
+            visibleSessionsRef.current,
+            intendedActiveId,
+            latest.activeSessionId,
+          )
           const mergedPayload = {
-            sessions: latest.sessions,
-            activeSessionId: latest.activeSessionId || latest.sessions[0].id,
+            sessions: keepActiveAndMeaningfulSessions(
+              resolved.sessions,
+              resolved.activeSessionId,
+              hasMeaningfulSessionContent,
+            ),
+            activeSessionId: resolved.activeSessionId,
             updatedAt: body?.latest?.updatedAt || new Date().toISOString(),
           }
+          visibleSessionsRef.current = mergedPayload.sessions
           setSessions(mergedPayload.sessions)
           setActiveSessionId(mergedPayload.activeSessionId)
           try {
@@ -106,11 +125,16 @@ export function useSessionCloudSync({ mounted, userId, token, activeSessionId, s
   }, [syncPendingServerProgress])
 
   const persistSessions = (nextSessions: CSRAgentSession[], nextActiveId?: string) => {
-    setSessions(nextSessions)
+    const activeCandidate = nextActiveId || activeSessionId
+    const visible = keepActiveAndMeaningfulSessions(nextSessions, activeCandidate, hasMeaningfulSessionContent)
+    if (!areSameSessionList(visible, visibleSessionsRef.current)) {
+      visibleSessionsRef.current = visible
+      setSessions(visible)
+    }
     const storageUserId = userId
     if (!storageUserId) return
     const storageKey = `nd_csr_ai_agent_sessions_${storageUserId}`
-    const meaningfulSessions = nextSessions.filter(hasMeaningfulSessionContent)
+    const meaningfulSessions = visible.filter(hasMeaningfulSessionContent)
     if (meaningfulSessions.length === 0) {
       try {
         localStorage.removeItem(storageKey)
@@ -121,8 +145,10 @@ export function useSessionCloudSync({ mounted, userId, token, activeSessionId, s
       setCloudSaveStatus("saved")
       return
     }
-    const activeCandidate = nextActiveId || activeSessionId || meaningfulSessions[0].id
-    const payload = { sessions: meaningfulSessions, activeSessionId: meaningfulSessions.some((session) => session.id === activeCandidate) ? activeCandidate : meaningfulSessions[0].id }
+    const payload = {
+      sessions: meaningfulSessions,
+      activeSessionId: activeCandidate,
+    }
     try {
       localStorage.setItem(storageKey, JSON.stringify(payload))
     } catch {}

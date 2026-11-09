@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseProjectMeta, withProjectMeta } from '@/lib/service-request-allocation'
 import { reviewProjectApplication } from '@/lib/service-request-assignments/review-project-application'
 import {
+  distinctLeadNgoId,
   isFullyVerifiedCompany,
+  isSamePositiveId,
   safeBoolean,
   safeNoteFromMeta,
   safeProjectIdFromMeta,
@@ -69,6 +71,16 @@ describe('isFullyVerifiedCompany', () => {
   })
 })
 
+describe('owner vs implementing lead', () => {
+  it('does not treat the owner NGO as a distinct lead', () => {
+    expect(isSamePositiveId(3, 3)).toBe(true)
+    expect(isSamePositiveId(3, 6)).toBe(false)
+    expect(distinctLeadNgoId(3, 3)).toBe(0)
+    expect(distinctLeadNgoId(3, 6)).toBe(6)
+    expect(distinctLeadNgoId(3, null)).toBe(0)
+  })
+})
+
 const NGO_ID = 1
 const COMPANY_ID = 5
 
@@ -117,10 +129,20 @@ describe('reviewProjectApplication', () => {
     expect(fake.queries[0].filters).toContainEqual(['eq', 'ngo_id', NGO_ID])
   })
 
-  it('requires CSR-1 coverage before accepting', async () => {
-    useDb({ 'service_request_projects.select': [{ data: projectRow() }] })
+  it('does not require owner CSR-1 coverage before accepting a company', async () => {
+    const row = projectRow()
+    const fake = useDb({
+      'service_request_projects.select': [{ data: row }],
+      'service_requests.select': [{ data: [] }],
+      'users.select': [{ data: { id: NGO_ID, ngo_volunteer_capacity: 10 } }],
+    })
     mocks.assertCoverage.mockResolvedValue({ ok: false, error: 'CSR-1 expires before project end' })
-    await expect(review(accept)).resolves.toMatchObject({ status: 403, json: { error: 'CSR-1 expires before project end' } })
+    await expect(review(accept)).resolves.toEqual({
+      status: 200,
+      json: { success: true, data: { projectId: 'p1', companyId: COMPANY_ID, decision: 'accepted', affectedNeeds: 0 } },
+    })
+    expect(mocks.assertCoverage).not.toHaveBeenCalled()
+    expect(fake.writes('service_request_projects')).toHaveLength(1)
   })
 
   it('refuses a second company once one is accepted on the project', async () => {
@@ -193,10 +215,11 @@ describe('reviewProjectApplication', () => {
     const [update] = fake.writes('service_request_projects')
     expect(update.payload).toMatchObject({
       status: 'in_progress',
-      lead_ngo_id: NGO_ID,
       assigned_company_user_id: COMPANY_ID,
       assignment_status: 'accepted',
     })
+    expect(update.payload).not.toHaveProperty('lead_ngo_id')
+    expect(update.payload).not.toHaveProperty('lead_ngo_user_id')
     const apps = parseProjectMeta((update.payload as { description: string }).description).pending_company_applications
     expect(apps?.map((app) => [app.company_id, app.status])).toEqual([[COMPANY_ID, 'accepted'], [9, 'expired']])
   })
@@ -265,6 +288,10 @@ describe('reviewProjectApplication', () => {
       status: 'in_progress',
       project_context: { note: 'x', csr_assignment: { mode: 'company_project_handoff', assigned_company_id: COMPANY_ID } },
     })
+    expect(
+      (fake.writes('service_requests')[0].payload as { project_context: { csr_assignment: Record<string, unknown> } })
+        .project_context.csr_assignment,
+    ).not.toHaveProperty('lead_ngo_id')
     expect(fake.writes('service_request_projects')[0].filters).toContainEqual(['is', 'assigned_company_user_id', null])
   })
 

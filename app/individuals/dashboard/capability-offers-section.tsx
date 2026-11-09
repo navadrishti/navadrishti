@@ -1,9 +1,9 @@
 'use client';
 
-import Link from 'next/link';
 import { CheckCircle, Loader2, XCircle, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { InfoMeter, InfoMeterGrid, meterPercent } from '@/components/info-meter';
 import { YourCapabilitiesPanel } from '@/components/service-card';
 import { EmptyState } from './empty-state';
 import { InProgressOfferRequestCard, OfferRequestSummaryCard } from './offer-request-cards';
@@ -65,6 +65,10 @@ export function CapabilityOffersSection({
   onOfferRequestsTabChange,
 }: CapabilityOffersSectionProps) {
   const { updatingOfferRequestId, handleOfferRequestStatusUpdate } = actions;
+  const pending = data.pendingOfferRequests.length;
+  const inProgress = data.inProgressOfferRequests.length;
+  const history = data.historyOfferRequests.length;
+  const totalRequests = pending + inProgress + history;
 
   return (
     <Tabs value={tab} onValueChange={(value) => onTabChange(value as CapabilityOffersSubTab)} className="w-full">
@@ -80,15 +84,57 @@ export function CapabilityOffersSection({
           emptyDescription="Create an offer to contribute skills, funds, materials, or infrastructure."
           canCreate={canListCapabilities}
           createBlockedHref={payoutHref}
+          onOffersChanged={data.fetchServiceOffers}
         />
       </TabsContent>
 
-      <TabsContent value="requests" className="mt-4 space-y-3">
+      <TabsContent value="requests" className="mt-4 space-y-4">
+        <div>
+          <h3 className="text-base font-semibold text-slate-900">Offer applications</h3>
+          <p className="text-sm text-muted-foreground">
+            Incoming hire and apply requests on your capability offers. Track acceptance, attendance-backed settlement, and completion here.
+          </p>
+        </div>
+
+        <InfoMeterGrid className="xl:grid-cols-4">
+          <InfoMeter
+            title="Listed capabilities"
+            value={String(data.serviceOffers.length)}
+            detail="Offers others can request from you."
+          />
+          <InfoMeter
+            title="Awaiting decision"
+            value={String(pending)}
+            progress={meterPercent(pending, totalRequests)}
+            detail="New requests waiting for accept or reject."
+          />
+          <InfoMeter
+            title="Active engagements"
+            value={String(inProgress)}
+            progress={meterPercent(inProgress, totalRequests)}
+            detail="Accepted requests currently being fulfilled."
+          />
+          <InfoMeter
+            title="Closed"
+            value={String(history)}
+            progress={meterPercent(history, totalRequests)}
+            detail="Completed, rejected, or cancelled requests."
+          />
+        </InfoMeterGrid>
+
+        <div className="rounded-md border border-sky-200 bg-sky-50/80 px-3 py-2 text-sm text-sky-950">
+          {offerRequestsTab === 'pending'
+            ? 'Review pending requests promptly. Accepting creates the engagement; rejecting closes it immediately.'
+            : offerRequestsTab === 'in-progress'
+              ? 'In-progress cards show billing, attendance, payment status, and linked needs. Mark complete when the engagement is finished.'
+              : 'History retains closed capability engagements for reference and settlement context.'}
+        </div>
+
         <Tabs value={offerRequestsTab} onValueChange={(value) => onOfferRequestsTabChange(value as ProgressSubTab)} className="w-full">
           <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="pending">Pending</TabsTrigger>
-            <TabsTrigger value="in-progress">In Progress</TabsTrigger>
-            <TabsTrigger value="history">History</TabsTrigger>
+            <TabsTrigger value="pending">Pending ({pending})</TabsTrigger>
+            <TabsTrigger value="in-progress">In Progress ({inProgress})</TabsTrigger>
+            <TabsTrigger value="history">History ({history})</TabsTrigger>
           </TabsList>
 
           <TabsContent value="pending" className="mt-4 space-y-3">
@@ -135,7 +181,13 @@ export function CapabilityOffersSection({
                 description="Accepted requests that are now in progress will appear here."
               />
             ) : data.inProgressOfferRequests.map((request) => (
-              <InProgressOfferRequestCard key={request.id} request={request} onUpdated={data.fetchOfferRequests} />
+              <InProgressOfferRequestCard
+                key={request.id}
+                request={request}
+                onUpdated={data.fetchOfferRequests}
+                updating={updatingOfferRequestId === request.id}
+                onComplete={(requestId) => handleOfferRequestStatusUpdate(requestId, 'completed')}
+              />
             ))}
           </TabsContent>
 
@@ -151,11 +203,7 @@ export function CapabilityOffersSection({
               <OfferRequestSummaryCard
                 key={request.id}
                 request={request}
-                actions={
-                  <Link href={`/service-offers/${request.service_offer_id}`}>
-                    <Button size="sm" variant="outline">View Offer</Button>
-                  </Link>
-                }
+                showOverview
               />
             ))}
           </TabsContent>

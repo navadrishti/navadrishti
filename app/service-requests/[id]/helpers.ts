@@ -1,3 +1,4 @@
+import { readApiError } from '@/lib/user-facing-error'
 import type { RequestRecord } from './types'
 
 export const formatDate = (value?: string | null) => {
@@ -81,7 +82,7 @@ export async function uploadReceiptFile(file: File, token: string) {
 
   const data = await response.json()
   if (!response.ok || !data?.success) {
-    throw new Error(data?.error || 'Failed to upload receipt')
+    throw new Error(readApiError(data, 'Failed to upload receipt'))
   }
 
   return data.data?.url as string

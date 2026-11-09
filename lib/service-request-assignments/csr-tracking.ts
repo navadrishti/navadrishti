@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabase, getProjectLeadNgoId, buildProjectLeadNgoPatch } from '@/lib/db'
 import { parseJsonObject } from '@/lib/utils'
-import { formatProjectLocation } from '@/lib/service-request-allocation'
+import { formatProjectLocation, parseProjectMeta, stripProjectMetaFromDescription } from '@/lib/service-request-allocation'
 import {
   COMPANY_PROJECT_CONTRIBUTION_TYPE,
   LEAD_NGO_INVITE_CONTRIBUTION_TYPE,
@@ -48,6 +48,27 @@ type HandoffPair = {
   projectId: string
   companyId: number
   contributions: TrackingContribution[]
+}
+
+function selectedLeadNgoIdForOwner(ownerNgoId: number, leadNgoId: number): number {
+  if (leadNgoId <= 0 || (ownerNgoId > 0 && ownerNgoId === leadNgoId)) return 0
+  return leadNgoId
+}
+
+function needWorkBucket(status: string | null | undefined) {
+  const normalized = String(status || '').toLowerCase()
+  if (['completed', 'closed', 'fulfilled', 'cancelled', 'canceled'].includes(normalized)) return 'completed'
+  if (['in_progress', 'accepted', 'assigned'].includes(normalized)) return 'in_progress'
+  return 'open'
+}
+
+function summarizeTakenInNeeds(needs: Array<{ status?: string | null }>) {
+  const summary = { total: needs.length, open: 0, in_progress: 0, completed: 0 }
+  for (const need of needs) {
+    const bucket = needWorkBucket(need.status)
+    summary[bucket] += 1
+  }
+  return summary
 }
 
 export async function getCsrTracking(ctx: AssignmentsGetContext) {
@@ -194,7 +215,7 @@ export async function getCsrTracking(ctx: AssignmentsGetContext) {
       .update({
         assigned_company_user_id: pair.companyId,
         assignment_status: 'accepted',
-        ...buildProjectLeadNgoPatch(getProjectLeadNgoId(project) || project.ngo_id),
+        ...(getProjectLeadNgoId(project) > 0 ? buildProjectLeadNgoPatch(getProjectLeadNgoId(project)) : {}),
         status: project.status === 'active' ? 'in_progress' : project.status,
         updated_at: new Date().toISOString(),
       })
@@ -238,6 +259,11 @@ export async function getCsrTracking(ctx: AssignmentsGetContext) {
   for (const invite of leadInvites || []) {
     userIds.add(Number(invite.contributor_id))
   }
+  for (const project of projectById.values()) {
+    for (const invite of parseProjectMeta(project.description).pending_lead_ngo_invites || []) {
+      if (invite.ngo_id) userIds.add(Number(invite.ngo_id))
+    }
+  }
 
   const { data: users, error: usersError } = userIds.size > 0
     ? await supabase
@@ -266,7 +292,7 @@ export async function getCsrTracking(ctx: AssignmentsGetContext) {
       const projectId = String(project.id)
       const companyId = Number(project.assigned_company_user_id || pair.companyId || 0)
       const ownerNgoId = Number(project.ngo_id || 0)
-      const selectedLeadNgoId = getProjectLeadNgoId(project)
+      const selectedLeadNgoId = selectedLeadNgoIdForOwner(ownerNgoId, getProjectLeadNgoId(project))
       const projectNeeds = needsByProject.get(projectId) || []
       const ownerNgo = userById.get(ownerNgoId)
       const company = userById.get(companyId)
@@ -320,7 +346,7 @@ export async function getCsrTracking(ctx: AssignmentsGetContext) {
         return String(meta.project_id || '') === projectId && Number(meta.inviting_company_id || 0) === companyId
       })
 
-      const leadNgoInvites = relevantInvites.map((invite) => {
+      const contributionInvites = relevantInvites.map((invite) => {
         const inviteNgoId = Number(invite.contributor_id)
         const inviteNgo = userById.get(inviteNgoId)
         const meta = parseJsonObject(invite.meta)
@@ -338,13 +364,35 @@ export async function getCsrTracking(ctx: AssignmentsGetContext) {
           updated_at: invite.updated_at,
         }
       })
+      const seenInviteNgos = new Set(contributionInvites.map((invite) => invite.ngo_id))
+      const metaInvites = (parseProjectMeta(project.description).pending_lead_ngo_invites || [])
+        .filter((invite) => Number(invite.inviting_company_id) === companyId && !seenInviteNgos.has(Number(invite.ngo_id)))
+        .map((invite) => {
+          const inviteNgoId = Number(invite.ngo_id)
+          const inviteNgo = userById.get(inviteNgoId)
+          return {
+            id: invite.id,
+            ngo_id: inviteNgoId,
+            ngo_name: inviteNgo?.name || invite.ngo_name || 'NGO',
+            ngo_email: inviteNgo?.email || invite.ngo_email || '',
+            ngo_verification_status: inviteNgo?.verification_status || null,
+            ngo_verified: String(inviteNgo?.verification_status || '').toLowerCase() === 'verified',
+            status: invite.status || 'pending',
+            note: String(invite.note || ''),
+            selected_as_lead: String(invite.status || '').toLowerCase() === 'accepted',
+            created_at: invite.invited_at,
+            updated_at: invite.invited_at,
+          }
+        })
+      const leadNgoInvites = [...contributionInvites, ...metaInvites]
 
       return {
         project_id: projectId,
         project_title: project.title || 'Project',
-        project_description: project.description || '',
+        project_description: stripProjectMetaFromDescription(project.description) || '',
         project_location: formatProjectLocation(project.exact_address, project.location),
         project_timeline: project.timeline || '',
+        project_updated_at: project.updated_at || project.created_at || null,
         project_category: categoryLabels.length === 1
           ? categoryLabels[0]
           : (categoryLabels.length > 1 ? categoryLabels.join(' • ') : null),
@@ -381,7 +429,9 @@ export async function getCsrTracking(ctx: AssignmentsGetContext) {
           title: need.title,
           status: need.status,
           request_type: need.request_type || need.category,
+          updated_at: need.updated_at || null,
         })),
+        need_progress: summarizeTakenInNeeds(projectNeeds),
       }
     })
     .filter(Boolean)

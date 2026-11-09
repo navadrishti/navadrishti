@@ -1,10 +1,12 @@
 "use client"
+import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 
 import { useState } from 'react'
 import { toast } from 'sonner'
 
 async function uploadImage(file: File): Promise<string> {
-  const token = localStorage.getItem('token')
+  const token = getClientSessionToken()
   if (!token) {
     throw new Error('Authentication required. Please log in again.')
   }
@@ -22,7 +24,7 @@ async function uploadImage(file: File): Promise<string> {
 
   if (!response.ok) {
     const errorData = await response.json()
-    throw new Error(errorData.error || 'Upload failed')
+    throw new Error(readApiError(errorData, 'Upload failed'))
   }
 
   const result = await response.json()
@@ -30,7 +32,7 @@ async function uploadImage(file: File): Promise<string> {
 }
 
 async function persistCoverImage(imageUrl: string) {
-  const token = localStorage.getItem('token')
+  const token = getClientSessionToken()
   if (!token) {
     throw new Error('Authentication required. Please log in again.')
   }
@@ -77,7 +79,7 @@ export function useProfileImages(refreshUser: () => Promise<void>) {
       toast.success('Profile picture updated successfully!')
     } catch (error) {
       console.error('Error uploading profile image:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to upload profile picture.')
+      toast.error(readApiError(error, 'Failed to upload profile picture.'))
     } finally {
       setUploadingProfileImage(false)
     }
@@ -93,7 +95,7 @@ export function useProfileImages(refreshUser: () => Promise<void>) {
       toast.success('Cover photo updated successfully!')
     } catch (error) {
       console.error('Error uploading cover photo:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to upload cover photo.')
+      toast.error(readApiError(error, 'Failed to upload cover photo.'))
     } finally {
       setUploadingCoverImage(false)
     }
@@ -107,7 +109,7 @@ export function useProfileImages(refreshUser: () => Promise<void>) {
       await refreshUser()
       toast.success('Cover photo removed')
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to remove cover photo.')
+      toast.error(readApiError(error, 'Failed to remove cover photo.'))
     } finally {
       setUploadingCoverImage(false)
     }

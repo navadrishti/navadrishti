@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AuthCardBackRow } from '@/components/header';
 import { ProductCopyright } from '@/components/product-brand';
 
@@ -17,22 +16,29 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const { login, error, clearError, user } = useAuth();
+  const { login, clearError, user } = useAuth();
   const router = useRouter();
 
-  const getDashboardRoute = (userType?: string) => {
-    if (userType === 'ngo') return '/ngos/dashboard';
-    if (userType === 'company') return '/companies/dashboard';
+  const getDashboardRoute = useCallback((current: typeof user) => {
+    if (!current) return '/';
+    const profileRole = String(current.profile_data?.role || '').toLowerCase();
+    if (current.is_company_employee || profileRole === 'company_employee') {
+      return current.must_change_password
+        ? '/employees/change-password'
+        : '/employees/dashboard';
+    }
+    if (current.user_type === 'ngo') return '/ngos/dashboard';
+    if (current.user_type === 'company') return '/companies/dashboard';
     return '/individuals/dashboard';
-  };
+  }, []);
 
   useEffect(() => {
     if (user) {
-      smoothNavigate(router, getDashboardRoute(user.user_type), {
+      smoothNavigate(router, getDashboardRoute(user), {
         delay: 200,
       });
     }
-  }, [user, router]);
+  }, [user, router, getDashboardRoute]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,12 +69,6 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input

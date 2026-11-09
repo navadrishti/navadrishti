@@ -1,5 +1,6 @@
 import { useRef, useState } from "react"
 import { AGENT_NAMES } from "@/lib/ai-agent-sessions"
+import { toUserFacingError } from "@/lib/user-facing-error"
 import { buildPublishCampaignBody, publishCampaignDraft, requestCampaignDrafts } from "./api"
 import {
   type CSRAgentSession,
@@ -29,6 +30,7 @@ type CampaignDraftsOptions = {
   canUseCampaignActions: boolean
   acceptedLeadNgo: LeadNgoInvite | null
   leadNgoInvites: LeadNgoInvite[]
+  evidenceVerifierIdentityId: string
   serviceSuggestions: ServiceSuggestion[]
   loadRecommendations: (payload: ProjectIntakeData) => Promise<ServiceSuggestion[]>
   projectSuggestions: ProjectSuggestion[]
@@ -60,6 +62,7 @@ export function useCampaignDrafts({
   canUseCampaignActions,
   acceptedLeadNgo,
   leadNgoInvites,
+  evidenceVerifierIdentityId,
   serviceSuggestions,
   loadRecommendations,
   projectSuggestions,
@@ -117,23 +120,37 @@ export function useCampaignDrafts({
 
     if (!acceptedLeadNgo) {
       setConversationStage('milestones')
-      appendAssistantMessage('Please wait for a lead NGO to accept the invite from their dashboard before I generate the final draft.')
+      appendAssistantMessage('Please wait for a lead NGO to accept the invite from their dashboard before Catalyst can draft.')
+      return
+    }
+
+    if (!String(evidenceVerifierIdentityId || '').trim()) {
+      setConversationStage('milestones')
+      appendAssistantMessage(
+        `${acceptedLeadNgo.name} is accepted as lead NGO. Allot an Evidence Verifier in the Publish panel — Catalyst starts drafting only after that assignment.`
+      )
       return
     }
 
     setConversationStage("generating")
     setIsGeneratingCampaigns(true)
     setGenerationError(null)
-    appendAssistantMessage(`Thanks. I have all the details. ${AGENT_NAMES.pulse} is matching capability offers and generating campaign drafts now.`)
+    appendAssistantMessage(
+      `Evidence Verifier allotted. ${AGENT_NAMES.pulse} is matching capability offers while Catalyst assembles your campaign draft from the intake and selected milestones.`
+    )
 
     try {
       const recommendations = nextServiceSuggestions.length > 0 ? nextServiceSuggestions : await loadRecommendations(nextProjectData)
       const generated = await generateCampaignDrafts(nextProjectData, recommendations, nextMilestones)
       setConversationStage("complete")
-      appendAssistantMessage(`Done. I generated ${generated.length} campaign draft${generated.length === 1 ? "" : "s"}. The drafts are ready in the right panel.`)
+      appendAssistantMessage(
+        generated.length > 0
+          ? 'Done. Catalyst assembled 1 campaign draft from your answers and milestones. Review it in the right panel.'
+          : 'Done. Catalyst could not assemble a campaign draft from the current intake. Please review milestones and try again.'
+      )
     } catch (error) {
       setConversationStage("milestones")
-      const message = error instanceof Error ? error.message : "Failed to generate campaign drafts"
+      const message = toUserFacingError(error instanceof Error ? error.message : "Could not generate campaign drafts. Please try again.")
       setGenerationError(message)
       appendAssistantMessage(message)
     } finally {
@@ -153,6 +170,12 @@ export function useCampaignDrafts({
     }
     if (!acceptedLeadNgo) {
       appendAssistantMessage('A lead NGO must accept the invite from their dashboard before you can publish this campaign.')
+      return
+    }
+    if (!String(evidenceVerifierIdentityId || '').trim()) {
+      appendAssistantMessage(
+        'Select an active Evidence Verifier after the Lead NGO is finalized before publishing this campaign.'
+      )
       return
     }
     if (!userId || !token) {
@@ -177,6 +200,7 @@ export function useCampaignDrafts({
         volunteerRequirement: projectData.volunteerRequirement || '',
         selectedProjectSuggestionId,
         projectSuggestions,
+        evidenceVerifierIdentityId: String(evidenceVerifierIdentityId).trim(),
       })
       const published = await publishCampaignDraft(token, publishCampaignId, campaignBody)
 
@@ -192,7 +216,7 @@ export function useCampaignDrafts({
       const campaignUrl = published.campaignUrl || `/csr-campaigns/${campaignId}`
       appendAssistantMessage(`Campaign published successfully. It is now listed on CSR Campaigns: ${campaignUrl}`)
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to publish campaign'
+      const message = toUserFacingError(error instanceof Error ? error.message : 'Failed to publish campaign')
       appendAssistantMessage(message)
     } finally {
       publishingRef.current = false

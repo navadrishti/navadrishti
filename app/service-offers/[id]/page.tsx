@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { isCaVerifiedAccount } from '@/lib/auth'
 import { ApplyOfferCard } from './apply-offer-card'
 import { CapabilityOfferDetailsSection } from './capability-offer-details-section'
 import { ExistingApplicationPanel } from './existing-application-panel'
@@ -39,8 +40,10 @@ export default function ServiceOfferDetailPage() {
     refreshApplication
   } = useServiceOffer(offerId)
 
-  const canApplyToOffer = !!user && user.id !== offer?.creator_id && user.user_type === 'ngo'
+  const canApplyToOffer =
+    Boolean(user && offer && Number(user.id) !== Number(offer.creator_id) && user.user_type === 'ngo')
   const canShowRespondTab = !isAuthenticated || canApplyToOffer
+  const payerVerified = isCaVerifiedAccount(user?.verification_status)
 
   if (loading) {
     return <OfferDetailSkeleton />
@@ -65,7 +68,7 @@ export default function ServiceOfferDetailPage() {
   return (
     <div className="min-h-screen overflow-x-hidden bg-background">
       <Header />
-
+      
       <div className="mx-auto max-w-7xl px-4 py-8">
         <div className="mb-6">
           <Button variant="ghost" onClick={() => router.back()} className="w-full justify-start px-0 text-udaan-blue hover:text-gram-ink hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0 sm:w-auto">
@@ -94,7 +97,7 @@ export default function ServiceOfferDetailPage() {
                   </TabsContent>
 
                   {canShowRespondTab ? (
-                    <TabsContent value="respond" className="mt-4">
+                  <TabsContent value="respond" className="mt-4">
                       <ApplyOfferCard
                         isAuthenticated={isAuthenticated}
                         canApplyToOffer={canApplyToOffer}
@@ -105,6 +108,7 @@ export default function ServiceOfferDetailPage() {
                               application={userApplication}
                               offerPriceAmount={offer.price_amount}
                               paying={paying}
+                              payerVerified={payerVerified}
                               onPay={handlePayForApplication}
                               onUpdated={refreshApplication}
                             />
@@ -123,7 +127,7 @@ export default function ServiceOfferDetailPage() {
                           />
                         }
                       />
-                    </TabsContent>
+                  </TabsContent>
                   ) : null}
                 </Tabs>
               </CardContent>

@@ -1,15 +1,11 @@
-import { useEffect, useEffectEvent, useState } from 'react'
-import { withoutIndex } from './helpers'
-import { mapServerToNeedRecommendation } from './recommendations'
-import type { NeedDraft, NeedRecommendation, ServiceOfferLite } from './types'
+import { useEffect, useState } from 'react'
+import type { ServiceOfferLite } from './types'
 
 const INACTIVE_OFFER_STATUSES = ['inactive', 'closed', 'completed', 'cancelled', 'archived', 'rejected', 'expired']
 
-export function useNeedRecommendations(needs: NeedDraft[]) {
+export function useNeedRecommendations() {
   const [serviceOffers, setServiceOffers] = useState<ServiceOfferLite[]>([])
-  const [offersLoading, setOffersLoading] = useState(false)
-  const [serverRecommendations, setServerRecommendations] = useState<Record<number, NeedRecommendation[]>>({})
-  const [recPageByNeed, setRecPageByNeed] = useState<Record<number, number>>({})
+  const [offersLoading, setOffersLoading] = useState(true)
 
   useEffect(() => {
     const loadOffers = async () => {
@@ -33,65 +29,8 @@ export function useNeedRecommendations(needs: NeedDraft[]) {
       }
     }
 
-    loadOffers()
+    void loadOffers()
   }, [])
 
-  const needsKey = needs
-    .map((n) => `${n.request_type}|${n.title}|${n.description}|${n.material_items}|${n.skill_role}|${n.infrastructure_scope}|${n.target_amount}|${n.target_quantity}|${n.beneficiary_count}|${n.estimated_budget}|${n.budget}`)
-    .join('||')
-  const pagesKey = JSON.stringify(recPageByNeed)
-
-  const fetchAllRecommendations = useEffectEvent(() => {
-    const fetchRecs = async (index: number, need: NeedDraft, page = 0) => {
-      try {
-        const response = await fetch('/api/service-requests/recommend', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            request_type: need.request_type,
-            title: need.title,
-            description: need.description,
-            material_items: need.material_items,
-            skill_role: need.skill_role,
-            infrastructure_scope: need.infrastructure_scope,
-            target_amount: need.target_amount,
-            target_quantity: need.target_quantity,
-            beneficiary_count: need.beneficiary_count,
-            estimated_budget: need.estimated_budget,
-            budget: need.budget,
-            offset: page * 2,
-            limit: 6
-          })
-        })
-
-        if (!response.ok) return
-        const result = await response.json()
-        if (!result?.success || !result?.data) return
-
-        const recs = Array.isArray(result.data.recommendations) ? result.data.recommendations.map(mapServerToNeedRecommendation) : []
-        setServerRecommendations((prev) => ({ ...prev, [index]: recs }))
-      } catch {
-        // keep the client-side fallback recommendations
-      }
-    }
-
-    needs.forEach((need, index) => {
-      void fetchRecs(index, need, recPageByNeed[index] || 0)
-    })
-  })
-
-  useEffect(() => {
-    fetchAllRecommendations()
-  }, [needsKey, pagesKey])
-
-  const refreshNeedRecommendations = (index: number) => {
-    setRecPageByNeed((prev) => ({ ...prev, [index]: (prev[index] || 0) + 1 }))
-  }
-
-  const forgetNeedRecommendations = (index: number) => {
-    setServerRecommendations((prev) => withoutIndex(prev, index))
-    setRecPageByNeed((prev) => withoutIndex(prev, index))
-  }
-
-  return { serviceOffers, offersLoading, serverRecommendations, refreshNeedRecommendations, forgetNeedRecommendations }
+  return { serviceOffers, offersLoading }
 }

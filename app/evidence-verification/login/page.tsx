@@ -1,5 +1,6 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -74,7 +75,7 @@ export default function EvidenceVerificationLoginPage() {
 
       const payload = await response.json();
       if (!response.ok || !payload?.success) {
-        setError(payload?.error || 'Login failed');
+        setError(readApiError(payload, 'Login failed'));
         return;
       }
 
@@ -96,7 +97,7 @@ export default function EvidenceVerificationLoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#F6F5F1] to-[#FFF6ED] p-4">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <h1 className="mb-2 text-3xl font-bold text-gray-900">CA Portal</h1>
+          <h1 className="mb-2 text-3xl font-bold text-gray-900">Evidence Verification Portal</h1>
           <p className="text-gray-600">Use your credentials to access the evidence verification portal</p>
         </div>
 

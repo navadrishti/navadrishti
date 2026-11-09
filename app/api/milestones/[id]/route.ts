@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  assertEvidenceApproverAssignedToProject,
+  CompanyCaAssignmentError,
+} from '@/lib/company-ca';
 import { supabase } from '@/lib/db';
 import { getEvidenceApproverContext, type EvidenceApproverContext } from '@/lib/server-auth';
 import { getErrorMessage } from '@/lib/utils';
@@ -37,8 +41,19 @@ export async function GET(
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
 
-    if (approver.companyUserId !== null && approver.companyUserId !== project.company_user_id) {
-      return NextResponse.json({ error: 'Company CA is not authorized for this company project' }, { status: 403 });
+    try {
+      await assertEvidenceApproverAssignedToProject({
+        actorType: approver.actorType,
+        reviewerUserId: approver.reviewerUserId,
+        companyUserId: approver.companyUserId,
+        projectCompanyUserId: Number(project.company_user_id),
+        projectId: String(project.id),
+      });
+    } catch (error) {
+      if (error instanceof CompanyCaAssignmentError) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
+      }
+      throw error;
     }
 
     const { data: evidenceRows, error: evidenceError } = await supabase

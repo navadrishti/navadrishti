@@ -192,6 +192,17 @@ describe('useCapabilityRentals', () => {
     expect(options.appendAssistantMessage).toHaveBeenCalledWith(expect.stringContaining('suspended'))
   })
 
+  it('blocks payment for unverified companies', async () => {
+    const fetchMock = mockFetch(() => jsonResponse({}))
+    const options = rentalOptions({ user: { ...companyUser, verification_status: 'unverified' } })
+    const { result } = renderHook(() => useCapabilityRentals(options))
+
+    await act(() => result.current.handlePayAndReserveOffer(55))
+
+    expect(paymentCalls(fetchMock)).toHaveLength(0)
+    expect(options.appendAssistantMessage).toHaveBeenCalledWith(expect.stringContaining('CA-verified'))
+  })
+
   it('restores paid rentals for the campaign and clears them when the campaign changes', async () => {
     const paid = { service_offer_id: 55, payment_status: 'paid' }
     const pending = { service_offer_id: 56, payment_status: 'pending' }

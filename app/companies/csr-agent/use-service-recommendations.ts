@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
+import { toUserFacingError } from "@/lib/user-facing-error"
 import { requestServiceRecommendations } from "./api"
 import { type ProjectIntakeData, type ServiceSuggestion, parseMoneyValue } from "./session"
 
@@ -48,21 +49,27 @@ export function useServiceRecommendations({ mounted, userId, projectData }: Serv
     const numericBudget = parseMoneyValue(payload.budget)
     if (!numericBudget) return []
 
+    const start = Date.parse(String(payload.startDate || ''))
+    const end = Date.parse(String(payload.endDate || ''))
+    if (Number.isFinite(start) && Number.isFinite(end) && end < start) {
+      setRecommendationError('The campaign end date needs to be after the start date.')
+      return []
+    }
+
     setIsFetchingRecommendations(true)
     setRecommendationError(null)
 
     try {
       const result = await requestServiceRecommendations(payload, numericBudget)
       if ('error' in result) {
-        setRecommendationError(result.error)
+        setRecommendationError(toUserFacingError(result.error))
         return []
       }
 
       setServiceSuggestions(result.suggestions)
       return result.suggestions
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to fetch recommendations"
-      setRecommendationError(message)
+      setRecommendationError(toUserFacingError(error instanceof Error ? error.message : "Could not find matching offers right now."))
       return []
     } finally {
       setIsFetchingRecommendations(false)

@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getTokenClaims } from '@/lib/auth';
+import { authErrorResponse } from '@/lib/server-auth';
 import { getErrorMessage } from '@/lib/utils';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const getAuthenticatedUser = async (request: NextRequest) => {
-  const claims = getTokenClaims(request);
+  const claims = await getTokenClaims(request);
   if (!claims) return null;
   const user = await db.users.findById(claims.id);
   if (!user) return null;
@@ -40,6 +41,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, tickets: sanitized });
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('User support tickets list error:', error);
     return NextResponse.json({ error: getErrorMessage(error) || 'Failed to load tickets' }, { status: 500 });
   }

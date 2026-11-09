@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { getTokenClaims, requireBankStatementDocument } from '@/lib/auth';
+import { authErrorResponse } from '@/lib/server-auth';
 import {
   initiateNgoVerification,
   reverifyNgoVerification,
@@ -12,7 +13,7 @@ import { untrustedDocumentResponse } from '@/lib/ca-review/document-urls';
 
 export async function POST(req: NextRequest) {
   try {
-    const claims = getTokenClaims(req);
+    const claims = await getTokenClaims(req);
     if (!claims) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -84,6 +85,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('NGO verification error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
@@ -94,7 +97,7 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
-    const claims = getTokenClaims(req);
+    const claims = await getTokenClaims(req);
     if (!claims) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -106,6 +109,8 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(await getNgoVerificationStatus(userId));
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Get NGO verification status error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },

@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
-import { ngoIsCsrEligibleForProject } from '@/lib/auth'
 import { enrichProjectRecord, formatProjectLocation } from '@/lib/service-request-allocation'
 import {
   isFullyVerifiedCompany,
@@ -53,14 +52,6 @@ export async function getCompanyProjects(ctx: AssignmentsGetContext) {
     }
 
     const ngo = Array.isArray(project.ngo) ? project.ngo[0] : project.ngo
-    if (
-      !ngoIsCsrEligibleForProject(ngo?.verification_status, ngo?.profile_data, {
-        valid_until: project.valid_until,
-        timeline: project.timeline,
-      })
-    ) {
-      continue
-    }
 
     const pending = Array.isArray(project.pending_company_applications)
       ? project.pending_company_applications
@@ -78,7 +69,9 @@ export async function getCompanyProjects(ctx: AssignmentsGetContext) {
       companyApplicationStatus = String(myApp.status || 'pending').toLowerCase()
     }
 
-    const canApplyByStatus = companyApplicationStatus === 'none'
+    const canApplyByStatus =
+      companyApplicationStatus === 'none' ||
+      ['rejected', 'expired', 'cancelled'].includes(companyApplicationStatus)
     const company_application_eligible = canApplyByStatus && companyFullyVerified
     const company_application_reason = !companyFullyVerified
       ? 'Complete email, phone, and document verification before applying for takeover.'

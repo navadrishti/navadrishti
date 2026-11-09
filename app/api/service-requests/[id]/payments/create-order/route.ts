@@ -6,7 +6,9 @@ import { isFinancialRequest } from '@/lib/admin-refund';
 import { parseAmountToInr, parseJsonObject } from '@/lib/utils';
 import {
   assertNgoLiveCsr1,
+  authErrorResponse,
   CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE,
+  requireCaVerifiedPayer,
 } from '@/lib/server-auth';
 import { resolveFundingTargetInr } from '@/lib/service-request-allocation';
 import {
@@ -26,13 +28,18 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const decoded = getTokenClaims(request);
+    const decoded = await getTokenClaims(request);
     if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
     if (!canContributeViaPlatform(decoded.user_type)) {
       return NextResponse.json({ error: 'Only companies and individuals can contribute directly' }, { status: 403 });
+    }
+
+    const payerGate = await requireCaVerifiedPayer(decoded.id, decoded.user_type);
+    if (!payerGate.ok) {
+      return NextResponse.json({ error: payerGate.error }, { status: 403 });
     }
 
     const { id } = await params;
@@ -176,6 +183,8 @@ export async function POST(
       }
     });
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     if (error instanceof PayeeNotConnectedError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
     }

@@ -48,8 +48,8 @@ export function CampaignDetailsCard({ projectData, milestoneCount, onSave }: Cam
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-      <div className="flex items-center justify-between gap-4">
-        <div>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Campaign details</p>
           <p className="mt-1 text-sm text-slate-600">Captured so far from the conversation.</p>
         </div>
@@ -76,9 +76,9 @@ export function CampaignDetailsCard({ projectData, milestoneCount, onSave }: Cam
           </div>
         ) : liveFields.length > 0 ? (
           liveFields.map((field) => (
-            <div key={field.label} className="flex items-start justify-between gap-4 rounded-xl border border-slate-200 bg-white px-4 py-3">
-              <span className="text-sm font-medium text-slate-500">{field.label}</span>
-              <span className="max-w-[60%] text-right text-sm font-semibold text-slate-900 break-words">{field.value}</span>
+            <div key={field.label} className="flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3">
+              <span className="min-w-0 shrink-0 text-sm font-medium text-slate-500">{field.label}</span>
+              <span className="min-w-0 text-right text-sm font-semibold text-slate-900 [overflow-wrap:anywhere]">{field.value}</span>
             </div>
           ))
         ) : (

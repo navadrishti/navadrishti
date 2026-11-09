@@ -1,4 +1,7 @@
 'use client'
+import { toast } from 'sonner'
+import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 
 import { useState, useCallback, useEffect, useMemo, Suspense } from 'react'
 import { useIsClient } from '@/hooks/use-is-client'
@@ -12,8 +15,7 @@ import { StyledSelect } from '@/components/ui/styled-select'
 import { SkeletonCTA, SkeletonServiceOffer } from '@/components/ui/skeleton'
 import { Search, ArrowRight, Plus, MapPin } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
-import { useToast } from '@/hooks/use-toast'
-import { IMPACT_AREA_OPTIONS, OFFER_TYPE_OPTIONS } from '@/lib/service-offers'
+import { IMPACT_AREA_OPTIONS, OFFER_TYPE_OPTIONS, ngoHasLegalEntityTag } from '@/lib/service-offers'
 import { dashboardProfilePayoutHref, usePayoutConnection } from '@/hooks/use-payout-connection'
 import type { ServiceCardProps } from '@/components/service-card/types'
 
@@ -29,6 +31,7 @@ type ServiceOfferListing = Pick<
   | 'verified'
   | 'tags'
   | 'created_at'
+  | 'updated_at'
   | 'price_amount'
   | 'price_type'
   | 'price_description'
@@ -39,6 +42,8 @@ type ServiceOfferListing = Pick<
   | 'conditions'
   | 'item'
   | 'quantity'
+  | 'applications_count'
+  | 'pending_applications'
   | 'delivery_scope'
   | 'skill'
   | 'capacity'
@@ -98,7 +103,6 @@ function ServiceOffersPageFallback() {
 function ServiceOffersPageContent() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
-  const { toast } = useToast();
 
   const mounted = useIsClient();
   const [searchTerm, setSearchTerm] = useState('');
@@ -116,7 +120,14 @@ function ServiceOffersPageContent() {
 
   const canCreateOffers = mounted && !!user && ['ngo', 'company', 'individual'].includes(user.user_type);
   const { connected: payoutConnected } = usePayoutConnection(canCreateOffers);
-  const canPublishOffers = canCreateOffers && payoutConnected === true;
+  const ngoLegalReady = user?.user_type !== 'ngo' || ngoHasLegalEntityTag({
+    profile_data: user?.profile_data || user?.profile,
+    registration_type:
+      user?.verification_details && typeof user.verification_details === 'object'
+        ? (user.verification_details as { registration_type?: string | null }).registration_type
+        : undefined,
+  })
+  const canPublishOffers = canCreateOffers && payoutConnected === true && ngoLegalReady;
   const payoutHref = dashboardProfilePayoutHref(user?.user_type);
 
   const hasActiveFilters = useMemo(
@@ -137,13 +148,6 @@ function ServiceOffersPageContent() {
     return () => clearTimeout(timer);
   }, [searchTerm, locationFilter]);
 
-  useEffect(() => {
-    const rawView = searchParams.get('view') || searchParams.get('tab');
-    if (!rawView) return;
-    if (rawView !== 'all') {
-      return;
-    }
-  }, [searchParams]);
 
   const handleDeleteOffer = async (offerId: number) => {
     if (!user) return;
@@ -154,7 +158,7 @@ function ServiceOffersPageContent() {
 
     try {
       setDeleting(offerId);
-      const token = localStorage.getItem('token');
+      const token = getClientSessionToken();
 
       const response = await fetch(`/api/service-offers/${offerId}`, {
         method: 'DELETE',
@@ -167,30 +171,21 @@ function ServiceOffersPageContent() {
       const data = await response.json();
 
       if (data.success) {
-        toast({
-          title: 'Success',
-          description: 'Service offer deleted successfully',
-        });
+        toast.success('Success', { description: 'Service offer deleted successfully' });
         fetchServiceOffers();
       } else {
-        toast({
-          title: 'Error',
-          description: data.error || 'Failed to delete service offer',
-          variant: 'destructive',
-        });
+        toast.error('Error', { description: readApiError(data, 'Failed to delete service offer') });
       }
     } catch {
-      toast({
-        title: 'Error',
-        description: 'Failed to delete service offer',
-        variant: 'destructive',
-      });
+      toast.error('Error', { description: 'Failed to delete service offer' });
     } finally {
       setDeleting(null);
     }
   };
 
   const userId = user?.id;
+  const listingView = String(searchParams.get('view') || searchParams.get('tab') || 'all').toLowerCase();
+  const offerView = listingView === 'my-offers' ? 'my-offers' : 'all';
 
   const fetchServiceOffers = useCallback(async () => {
     try {
@@ -216,22 +211,25 @@ function ServiceOffersPageContent() {
       if (userId) {
         params.append('userId', userId.toString());
       }
-      params.append('view', 'all');
+      params.append('view', offerView);
 
-      const response = await fetch(`/api/service-offers?${params.toString()}`);
+      const token = getClientSessionToken();
+      const response = await fetch(`/api/service-offers?${params.toString()}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
       const data = await response.json();
 
       if (data.success) {
         setServiceOffers(data.data);
       } else {
-        setError(data.error || 'Failed to fetch service offers');
+        setError(readApiError(data, 'Failed to fetch service offers'));
       }
     } catch {
       setError('Error fetching service offers');
     } finally {
       setLoading(false);
     }
-  }, [selectedType, selectedImpact, selectedTransaction, debouncedSearch, debouncedLocation, userId]);
+  }, [selectedType, selectedImpact, selectedTransaction, debouncedSearch, debouncedLocation, userId, offerView]);
 
   useEffect(() => {
     fetchServiceOffers();
@@ -303,6 +301,21 @@ function ServiceOffersPageContent() {
                 </Link>
               </div>
             </div>
+          </div>
+        ) : canCreateOffers && payoutConnected === true && !ngoLegalReady ? (
+          <div className="mb-8 rounded-md border border-gram-border bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-black">Add NGO legal registration to list capabilities</h2>
+            <p className="mt-1 text-sm text-gray-700">
+              Trust, Society, or Section 8 registration must be on your verified NGO profile before a capability can go live.
+            </p>
+            <Link href="/verification" className="mt-4 inline-block">
+              <Button
+                variant="outline"
+                className="border border-gram-border bg-white text-black hover:bg-gram-page"
+              >
+                Complete NGO legal details
+              </Button>
+            </Link>
           </div>
         ) : canCreateOffers ? (
           <div className="mb-8 rounded-md border border-gram-border bg-white p-6 shadow-sm">
@@ -412,6 +425,7 @@ function ServiceOffersPageContent() {
                       verified={offer.verified}
                       tags={offer.tags}
                       created_at={offer.created_at}
+                      updated_at={offer.updated_at}
                       price_amount={offer.price_amount}
                       price_type={offer.price_type}
                       price_description={offer.price_description}
@@ -422,6 +436,8 @@ function ServiceOffersPageContent() {
                       conditions={offer.conditions}
                       item={offer.item}
                       quantity={offer.quantity}
+                      applications_count={offer.applications_count}
+                      pending_applications={offer.pending_applications}
                       delivery_scope={offer.delivery_scope}
                       skill={offer.skill}
                       capacity={offer.capacity}
@@ -431,8 +447,8 @@ function ServiceOffersPageContent() {
                       type="offer"
                       onDelete={() => handleDeleteOffer(offer.id)}
                       isDeleting={deleting === offer.id}
-                      showDeleteButton={!!(user && user.id === offer.creator_id)}
-                      isOwner={!!(user && user.id === offer.creator_id)}
+                      showDeleteButton={Boolean(user && Number(user.id) === Number(offer.creator_id))}
+                      isOwner={Boolean(user && Number(user.id) === Number(offer.creator_id))}
                       canInteract={true}
                     />
                   ))}

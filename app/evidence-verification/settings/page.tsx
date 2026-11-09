@@ -1,7 +1,9 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -25,7 +27,6 @@ export default function EvidenceVerificationSettingsPage() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -41,7 +42,7 @@ export default function EvidenceVerificationSettingsPage() {
           return;
         }
 
-        setContext(payload.company_ca);
+        setContext(payload.evidence_verifier || payload.company_ca);
       } catch {
         router.push('/evidence-verification/login');
       } finally {
@@ -63,7 +64,6 @@ export default function EvidenceVerificationSettingsPage() {
   const handlePasswordChange = async (event: React.FormEvent) => {
     event.preventDefault();
     setErrorMessage('');
-    setSuccessMessage('');
 
     if (!currentPassword || !newPassword || !confirmPassword) {
       setErrorMessage('Please fill in all password fields.');
@@ -97,11 +97,11 @@ export default function EvidenceVerificationSettingsPage() {
       const payload = await response.json();
 
       if (!response.ok || !payload?.success) {
-        setErrorMessage(payload?.error || 'Password change failed.');
+        setErrorMessage(readApiError(payload, 'Password change failed.'));
         return;
       }
 
-      setSuccessMessage('Password changed successfully.');
+      toast.success('Password changed successfully.');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -139,11 +139,6 @@ export default function EvidenceVerificationSettingsPage() {
         <EvidenceSectionCard title="Change password" description="Use a secure new password and save it here.">
           {errorMessage ? (
             <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{errorMessage}</div>
-          ) : null}
-          {successMessage ? (
-            <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
-              {successMessage}
-            </div>
           ) : null}
           <form className="grid gap-4" onSubmit={handlePasswordChange}>
             <div className="grid gap-2">

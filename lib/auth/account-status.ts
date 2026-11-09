@@ -29,7 +29,11 @@ export function isFullyVerifiedAccount(
 }
 
 export const CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE =
-  'Only CA-verified accounts can pay NGOs. Submit your documents for verification, then check back after CA approval (typically 24–48 hours).';
+  'Only CA-verified accounts can make payments on the platform. Submit your documents for verification, then check back after CA approval (typically 24–48 hours).';
+
+export function caVerifiedPayerError(verificationStatus: unknown): string | null {
+  return isCaVerifiedAccount(verificationStatus) ? null : CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE;
+}
 
 export function normalizePhoneDigits(phone: unknown): string {
   return String(phone || '').replace(/\D/g, '');

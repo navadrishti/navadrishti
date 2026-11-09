@@ -65,11 +65,50 @@ describe('application helpers', () => {
   ])('flattens a fulfillment given as %s', (_name, fulfillment) => {
     expect(shapeApplicationForApi({ id: 1, applicant_user_id: '3', application_message: 'hi', fulfillment })).toEqual({
       id: 1,
+      application_id: 1,
       applicant_user_id: 3,
       fulfilled_amount: 10,
       message: 'hi',
       application_message: 'hi',
     })
+  })
+
+  it('keeps the application id when the fulfillment row has a different id', () => {
+    expect(
+      shapeApplicationForApi({
+        id: 1,
+        service_request_id: 5,
+        applicant_user_id: 3,
+        status: 'pending',
+        applied_at: '2026-01-01',
+        updated_at: '2026-01-02',
+        response_meta: { offer: 1 },
+        volunteer: { name: 'Ravi' },
+        fulfillment: {
+          id: 99,
+          application_id: 1,
+          service_request_id: 5,
+          fulfillment_amount: 2000,
+          updated_at: '2026-01-03',
+        },
+      })
+    ).toMatchObject({
+      id: 1,
+      application_id: 1,
+      service_request_id: 5,
+      status: 'pending',
+      applied_at: '2026-01-01',
+      updated_at: '2026-01-02',
+      response_meta: { offer: 1 },
+      volunteer: { name: 'Ravi' },
+      fulfillment_amount: 2000,
+    })
+    expect(
+      shapeApplicationForApi({
+        id: 1,
+        fulfillment: { id: 99, application_id: 1, fulfillment_amount: 2000 },
+      }).id
+    ).toBe(1)
   })
 
   it('falls back to the legacy message key', () => {

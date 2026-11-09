@@ -4,6 +4,7 @@ import type React from "react"
 import { Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { cn } from "@/lib/utils"
 import { deriveSessionTitle, type NGOAIAgentSession } from "./intake"
 
 type SessionSidebarProps = {
@@ -12,21 +13,24 @@ type SessionSidebarProps = {
   onNewSession: () => void
   onSelectSession: (sessionId: string) => void
   onDeleteSession: (sessionId: string, event?: React.MouseEvent) => void | Promise<void>
+  className?: string
 }
 
-export function SessionSidebar({ sessions, activeSessionId, onNewSession, onSelectSession, onDeleteSession }: SessionSidebarProps) {
+export function SessionSidebar({ sessions, activeSessionId, onNewSession, onSelectSession, onDeleteSession, className }: SessionSidebarProps) {
   return (
-    <Card className="flex h-36 min-h-0 flex-col overflow-hidden border-slate-200/70 bg-white/90 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur lg:h-full">
-      <CardHeader className="border-b border-slate-100">
+    <Card className={cn("flex h-full min-h-0 flex-col overflow-hidden border-slate-200/70 bg-white/90 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur", className)}>
+      <CardHeader className="shrink-0 border-b border-slate-100 px-3 py-3">
         <div className="flex items-center justify-between gap-2">
-          <div>
-            <CardTitle className="text-slate-950">Conversations</CardTitle>
-            <CardDescription className="text-slate-600">Saved chat history</CardDescription>
+          <div className="min-w-0">
+            <CardTitle className="text-sm text-slate-950">Conversations</CardTitle>
+            <CardDescription className="text-[11px] leading-4 text-slate-600">
+              History scrolls here. Published listings stay live if you delete a chat.
+            </CardDescription>
           </div>
-          <Button type="button" size="sm" variant="outline" onClick={onNewSession}>+</Button>
+          <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={onNewSession}>+</Button>
         </div>
       </CardHeader>
-      <CardContent className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-2.5">
+      <CardContent className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain p-2.5">
         <div className="space-y-2">
           {sessions.length === 0 ? (
             <p className="text-xs text-slate-500">No sessions yet.</p>

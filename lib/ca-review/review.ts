@@ -8,6 +8,7 @@ import { buildCrossDocumentComparisons } from './cross-field-comparisons'
 import { isTrustedDocumentUrl } from './document-urls'
 import { CAReviewError } from './errors'
 import { applyNgoExpiryOverlay, ngoOcrExpiries } from './ngo-compliance'
+import { sanitizeCaReviewItem } from './pack-visibility'
 import { mapQueueItem } from './queue'
 import {
   selectColumns,
@@ -168,5 +169,5 @@ export async function getCAReview(type: CAQueueType, id: number) {
     throw new CAReviewError('Verification record not found', 404)
   }
   const row = data as unknown as VerificationQueueRow
-  return applyOcr(type, row, mapQueueItem(type, row))
+  return sanitizeCaReviewItem(await applyOcr(type, row, mapQueueItem(type, row)))
 }

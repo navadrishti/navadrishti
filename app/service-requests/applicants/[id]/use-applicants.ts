@@ -1,8 +1,10 @@
+import { toast } from 'sonner'
+import { readApiError } from '@/lib/user-facing-error'
+import { clientAuthFetchInit } from '@/lib/client-session';
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
-import { useToast } from '@/hooks/use-toast'
-import { getNeedRemainingQuantity, getServiceRequestTarget } from '@/lib/service-request-allocation'
+import { getNeedRemainingQuantity, getNgoNeedFulfillmentMode, getServiceRequestTarget } from '@/lib/service-request-allocation'
 import { normalizeVolunteer } from './helpers'
 import type { ServiceRequest, Volunteer } from './types'
 
@@ -18,59 +20,42 @@ function describeStatusChange(newStatus: string) {
 export function useApplicants(requestId: string) {
   const router = useRouter()
   const { user } = useAuth()
-  const { toast } = useToast()
+  const userId = user?.id
+  const userType = user?.user_type
   const [loading, setLoading] = useState(true)
   const [request, setRequest] = useState<ServiceRequest | null>(null)
   const [volunteers, setVolunteers] = useState<Volunteer[]>([])
   const [updating, setUpdating] = useState<number | null>(null)
 
   useEffect(() => {
-    if (!user) {
+    if (!userId) {
       router.push('/login')
       return
     }
-    if (user.user_type !== 'ngo') {
-      toast({
-        title: "Access Denied",
-        description: "Only NGOs can view applicants",
-        variant: "destructive",
-      })
+    if (userType !== 'ngo') {
+      toast.error("Access Denied", { description: "Only NGOs can view applicants" })
       router.push('/service-requests')
       return
     }
-  }, [user, router, toast])
+  }, [userId, userType, router])
 
   useEffect(() => {
-    if (!user || user.user_type !== 'ngo' || !requestId) return
+    if (!userId || userType !== 'ngo' || !requestId) return
 
     const fetchData = async () => {
       try {
-        const token = localStorage.getItem('token')
-
-        const requestResponse = await fetch(`/api/service-requests/${requestId}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        })
+        const requestResponse = await fetch(`/api/service-requests/${requestId}`, clientAuthFetchInit())
         const requestData = await requestResponse.json()
 
         if (requestData.success) {
           setRequest(requestData.data)
         } else {
-          toast({
-            title: "Error",
-            description: requestData.error || "Failed to fetch need details",
-            variant: "destructive",
-          })
+          toast.error("Error", { description: readApiError(requestData, "Failed to fetch need details") })
           router.push('/service-requests')
           return
         }
 
-        const volunteersResponse = await fetch(`/api/service-requests/${requestId}/volunteers`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        })
+        const volunteersResponse = await fetch(`/api/service-requests/${requestId}/volunteers`, clientAuthFetchInit())
         const volunteersData = await volunteersResponse.json()
 
         if (volunteersData.success) {
@@ -80,11 +65,7 @@ export function useApplicants(requestId: string) {
         }
       } catch (error) {
         console.error('Error fetching data:', error)
-        toast({
-          title: "Error",
-          description: "Failed to fetch data",
-          variant: "destructive",
-        })
+        toast.error("Error", { description: "Failed to fetch data" })
         router.push('/service-requests')
       } finally {
         setLoading(false)
@@ -92,19 +73,21 @@ export function useApplicants(requestId: string) {
     }
 
     fetchData()
-  }, [user, requestId, router, toast])
+  }, [userId, userType, requestId, router])
 
   const handleVolunteerStatusUpdate = async (volunteer: Volunteer, newStatus: string) => {
     setUpdating(volunteer.id)
     try {
-      const token = localStorage.getItem('token')
       const payload: Record<string, unknown> = { status: newStatus }
 
       // Accepting allocates the applicant's offer, capped at what the need still requires.
       if (newStatus === 'accepted') {
         const target = getServiceRequestTarget(request)
         const remaining = getNeedRemainingQuantity(request)
-        if (target.isFinancial) {
+        const mode = getNgoNeedFulfillmentMode(request)
+        if (mode === 'skill_service' || mode === 'infrastructure') {
+          payload.allocationQuantity = 1
+        } else if (target.isFinancial) {
           const offer = Number(volunteer.fulfillment_amount ?? volunteer.assigned_amount ?? 0)
           payload.allocationAmount = Math.min(offer > 0 ? offer : remaining, remaining)
         } else {
@@ -113,25 +96,21 @@ export function useApplicants(requestId: string) {
         }
       }
 
-      const response = await fetch(`/api/service-requests/${requestId}/volunteers/${volunteer.id}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      })
+      const response = await fetch(
+        `/api/service-requests/${requestId}/volunteers/${volunteer.id}`,
+        clientAuthFetchInit({
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+      )
 
-      const data = await response.json()
+      const data = await response.json().catch(() => ({}))
 
-      if (data.success) {
+      if (response.ok && data.success) {
         const [requestResponse, volunteersResponse] = await Promise.all([
-          fetch(`/api/service-requests/${requestId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch(`/api/service-requests/${requestId}/volunteers`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
+          fetch(`/api/service-requests/${requestId}`, clientAuthFetchInit()),
+          fetch(`/api/service-requests/${requestId}/volunteers`, clientAuthFetchInit()),
         ])
 
         const requestData = await requestResponse.json()
@@ -144,24 +123,13 @@ export function useApplicants(requestId: string) {
           setVolunteers((volunteersData.data || []).map(normalizeVolunteer))
         }
 
-        toast({
-          title: "Success",
-          description: `Volunteer ${describeStatusChange(newStatus)} successfully`,
-        })
+        toast.success("Success", { description: `Volunteer ${describeStatusChange(newStatus)} successfully` })
       } else {
-        toast({
-          title: "Error",
-          description: data.error || "Failed to update volunteer status",
-          variant: "destructive",
-        })
+        toast.error("Error", { description: readApiError(data, "Failed to update volunteer status") })
       }
     } catch (error) {
       console.error('Error updating volunteer status:', error)
-      toast({
-        title: "Error",
-        description: "Failed to update volunteer status",
-        variant: "destructive",
-      })
+      toast.error("Error", { description: "Failed to update volunteer status" })
     } finally {
       setUpdating(null)
     }

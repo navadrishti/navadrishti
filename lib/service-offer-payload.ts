@@ -3,6 +3,7 @@ import {
   isOfferType,
   isTransactionAllowedForOfferType,
   isTransactionType,
+  ngoLegalTagsForOffer,
   normalizeCapabilityTransactionType,
   normalizeDateOnlyToEndOfDayIso,
   normalizeImpactAreas,
@@ -338,5 +339,26 @@ export function toOfferResponse<T extends OfferResponseSource>(offer: T, capabil
     skills_required: skillsRequired,
     verified: String(offer?.ngo?.verification_status || '').toLowerCase() === 'verified',
     verification_status: offer?.ngo?.verification_status || null,
+    ...ngoLegalTagsForOffer({
+      verification_status: offer?.ngo?.verification_status,
+      profile_data: offer?.ngo && 'profile_data' in offer.ngo ? offer.ngo.profile_data : null,
+    }),
   }
+}
+
+const PUBLIC_MERCHANT_PROFILE_KEYS = ['bio', 'ca_badge_number', 'cover_image', 'website'] as const
+
+/** Public offer payloads must not include email, phone, or payout/bank profile fields. */
+export function redactCapabilityMerchantForPublic<T>(ngo: T): T {
+  if (!ngo || typeof ngo !== 'object') return ngo
+  const { email: _email, phone: _phone, profile_data: profileData, ...safe } = ngo as Record<string, unknown>
+  const profile = parseJsonObject(profileData)
+  return {
+    ...safe,
+    profile_data: Object.fromEntries(
+      PUBLIC_MERCHANT_PROFILE_KEYS
+        .filter((key) => profile[key] !== undefined)
+        .map((key) => [key, profile[key]])
+    ),
+  } as T
 }

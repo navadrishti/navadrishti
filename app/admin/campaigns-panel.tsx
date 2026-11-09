@@ -1,5 +1,6 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast as sonnerToast } from 'sonner';
@@ -105,7 +106,7 @@ export function useCampaignsPanelState({
 
       const data = await response.json();
       if (!response.ok || !data?.success) {
-        throw new Error(data?.error || 'Failed to update campaign');
+        throw new Error(readApiError(data, 'Failed to update campaign'));
       }
 
       sonnerToast.success('CSR campaign updated');
@@ -131,7 +132,7 @@ export function useCampaignsPanelState({
 
       const data = await response.json();
       if (!response.ok || !data?.success) {
-        throw new Error(data?.error || 'Failed to delete campaign');
+        throw new Error(readApiError(data, 'Failed to delete campaign'));
       }
 
       sonnerToast.success('CSR campaign deleted');

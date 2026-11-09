@@ -8,7 +8,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const user = getAuthUserFromRequest(request);
+    const user = await getAuthUserFromRequest(request);
     assertUserType(user, ['company']);
 
     const { id: projectId } = await params;

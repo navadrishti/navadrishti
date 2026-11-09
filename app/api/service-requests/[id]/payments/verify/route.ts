@@ -7,6 +7,7 @@ import { isFinancialRequest } from '@/lib/admin-refund';
 import { parseAmountToInr, parseJsonObject } from '@/lib/utils';
 import {
   assertNgoLiveCsr1,
+  authErrorResponse,
   CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE,
 } from '@/lib/server-auth';
 import { resolveFundingTargetInr } from '@/lib/service-request-allocation';
@@ -25,7 +26,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const decoded = getTokenClaims(request);
+    const decoded = await getTokenClaims(request);
     if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
@@ -231,6 +232,8 @@ export async function POST(
       }
     });
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Error verifying payment for service request:', error);
     return NextResponse.json({ error: 'Failed to verify payment' }, { status: 500 });
   }

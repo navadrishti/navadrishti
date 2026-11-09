@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { VerifiedAccountName } from '@/components/verification-badge';
 import { NeedDetailLink, StaticStatusBadge, getStatusBadgeClass } from '@/components/dashboard-status';
+import { InfoMeter, InfoMeterGrid, meterPercent } from '@/components/info-meter';
 import { formatDisplayDate, formatStatusLabel } from '@/lib/format-date';
 
 export interface CSRTrackingAssignment {
@@ -32,6 +33,7 @@ export interface CSRTrackingAssignment {
   selected_lead_ngo_verified?: boolean;
   assignment_status: string;
   assigned_at?: string | null;
+  project_updated_at?: string | null;
   review_note?: string;
   lead_ngo_invites?: Array<{
     id: string;
@@ -49,7 +51,40 @@ export interface CSRTrackingAssignment {
     title: string;
     status: string;
     request_type?: string;
+    updated_at?: string | null;
   }>;
+  need_progress?: {
+    total: number;
+    open: number;
+    in_progress: number;
+    completed: number;
+  } | null;
+}
+
+export function hasDistinctImplementingLead(assignment: Pick<CSRTrackingAssignment, 'lead_ngo_id' | 'selected_lead_ngo_id'>): boolean {
+  return Number(assignment.selected_lead_ngo_id || 0) > 0 &&
+    Number(assignment.selected_lead_ngo_id) !== Number(assignment.lead_ngo_id || 0)
+}
+
+export function takenInShowsWorkTracking(assignment: Pick<CSRTrackingAssignment, 'project_status' | 'assignment_status' | 'needs'>) {
+  const projectStatus = String(assignment.project_status || '').toLowerCase()
+  const assignmentStatus = String(assignment.assignment_status || '').toLowerCase()
+  if (['in_progress', 'completed', 'closed', 'cancelled', 'canceled'].includes(projectStatus)) return true
+  if (['in_progress', 'completed'].includes(assignmentStatus)) return true
+  return (assignment.needs || []).some((need) =>
+    ['in_progress', 'accepted', 'assigned', 'completed', 'closed'].includes(String(need.status || '').toLowerCase())
+  )
+}
+
+export function summarizeNeedProgress(needs: CSRTrackingAssignment['needs']) {
+  const summary = { total: needs.length, open: 0, in_progress: 0, completed: 0 }
+  for (const need of needs) {
+    const status = String(need.status || '').toLowerCase()
+    if (['completed', 'closed', 'fulfilled', 'cancelled', 'canceled'].includes(status)) summary.completed += 1
+    else if (['in_progress', 'accepted', 'assigned'].includes(status)) summary.in_progress += 1
+    else summary.open += 1
+  }
+  return summary
 }
 
 export function CsrTrackingProjectDetails({
@@ -72,11 +107,21 @@ export function CsrTrackingProjectDetails({
       ? Number(assignment.project_expected_beneficiaries).toLocaleString('en-IN')
       : null;
   const needs = assignment.needs || [];
+  const progress = assignment.need_progress || summarizeNeedProgress(needs);
+  const showWorkTracking = takenInShowsWorkTracking(assignment);
+  const lastNeedUpdate = needs
+    .map((need) => need.updated_at)
+    .filter(Boolean)
+    .sort()
+    .at(-1) || assignment.project_updated_at || null;
   const visibleNeeds = needs.slice(0, 4);
   const hiddenNeedCount = Math.max(0, needs.length - visibleNeeds.length);
   const hasDistinctLeadNgo = Boolean(
     assignment.selected_lead_ngo_id &&
     Number(assignment.selected_lead_ngo_id) !== Number(assignment.lead_ngo_id)
+  );
+  const pendingLeadInvites = (assignment.lead_ngo_invites || []).filter((invite) =>
+    ['pending', 'invited', 'pending_acceptance', 'awaiting_acceptance', 'offered'].includes(String(invite.status || '').toLowerCase())
   );
 
   return (
@@ -134,7 +179,7 @@ export function CsrTrackingProjectDetails({
         </div>
       </div>
 
-      {assignment.project_description ? (
+      {!showWorkTracking && assignment.project_description ? (
         <p className="text-sm text-muted-foreground line-clamp-3">{assignment.project_description}</p>
       ) : null}
 
@@ -144,47 +189,116 @@ export function CsrTrackingProjectDetails({
         </div>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm md:grid-cols-3">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Category</p>
-          <p className="font-medium text-slate-800">{assignment.project_category || 'Not set'}</p>
-        </div>
-        <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Location</p>
-          <p className="font-medium text-slate-800">{assignment.project_location || 'Not set'}</p>
-        </div>
-        <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Timeline</p>
-          <p className="font-medium text-slate-800">{assignment.project_timeline || 'Not set'}</p>
-        </div>
-        <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Beneficiaries</p>
-          <p className="font-medium text-slate-800">{beneficiaries || 'Not set'}</p>
-        </div>
-        <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Valid until</p>
-          <p className="font-medium text-slate-800">{formatDisplayDate(assignment.project_valid_until) || 'Not set'}</p>
-        </div>
-      </div>
-
-      {needs.length > 0 ? (
-        <div>
-          <p className="mb-1.5 text-xs uppercase tracking-wide text-slate-500">Legacy linked listings ({needs.length})</p>
-          <div className="flex flex-wrap gap-1.5">
-            {visibleNeeds.map((need) => (
-              <NeedDetailLink key={need.id} need={need} />
-            ))}
-            {hiddenNeedCount > 0 ? (
-              <StaticStatusBadge className="border-slate-200 bg-white text-slate-600">+{hiddenNeedCount} more</StaticStatusBadge>
-            ) : null}
+      {showWorkTracking ? (
+        <div className="space-y-3">
+          {progress.total > 0 ? (
+            <InfoMeterGrid className="xl:grid-cols-1">
+              <InfoMeter
+                title="Need fulfilment"
+                value={`${progress.completed} of ${progress.total} completed`}
+                progress={meterPercent(progress.completed, progress.total)}
+                detail={
+                  progress.in_progress > 0 || progress.open > 0
+                    ? `${progress.in_progress} in progress · ${progress.open} open`
+                    : undefined
+                }
+              />
+            </InfoMeterGrid>
+          ) : (
+            <p className="text-sm text-slate-600">No linked needs yet. Needs appear after they are linked to this project.</p>
+          )}
+          <div className="grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-500">Project status</p>
+              <p className="font-medium text-slate-900">
+                {formatStatusLabel(assignment.project_status || assignment.assignment_status || 'in_progress')}
+              </p>
+              <p className="text-xs text-slate-600">{assignment.project_location || 'Location not set'}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-500">Timeline</p>
+              <p className="font-medium text-slate-900">{assignment.project_timeline || 'Not set'}</p>
+              <p className="text-xs text-slate-600">
+                Last need update {formatDisplayDate(lastNeedUpdate) || 'not set'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-500">Implementing lead</p>
+              <p className="font-medium text-slate-900">
+                {hasDistinctLeadNgo
+                  ? assignment.selected_lead_ngo_name || 'Assigned'
+                  : pendingLeadInvites.length > 0
+                    ? `${pendingLeadInvites.length} invite${pendingLeadInvites.length === 1 ? '' : 's'} pending`
+                    : 'Owner NGO leading'}
+              </p>
+              {hasDistinctLeadNgo ? (
+                <p className="text-xs text-slate-600">Runs field delivery for this project</p>
+              ) : null}
+            </div>
           </div>
         </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm md:grid-cols-3">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate-500">Category</p>
+            <p className="font-medium text-slate-800">{assignment.project_category || 'Not set'}</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate-500">Location</p>
+            <p className="font-medium text-slate-800">{assignment.project_location || 'Not set'}</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate-500">Timeline</p>
+            <p className="font-medium text-slate-800">{assignment.project_timeline || 'Not set'}</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate-500">Beneficiaries</p>
+            <p className="font-medium text-slate-800">{beneficiaries || 'Not set'}</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate-500">Valid until</p>
+            <p className="font-medium text-slate-800">{formatDisplayDate(assignment.project_valid_until) || 'Not set'}</p>
+          </div>
+        </div>
+      )}
+
+      {needs.length > 0 ? (
+        showWorkTracking ? (
+          <div className="space-y-2">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Linked needs</p>
+            <div className="space-y-1.5">
+              {visibleNeeds.map((need) => (
+                <div key={need.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-white px-3 py-2 text-sm">
+                  <NeedDetailLink need={need} />
+                  <StaticStatusBadge className={getStatusBadgeClass(need.status)}>
+                    {formatStatusLabel(need.status)}
+                  </StaticStatusBadge>
+                </div>
+              ))}
+              {hiddenNeedCount > 0 ? (
+                <p className="text-xs text-slate-500">+{hiddenNeedCount} more on the project detail</p>
+              ) : null}
+            </div>
+          </div>
+        ) : (
+          <div>
+            <p className="mb-1.5 text-xs uppercase tracking-wide text-slate-500">Linked needs ({needs.length})</p>
+            <div className="flex flex-wrap gap-1.5">
+              {visibleNeeds.map((need) => (
+                <NeedDetailLink key={need.id} need={need} />
+              ))}
+              {hiddenNeedCount > 0 ? (
+                <StaticStatusBadge className="border-slate-200 bg-white text-slate-600">+{hiddenNeedCount} more</StaticStatusBadge>
+              ) : null}
+            </div>
+          </div>
+        )
       ) : null}
 
       <div className="flex flex-wrap gap-2 pt-1">
-        <Link href={`/service-requests/projects/${assignment.project_id}`}>
-          <Button size="sm" variant="outline">View Project</Button>
-        </Link>
+        <Button size="sm" variant="outline" asChild>
+          <Link href={`/service-requests/projects/${assignment.project_id}`}>Open Detail</Link>
+        </Button>
       </div>
     </div>
   );

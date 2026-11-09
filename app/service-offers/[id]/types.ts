@@ -32,6 +32,8 @@ export interface ServiceOffer {
   provider_profile_image?: string | null
   verified?: boolean
   verification_status?: string | null
+  registration_type?: string | null
+  ca_compliance_tags?: string[]
   ngo?: { verification_status?: string | null } | null
   status: 'active' | 'paused' | 'completed' | 'cancelled'
   valid_until?: string | null

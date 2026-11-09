@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { PlatformPaymentSummary, getTotalChargeLabel } from '@/components/platform-payment-summary'
 import { parseAmountToInr } from '@/lib/utils'
+import { CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE } from '@/lib/auth'
+import { VerificationRequiredNotice } from '@/components/verification-required-notice'
 import type { Contribution } from './use-contribution'
 
 interface FundingProgressCardProps {
@@ -15,6 +17,7 @@ interface FundingProgressCardProps {
   fundsRaisedInr: number
   fundsRemainingInr: number
   canPayForRequest: boolean
+  verificationRequired?: boolean
   contribution: Contribution
 }
 
@@ -25,6 +28,7 @@ export function FundingProgressCard({
   fundsRaisedInr,
   fundsRemainingInr,
   canPayForRequest,
+  verificationRequired = false,
   contribution,
 }: FundingProgressCardProps) {
   const { paymentAmount, setPaymentAmount, paying, handleContribute } = contribution
@@ -65,6 +69,10 @@ export function FundingProgressCard({
           <p className="font-semibold text-slate-900">INR {fundsRemainingInr.toLocaleString('en-IN')}</p>
         </div>
       </div>
+
+      {verificationRequired && fundingTargetInr > 0 && fundsRemainingInr > 0 && (
+        <VerificationRequiredNotice description={CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE} />
+      )}
 
       {canPayForRequest && fundingTargetInr > 0 && fundsRemainingInr > 0 && (
         <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">

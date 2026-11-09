@@ -1,5 +1,6 @@
 'use client';
 
+import { readApiError } from '@/lib/user-facing-error'
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Header } from '@/components/header';
@@ -9,6 +10,8 @@ import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar';
 import { Button } from '@/components/ui/button';
 import { ProductBrand } from '@/components/product-brand';
 import { useNow } from '@/hooks/use-now';
+import { appendNewsletterItems, mergeNewsletterItems } from '@/lib/platform-newsletter/merge';
+import { getCalendarYearIst } from '@/lib/utils';
 
 type NewsletterItem = {
   id: string;
@@ -20,6 +23,8 @@ type NewsletterItem = {
     | 'banned'
     | 'need'
     | 'capability'
+    | 'capability_closed'
+    | 'capability_used'
     | 'campaign'
     | 'campaign_finished'
     | 'need_fulfilled'
@@ -97,13 +102,18 @@ export default function LandingPage() {
   const [error, setError] = useState('');
   const [hasMore, setHasMore] = useState(false);
   const nowMs = useNow();
-  const loadedCountRef = useRef(PAGE_SIZE);
+  const loadedCountRef = useRef(0);
+  const itemsRef = useRef<NewsletterItem[]>([]);
+  const userRequestSeqRef = useRef(0);
+  const silentRequestSeqRef = useRef(0);
 
   const loadNewsletter = useCallback(async (options?: { append?: boolean; silent?: boolean; offset?: number; limit?: number }) => {
     const append = options?.append === true;
     const silent = options?.silent === true;
     const offset = options?.offset ?? 0;
     const limit = options?.limit ?? PAGE_SIZE;
+    const userRequestSeq = silent ? userRequestSeqRef.current : ++userRequestSeqRef.current;
+    const silentRequestSeq = silent ? ++silentRequestSeqRef.current : silentRequestSeqRef.current;
 
     try {
       if (!silent) {
@@ -116,11 +126,14 @@ export default function LandingPage() {
 
       const response = await fetch(`/api/platform-newsletter?limit=${limit}&offset=${offset}`, { cache: 'no-store' });
       const payload = await response.json();
+      if (userRequestSeq !== userRequestSeqRef.current) return;
+      if (silent && silentRequestSeq !== silentRequestSeqRef.current) return;
 
       if (!response.ok || !payload?.success) {
         if (silent) return;
-        setError(payload?.error || 'Failed to load updates.');
+        setError(readApiError(payload, 'Failed to load updates.'));
         if (!append) {
+          itemsRef.current = [];
           setItems([]);
           setHasMore(false);
         }
@@ -128,31 +141,32 @@ export default function LandingPage() {
       }
 
       const nextItems: NewsletterItem[] = Array.isArray(payload.data) ? payload.data : [];
+      const total = Number(payload?.pagination?.total);
 
       if (silent) {
-        setItems((current) => {
-          const existingIds = new Set(current.map((item) => item.id));
-          const incoming = nextItems.filter((item: NewsletterItem) => !existingIds.has(item.id));
-          if (incoming.length === 0) return current;
-          loadedCountRef.current = current.length + incoming.length;
-          return [...incoming, ...current];
-        });
+        const merged = mergeNewsletterItems(itemsRef.current, nextItems);
+        itemsRef.current = merged;
+        setItems(merged);
+        if (Number.isFinite(total)) setHasMore(merged.length < total);
         return;
       }
 
-      setItems((current) => (append ? [...current, ...nextItems] : nextItems));
-      loadedCountRef.current = append ? offset + nextItems.length : nextItems.length || PAGE_SIZE;
-      setHasMore(Boolean(payload?.pagination?.hasMore));
+      const nextList = append ? appendNewsletterItems(itemsRef.current, nextItems) : nextItems;
+      itemsRef.current = nextList;
+      setItems(nextList);
+      loadedCountRef.current = append ? offset + nextItems.length : nextItems.length;
+      setHasMore(Number.isFinite(total) ? nextList.length < total : Boolean(payload?.pagination?.hasMore));
       setError('');
     } catch {
       if (silent) return;
       setError('Failed to load updates.');
       if (!append) {
+        itemsRef.current = [];
         setItems([]);
         setHasMore(false);
       }
     } finally {
-      if (!silent) {
+      if (!silent && userRequestSeq === userRequestSeqRef.current) {
         setLoading(false);
         setLoadingMore(false);
       }
@@ -160,14 +174,7 @@ export default function LandingPage() {
   }, []);
 
   useEffect(() => {
-    loadNewsletter({ offset: 0, limit: PAGE_SIZE });
-    const interval = window.setInterval(() => {
-      loadNewsletter({ silent: true, offset: 0, limit: PAGE_SIZE });
-    }, 60000);
-
-    return () => {
-      window.clearInterval(interval);
-    };
+    void loadNewsletter({ offset: 0, limit: PAGE_SIZE });
   }, [loadNewsletter]);
 
   return (
@@ -217,6 +224,8 @@ export default function LandingPage() {
                   const opensDetail = Boolean(item.href) && (
                     item.kind === 'need' ||
                     item.kind === 'capability' ||
+                    item.kind === 'capability_closed' ||
+                    item.kind === 'capability_used' ||
                     item.kind === 'campaign' ||
                     item.kind === 'campaign_finished' ||
                     item.kind === 'need_fulfilled' ||
@@ -352,7 +361,7 @@ export default function LandingPage() {
       <footer className="border-t border-platform-sidebar bg-platform-sidebar">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-center gap-3 text-sm text-white">
-            <span className="text-white text-sm">© {new Date().getFullYear()}</span>
+            <span className="text-white text-sm">© {getCalendarYearIst()}</span>
             <ProductBrand size="xs" className="text-white" />
           </div>
         </div>

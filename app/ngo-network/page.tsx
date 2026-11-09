@@ -22,6 +22,7 @@ export default function NGONetworkPage() {
   const [payingNgo, setPayingNgo] = useState<NetworkNgo | null>(null)
 
   const openPayDialog = (ngo: NetworkNgo) => {
+    if (!isCaVerifiedAccount(user?.verification_status)) return
     setPayingNgo(ngo)
     setPayDialogOpen(true)
   }

@@ -60,7 +60,7 @@ export function getCampaignLeadLifecycle(input: {
   campaignStatus?: string | null
 }): CampaignLeadLifecycle {
   const status = String(input.campaignStatus || '').toLowerCase()
-  if (['completed', 'closed', 'cancelled'].includes(status)) return 'completed'
+  if (['completed', 'closed', 'cancelled', 'canceled', 'finished', 'done', 'ended'].includes(status)) return 'completed'
   if (isCampaignEnded(input.endDate)) return 'completed'
   if (isCampaignStarted(input.startDate)) return 'started'
   return 'yet_to_start'

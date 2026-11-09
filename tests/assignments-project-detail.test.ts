@@ -101,7 +101,13 @@ describe('getProjectDetail', () => {
 
   it('redacts contact and applicant meta for anonymous viewers', async () => {
     detailDb({ project: project(), invites: [{ id: 'i1' }] })
-    const { json } = await detail()
+    const response = await getProjectDetail({
+      searchParams: new URLSearchParams({ projectId: 'p1' }),
+      userId: 0,
+      userType: '',
+    })
+    expect(response.headers.get('Cache-Control')).toBe('no-store, max-age=0')
+    const json = await response.json()
     expect(json.data.project).toMatchObject({ description: 'Books for all', budget_inr: 50000, contact_info: null, pending_company_applications: [] })
     expect(json.data.project).not.toHaveProperty('_raw_description')
     expect(json.data.company_applications).toEqual([])
@@ -281,6 +287,32 @@ describe('getProjectDetail', () => {
     await detail(NGO, 'ngo')
     expect(fake.find('service_request_applications')).toHaveLength(0)
     expect(fake.find('service_request_contributions')).toHaveLength(1)
+  })
+
+  it('closes company apply when CSR takeover is locked', async () => {
+    detailDb({ project: project({ csr_project_available_for_csr: false }) })
+    const { json } = await detail(COMPANY, 'company')
+    expect(json.data.csr_project_eligible_for_company_apply).toBe(false)
+    expect(json.data.csr_project_ineligible_reason).toBe('This project is not open for company CSR takeover.')
+    expect(json.data.company_applications).toEqual([
+      expect.objectContaining({ company_id: COMPANY, status: 'pending' }),
+    ])
+  })
+
+  it('uses the NGO review status from project meta when contribution rows are stale', async () => {
+    detailDb({
+      project: project({
+        description: withProjectMeta('Books', {
+          pending_company_applications: [{ company_id: 9, status: 'rejected', applied_at: '2026-01-04' }],
+        }),
+      }),
+      needs: [{ id: 11, status: 'active' }],
+      contributions: [{ id: 'c1', service_request_id: 11, contributor_id: 9, status: 'pending' }],
+    })
+    const { json } = await detail(NGO, 'ngo')
+    expect(json.data.company_applications).toEqual([
+      expect.objectContaining({ company_id: 9, status: 'rejected' }),
+    ])
   })
 
   it('throws need lookup errors', async () => {

@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
 import { getTokenClaims } from '@/lib/auth';
+import { authErrorResponse } from '@/lib/server-auth';
 
 // POST - Manually refresh service request status based on volunteer completion
 export async function POST(request: NextRequest) {
   try {
-    const claims = getTokenClaims(request);
+    const claims = await getTokenClaims(request);
     if (!claims) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
@@ -90,6 +91,8 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Error refreshing service request status:', error);
     return NextResponse.json(
       { error: 'Failed to refresh service request status' },

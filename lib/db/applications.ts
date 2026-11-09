@@ -61,6 +61,16 @@ export type ApiApplication = Tables<'service_request_applications'> &
     [key: string]: unknown
   }
 
+function pickFulfillmentFields(value: unknown): Partial<ApplicationFulfillmentFields> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  const source = value as Record<string, unknown>
+  const picked: Record<string, unknown> = {}
+  for (const key of APPLICATION_FULFILLMENT_KEYS) {
+    if (key in source) picked[key] = source[key]
+  }
+  return picked as Partial<ApplicationFulfillmentFields>
+}
+
 /** Flatten the joined fulfillment row onto the application for API responses. */
 export function shapeApplicationForApi(row: Record<string, unknown>): ApiApplication
 export function shapeApplicationForApi(
@@ -76,18 +86,18 @@ export function shapeApplicationForApi(
   delete rest.fulfillment
   delete rest.service_request_fulfillments
   const applicantId = Number(rest.applicant_user_id ?? 0) || 0
-  const flatFulfillment =
-    fulfillment && typeof fulfillment === 'object' && !Array.isArray(fulfillment)
-      ? (fulfillment as Record<string, unknown>)
-      : {}
+  const applicationId = Number(rest.id)
+  const shapedId = Number.isFinite(applicationId) && applicationId > 0 ? applicationId : rest.id
   return {
     ...rest,
-    ...flatFulfillment,
+    ...pickFulfillmentFields(fulfillment),
+    id: shapedId,
+    application_id: shapedId,
     applicant_user_id: applicantId || rest.applicant_user_id,
     // UI alias — DB column is application_message
     message: rest.application_message ?? rest.message ?? '',
     application_message: rest.application_message ?? rest.message ?? '',
-  } as ApiApplication
+  } as unknown as ApiApplication
 }
 
 const APPLICATION_WITH_FULFILLMENT = `

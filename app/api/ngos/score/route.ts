@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
-import { findAuthUser } from '@/lib/server-auth'
+import { authErrorResponse, getAuthUserFromRequest } from '@/lib/server-auth'
 import { scoreNgosForCampaign, type CampaignMatchInput } from '@/lib/csr-agent/recommendation-utils'
 
 type ScoreRequest = CampaignMatchInput & {
@@ -9,8 +9,7 @@ type ScoreRequest = CampaignMatchInput & {
 
 export async function POST(request: NextRequest) {
   try {
-    const userId = findAuthUser(request, { allowCookie: true })?.id
-    if (!userId) return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+    await getAuthUserFromRequest(request)
 
     const body = (await request.json()) as ScoreRequest
     const limit = Math.min(Math.max(Number(body.limit || 10), 1), 30)
@@ -48,6 +47,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: scored })
   } catch (e) {
+    const auth = authErrorResponse(e)
+    if (auth) return auth
     console.error('NGO scoring error:', e)
     return NextResponse.json({ error: 'Failed to score ngos' }, { status: 500 })
   }

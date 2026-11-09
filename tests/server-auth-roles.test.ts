@@ -16,13 +16,15 @@ import {
   getCompanyCAFromRequest,
   getEvidenceApproverContext,
   isCARequest,
+  requireCaVerifiedPayer,
   resolveEffectiveVerificationStatus,
   setAdminTokenCookie,
   setAuthTokenCookie,
   setPlatformCaTokenCookie,
 } from '@/lib/server-auth'
+import { generateCompanyCAToken } from '@/lib/auth'
 import { requireCA } from '@/lib/ca-review'
-import { supabaseFake } from './support/supabase-fake'
+import { eqValue, supabaseFake } from './support/supabase-fake'
 
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db', async () => {
@@ -52,12 +54,22 @@ beforeEach(() => {
 })
 
 describe('getAuthUserFromRequest', () => {
-  it('returns the user for a valid bearer token', () => {
-    expect(getAuthUserFromRequest(buildRequest({ header: `Bearer ${userToken}` }))).toEqual({
+  beforeEach(() => {
+    supabaseFake.respondWith((query) => {
+      if (query.table === 'users' && query.columns?.includes('account_status')) {
+        const id = Number(eqValue(query, 'id'))
+        return { data: { id, user_type: id === 12 ? 'ngo' : 'individual', account_status: 'active', verification_status: 'unverified', profile_data: {} } }
+      }
+      return { data: null }
+    })
+  })
+  it('returns the user for a valid bearer token', async () => {
+    await expect(getAuthUserFromRequest(buildRequest({ header: `Bearer ${userToken}` }))).resolves.toEqual({
       id: 12,
       email: 'ngo@example.org',
       name: '',
       user_type: 'ngo',
+      verification_status: 'unverified',
     })
   })
 
@@ -65,14 +77,15 @@ describe('getAuthUserFromRequest', () => {
     ['no header', undefined],
     ['a non-bearer scheme', `Basic ${userToken}`],
     ['an empty bearer', 'Bearer    '],
-  ])('requires authentication with %s', (_label, header) => {
-    expect(() => getAuthUserFromRequest(buildRequest({ header }))).toThrow('Authentication required')
+  ])('requires authentication with %s', async (_label, header) => {
+    await expect(getAuthUserFromRequest(buildRequest({ header }))).rejects.toThrow('Authentication required')
   })
 
-  it('ignores the session cookie', () => {
-    expect(() => getAuthUserFromRequest(buildRequest({ cookies: { token: userToken } }))).toThrow(
-      'Authentication required'
-    )
+  it('accepts the httpOnly session cookie', async () => {
+    await expect(getAuthUserFromRequest(buildRequest({ cookies: { token: userToken } }))).resolves.toMatchObject({
+      id: 12,
+      user_type: 'ngo',
+    })
   })
 
   it.each([
@@ -81,27 +94,31 @@ describe('getAuthUserFromRequest', () => {
     ['malformed', 'not-a-jwt'],
     ['missing email', jwt.sign({ id: 12, user_type: 'ngo' }, secret)],
     ['missing id', jwt.sign({ email: 'ngo@example.org', user_type: 'ngo' }, secret)],
-  ])('rejects a %s token', (_label, token) => {
-    expect(() => getAuthUserFromRequest(buildRequest({ header: `Bearer ${token}` }))).toThrow(
+  ])('rejects a %s token', async (_label, token) => {
+    await expect(getAuthUserFromRequest(buildRequest({ header: `Bearer ${token}` }))).rejects.toThrow(
       'Invalid authentication token'
     )
   })
 
-  it('defaults a missing user_type to individual', () => {
+  it('defaults a missing user_type to individual', async () => {
     const token = jwt.sign({ id: 5, email: 'a@b.co' }, secret)
-    expect(getAuthUserFromRequest(buildRequest({ header: `Bearer ${token}` })).user_type).toBe('individual')
+    await expect(getAuthUserFromRequest(buildRequest({ header: `Bearer ${token}` }))).resolves.toMatchObject({
+      user_type: 'individual',
+    })
   })
 
-  it('rejects platform-admin tokens', () => {
-    expect(() => getAuthUserFromRequest(buildRequest({ header: `Bearer ${adminToken}` }))).toThrow()
+  it('rejects platform-admin tokens', async () => {
+    await expect(getAuthUserFromRequest(buildRequest({ header: `Bearer ${adminToken}` }))).rejects.toThrow()
   })
 
   it.each([
     ['platform CA', { id: 3, email: 'ca@x.io', kind: 'platform_ca' }],
     ['unknown user_type', { id: 5, email: 'a@b.co', user_type: 'superuser' }],
-  ])('rejects a %s token that carries an email', (_label, payload) => {
+  ])('rejects a %s token that carries an email', async (_label, payload) => {
     const token = jwt.sign(payload, secret)
-    expect(() => getAuthUserFromRequest(buildRequest({ header: `Bearer ${token}` }))).toThrow('Invalid authentication token')
+    await expect(getAuthUserFromRequest(buildRequest({ header: `Bearer ${token}` }))).rejects.toThrow(
+      'Invalid authentication token'
+    )
   })
 })
 
@@ -209,8 +226,24 @@ describe('getCompanyCAFromRequest', () => {
     })
   })
 
+  it('accepts a scoped company CA token and platform verifyToken cannot use it', async () => {
+    const scoped = generateCompanyCAToken({
+      id: 12,
+      email: 'ca@acme.com',
+      name: 'Company CA',
+      user_type: 'company',
+    })
+    await expect(getAuthUserFromRequest(buildRequest({ header: `Bearer ${scoped}` }))).rejects.toThrow(
+      'Invalid authentication token'
+    )
+    supabaseFake.queue('company_ca_identities', { data: identity })
+    await expect(getCompanyCAFromRequest(buildRequest({ header: `Bearer ${scoped}` }))).resolves.toMatchObject({
+      user: { id: 12, email: 'ca@acme.com' },
+    })
+  })
+
   it('requires a token', async () => {
-    await expect(getCompanyCAFromRequest(buildRequest())).rejects.toThrow('Company CA authentication required')
+    await expect(getCompanyCAFromRequest(buildRequest())).rejects.toThrow('Evidence Verifier authentication required')
   })
 
   it.each([
@@ -226,14 +259,14 @@ describe('getCompanyCAFromRequest', () => {
   it('rejects users without a company CA identity', async () => {
     supabaseFake.queue('company_ca_identities', { data: null, error: { message: 'no rows' } })
     await expect(getCompanyCAFromRequest(buildRequest({ header: `Bearer ${userToken}` }))).rejects.toThrow(
-      'Company CA identity not found'
+      'Evidence Verifier identity not found'
     )
   })
 
   it('rejects inactive identities', async () => {
     supabaseFake.queue('company_ca_identities', { data: { ...identity, status: 'revoked' } })
     await expect(getCompanyCAFromRequest(buildRequest({ header: `Bearer ${userToken}` }))).rejects.toThrow(
-      'Company CA identity is not active'
+      'Evidence Verifier identity is not active'
     )
   })
 })
@@ -388,6 +421,27 @@ describe('resolveEffectiveVerificationStatus', () => {
     await expect(resolveEffectiveVerificationStatus(1, 'admin')).resolves.toBe('unverified')
     supabaseFake.queue('users', { data: null })
     await expect(resolveEffectiveVerificationStatus(1, 'individual')).resolves.toBe('unverified')
+  })
+})
+
+describe('requireCaVerifiedPayer', () => {
+  it('allows a CA-verified account to pay', async () => {
+    supabaseFake.queue('users', { data: { verification_status: 'verified' } })
+    await expect(requireCaVerifiedPayer(1, 'individual')).resolves.toEqual({ ok: true })
+  })
+
+  it('lets a company CA pay without platform document verification', async () => {
+    supabaseFake.queue('company_ca_identities', { data: { id: 'ca_1' } })
+    supabaseFake.queue('users', { data: { verification_status: 'unverified' } })
+    await expect(requireCaVerifiedPayer(9, 'individual')).resolves.toEqual({ ok: true })
+  })
+
+  it('blocks unverified payers with the shared payment copy', async () => {
+    supabaseFake.queue('users', { data: { verification_status: 'unverified' } })
+    await expect(requireCaVerifiedPayer(1, 'company')).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/CA-verified/i),
+    })
   })
 })
 

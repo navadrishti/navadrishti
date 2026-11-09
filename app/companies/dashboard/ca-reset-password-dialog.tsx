@@ -27,6 +27,7 @@ export function CaResetPasswordDialog({ ca }: CaResetPasswordDialogProps) {
     caResetConfirmPassword,
     setCaResetConfirmPassword,
     resettingCaPassword,
+    resetError,
     closeCaResetPasswordDialog,
     handleResetCaPassword,
   } = ca;
@@ -65,6 +66,7 @@ export function CaResetPasswordDialog({ ca }: CaResetPasswordDialogProps) {
               autoComplete="new-password"
             />
           </div>
+          {resetError ? <p className="text-sm text-rose-700">{resetError}</p> : null}
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={closeCaResetPasswordDialog} disabled={resettingCaPassword}>

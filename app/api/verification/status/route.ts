@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { getTokenClaims } from '@/lib/auth';
+import { authErrorResponse } from '@/lib/server-auth';
 
 type VerificationLevel = 'basic' | 'intermediate' | 'advanced';
 
@@ -38,7 +39,7 @@ type VerificationStatusResponse = {
 
 export async function GET(request: NextRequest) {
   try {
-    const claims = getTokenClaims(request);
+    const claims = await getTokenClaims(request);
     if (!claims) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
@@ -139,6 +140,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(verificationData);
 
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Verification status error:', error);
     return NextResponse.json(
       { error: 'Failed to get verification status' },

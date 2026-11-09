@@ -1,4 +1,6 @@
+import { readApiError } from "@/lib/user-facing-error"
 import { useEffect, useEffectEvent, useState } from "react"
+import { CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE, isCaVerifiedAccount } from "@/lib/auth"
 import type { User } from "@/lib/auth-context"
 import { openRazorpayCheckout, type RazorpaySuccessResponse } from "@/lib/razorpay-checkout"
 import { parseCsrCapabilityRentals, type CsrCapabilityRentalRecord } from "@/lib/service-engagement"
@@ -98,13 +100,14 @@ export function useCapabilityRentals({
       }
 
       const error = String(verifyPayload?.error || 'Payment verification failed')
+      const friendly = readApiError(verifyPayload, 'Payment verification failed')
       // Razorpay can report the payment a moment before it is captured.
       if (verifyRes.status === 409 && /not captured/i.test(error) && attempt < VERIFY_ATTEMPTS) {
         await wait(VERIFY_RETRY_DELAY_MS)
         continue
       }
-      if (/refunded|already paid/i.test(error)) throw new Error(error)
-      throw new Error(`${error}. Your payment reference is ${paymentResponse.razorpay_payment_id}; contact support if the amount was deducted.`)
+      if (/refunded|already paid/i.test(error)) throw new Error(friendly)
+      throw new Error(`${friendly}. Your payment reference is ${paymentResponse.razorpay_payment_id}; contact support if the amount was deducted.`)
     }
   }
 
@@ -123,6 +126,10 @@ export function useCapabilityRentals({
     }
     if (user.verification_status === 'suspended') {
       appendAssistantMessage('Your company account is suspended due to unpaid CSR capability penalties.')
+      return
+    }
+    if (!isCaVerifiedAccount(user.verification_status)) {
+      appendAssistantMessage(CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE)
       return
     }
 
@@ -148,7 +155,7 @@ export function useCapabilityRentals({
       })
       const orderPayload = await orderRes.json().catch(() => null)
       if (!orderRes.ok || !orderPayload?.success) {
-        throw new Error(orderPayload?.error || 'Failed to start capability payment')
+        throw new Error(readApiError(orderPayload, 'Failed to start capability payment'))
       }
 
       if (!orderPayload.data?.paymentRequired) {
@@ -179,7 +186,7 @@ export function useCapabilityRentals({
         },
       })
     } catch (error) {
-      appendAssistantMessage(error instanceof Error ? error.message : 'Payment failed')
+      appendAssistantMessage(readApiError(error, 'Payment failed'))
     } finally {
       setPayingOfferId(null)
     }

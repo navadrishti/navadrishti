@@ -171,6 +171,7 @@ describe('initiateNgoVerification', () => {
       registration_number: 'REG-1',
       registration_type: 'Trust',
       verification_status: 'pending',
+      rejection_reason: null,
       fcra_number: 'FC-1',
     })
     expect(fake.writes('users')[0].payload).toMatchObject({

@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  getTokenClaims,
-  isCaVerifiedAccount,
-  CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE,
-} from '@/lib/auth';
+import { getTokenClaims } from '@/lib/auth';
 import { CSR_SCHEDULE_VII_CATEGORIES } from '@/lib/categories';
 import { rankRecommendedNgosForViewer } from '@/lib/csr-agent/recommendation-utils';
 import {
   assertNgoLiveCsr1,
+  authErrorResponse,
   CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE,
-  resolveEffectiveVerificationStatus,
+  requireCaVerifiedPayer,
 } from '@/lib/server-auth';
 import {
   canContributeViaPlatform,
@@ -18,7 +15,12 @@ import {
   PayeeNotConnectedError,
 } from '@/lib/razorpay-route';
 import Razorpay from 'razorpay';
-import { filterNetworkNgos, loadNetworkNgos, loadRecommendationViewer } from '@/lib/ngo-network/listing';
+import {
+  filterNetworkNgos,
+  loadNetworkNgos,
+  loadRecommendationViewer,
+  redactNetworkNgoContact,
+} from '@/lib/ngo-network/listing';
 import { createNetworkDonationOrder, verifyNetworkDonation } from '@/lib/ngo-network/donation';
 
 export async function GET(request: NextRequest) {
@@ -33,6 +35,7 @@ export async function GET(request: NextRequest) {
     );
 
     const viewer = recommendMode ? await loadRecommendationViewer(request) : null;
+    const includeContact = Boolean(viewer || (await getTokenClaims(request)));
 
     const ngos = await loadNetworkNgos(verifiedOnly);
     if (!ngos) {
@@ -58,7 +61,9 @@ export async function GET(request: NextRequest) {
         poolSize: 6,
         displaySize: 4,
         shuffleTies,
-      }).map(({ search_haystack: _haystack, city: _city, state_province: _state, match_score: _score, ...ngo }) => ngo);
+      }).map(({ search_haystack: _haystack, city: _city, state_province: _state, match_score: _score, ...ngo }) =>
+        redactNetworkNgoContact(ngo, includeContact)
+      );
 
       return Response.json({
         success: true,
@@ -76,7 +81,7 @@ export async function GET(request: NextRequest) {
       compliance: searchParams.get('compliance') || '',
       registrationType: (searchParams.get('registration_type') || '').trim(),
       verifiedOnly,
-    });
+    }).map((ngo) => redactNetworkNgoContact(ngo, includeContact));
 
     return Response.json({
       success: true,
@@ -85,6 +90,8 @@ export async function GET(request: NextRequest) {
       total: payload.length,
     });
   } catch (err) {
+    const auth = authErrorResponse(err);
+    if (auth) return auth;
     console.error('NGO network error:', err);
     return Response.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }
@@ -92,7 +99,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const decoded = getTokenClaims(request);
+    const decoded = await getTokenClaims(request);
     if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
@@ -101,9 +108,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Only companies and individuals can pay NGOs from the network' }, { status: 403 });
     }
 
-    const effectivePayerVerificationStatus = await resolveEffectiveVerificationStatus(decoded.id, decoded.user_type);
-    if (!isCaVerifiedAccount(effectivePayerVerificationStatus)) {
-      return NextResponse.json({ error: CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE }, { status: 403 });
+    const payerGate = await requireCaVerifiedPayer(decoded.id, decoded.user_type);
+    if (!payerGate.ok) {
+      return NextResponse.json({ error: payerGate.error }, { status: 403 });
     }
 
     const body = await request.json().catch(() => ({}));
@@ -155,6 +162,8 @@ export async function POST(request: NextRequest) {
 
     return await createNetworkDonationOrder(context, body?.amount);
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     if (error instanceof PayeeNotConnectedError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
     }

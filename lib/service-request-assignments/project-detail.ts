@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 import { parseJsonObject } from '@/lib/utils'
 import { enrichProjectRecord, formatProjectLocation, redactProjectSensitiveFields } from '@/lib/service-request-allocation'
+import { redactNeedForViewer } from '@/lib/service-requests/list-shape'
 import {
   COMPANY_PROJECT_CONTRIBUTION_TYPE,
   LEAD_NGO_INVITE_CONTRIBUTION_TYPE,
@@ -268,11 +269,20 @@ export async function getProjectDetail(ctx: AssignmentsGetContext) {
     const companyId = Number(app.company_id)
     if (!Number.isFinite(companyId) || companyId <= 0) continue
     const key = String(companyId)
-    if (groupedApplicationsByCompany[key]) continue
+    const metaStatus = String(app.status || 'pending').toLowerCase()
+    const existing = groupedApplicationsByCompany[key]
+    if (existing) {
+      existing.company_name = existing.company_name || app.company_name || null
+      existing.note = existing.note || app.note || ''
+      if (existing.status !== 'accepted' && (metaStatus === 'accepted' || metaStatus !== existing.status)) {
+        existing.status = metaStatus
+      }
+      continue
+    }
     groupedApplicationsByCompany[key] = {
       company_id: companyId,
       company_name: app.company_name || null,
-      status: String(app.status || 'pending').toLowerCase(),
+      status: metaStatus,
       created_at: app.applied_at || null,
       updated_at: app.applied_at || null,
       note: app.note || '',
@@ -295,17 +305,28 @@ export async function getProjectDetail(ctx: AssignmentsGetContext) {
     },
     company_applications: Object.values(groupedApplicationsByCompany),
     lead_ngo_invites: leadInvites || [],
-    // Standalone projects (no child needs) are gated only by assignment status.
-    csr_project_eligible_for_company_apply: !assignmentLocked && (needsList.length === 0 || !hasIndividualFulfillment),
-    csr_project_ineligible_reason: assignmentLocked
-      ? 'This project has already been accepted by a company.'
-      : (hasIndividualFulfillment ? 'One or more legacy needs in this project were already fulfilled by individuals.' : '')
+    csr_project_eligible_for_company_apply:
+      enrichedProject?.csr_project_available_for_csr !== false &&
+      !assignmentLocked &&
+      (needsList.length === 0 || !hasIndividualFulfillment),
+    csr_project_ineligible_reason:
+      enrichedProject?.csr_project_available_for_csr === false
+        ? 'This project is not open for company CSR takeover.'
+        : assignmentLocked
+          ? 'This project has already been accepted by a company.'
+          : (hasIndividualFulfillment ? 'One or more legacy needs in this project were already fulfilled by individuals.' : '')
   }
 
   if (!userId) {
     responsePayload.project = redactProjectSensitiveFields(enrichedProject)
     responsePayload.company_applications = []
     responsePayload.lead_ngo_invites = []
+    responsePayload.needs = needsList.map((need) => redactNeedForViewer({ ...need } as Record<string, unknown>, null))
+    responsePayload.need_breakdown = {
+      ongoing: (responsePayload.needs as Array<{ status?: unknown }>).filter((item) => !['completed', 'cancelled'].includes(String(item.status || '').toLowerCase())),
+      fulfilled: (responsePayload.needs as Array<{ status?: unknown }>).filter((item) => ['completed'].includes(String(item.status || '').toLowerCase())),
+      removed: (responsePayload.needs as Array<{ status?: unknown }>).filter((item) => ['cancelled'].includes(String(item.status || '').toLowerCase())),
+    }
   } else {
     const ownerNgoId = Number(enrichedProject?.ngo_id || 0)
     const assignedCompanyId = Number(enrichedProject?.assigned_company_user_id || 0)
@@ -326,10 +347,14 @@ export async function getProjectDetail(ctx: AssignmentsGetContext) {
         (app) => Number(app?.company_id) === Number(userId)
       )
       responsePayload.lead_ngo_invites = []
+      responsePayload.needs = needsList.map((need) => redactNeedForViewer({ ...need } as Record<string, unknown>, userId))
     }
   }
 
   // project-detail: returning payload for project
 
-  return NextResponse.json({ success: true, data: responsePayload })
+  return NextResponse.json(
+    { success: true, data: responsePayload },
+    { headers: { 'Cache-Control': 'no-store, max-age=0' } },
+  )
 }

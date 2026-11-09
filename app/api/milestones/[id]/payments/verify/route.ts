@@ -3,6 +3,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 import { supabase } from '@/lib/db';
 import {
+  assertEvidenceApproverAssignedToProject,
+  CompanyCaAssignmentError,
+} from '@/lib/company-ca';
+import {
   assertNgoLiveCsr1,
   CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE,
   getEvidenceApproverContext,
@@ -68,8 +72,19 @@ export async function POST(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    if (approver.companyUserId !== null && approver.companyUserId !== project.company_user_id) {
-      return NextResponse.json({ error: 'Company CA is not authorized for this company project' }, { status: 403 });
+    try {
+      await assertEvidenceApproverAssignedToProject({
+        actorType: approver.actorType,
+        reviewerUserId: approver.reviewerUserId,
+        companyUserId: approver.companyUserId,
+        projectCompanyUserId: Number(project.company_user_id),
+        projectId: String(project.id),
+      });
+    } catch (error) {
+      if (error instanceof CompanyCaAssignmentError) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
+      }
+      throw error;
     }
 
     const leadNgoUserId = Number(project.ngo_user_id || 0);

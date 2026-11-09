@@ -106,6 +106,16 @@ describe('LeadNgoInvitePanel', () => {
     expect(row('Fresh NGO').getByRole('button', { name: 'Inviting...' })).toBeDisabled()
   })
 
+  it('does not list the owner NGO as a lead invite candidate', () => {
+    renderPanel([], {
+      ngoDirectory: [
+        ...directory,
+        { id: 99, name: 'Owner Directory NGO', email: 'owner@example.org', csr1_valid_until: '2030-01-01' },
+      ],
+    })
+    expect(screen.queryByText('Owner Directory NGO')).not.toBeInTheDocument()
+  })
+
   it('filters by search term', () => {
     renderPanel([], { searchValue: 'fresh' })
     expect(screen.getByText('Search Results (1)')).toBeInTheDocument()

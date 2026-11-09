@@ -146,7 +146,9 @@ export function impactReportTemplate(data: ImpactReportData): string {
         <div class="metric-card">
           <div class="field-label">Beneficiaries</div>
           <div class="field-value">${escapeHtml(
-            Number.isFinite(Number(data.beneficiaries)) ? Number(data.beneficiaries).toLocaleString('en-IN') : '—'
+            data.beneficiaries == null || !Number.isFinite(Number(data.beneficiaries))
+              ? '—'
+              : Number(data.beneficiaries).toLocaleString('en-IN')
           )}</div>
         </div>
       </div>
@@ -154,7 +156,9 @@ export function impactReportTemplate(data: ImpactReportData): string {
         <div class="field">
           <span class="field-label">Progress</span>
           <span class="field-value">${escapeHtml(
-            Number.isFinite(Number(data.progressPercentage)) ? `${Number(data.progressPercentage)}%` : '—'
+            data.progressPercentage == null || !Number.isFinite(Number(data.progressPercentage))
+              ? '—'
+              : `${Number(data.progressPercentage)}%`
           )}</span>
         </div>
       </div>

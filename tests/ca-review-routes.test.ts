@@ -7,6 +7,7 @@ import { POST as logout } from '@/app/api/ca/auth/logout/route'
 import { GET as verify } from '@/app/api/ca/auth/verify/route'
 import { GET as queue } from '@/app/api/ca/queue/route'
 import { GET as review } from '@/app/api/ca/review/route'
+import { GET as history } from '@/app/api/ca/history/route'
 import { POST as verificationAction } from '@/app/api/ca/verification-action/route'
 import { CAReviewError } from '@/lib/ca-review/errors'
 import { verifyPlatformCAToken } from '@/lib/platform-ca-auth'
@@ -15,6 +16,7 @@ import { createSupabaseFake, type FakeResult } from './support/supabase-fake'
 const mocks = vi.hoisted(() => ({
   from: vi.fn(),
   list: vi.fn(),
+  history: vi.fn(),
   review: vi.fn(),
   action: vi.fn(),
   verifyPassword: vi.fn(),
@@ -27,6 +29,7 @@ vi.mock('@/lib/gemini-vision', () => ({ extractVisibleKycFields: vi.fn(), isGemi
 vi.mock('@/lib/ca-review', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/ca-review')>()),
   listCAQueue: mocks.list,
+  listCAHistory: mocks.history,
   getCAReview: mocks.review,
   applyCAVerificationAction: mocks.action,
 }))
@@ -72,6 +75,7 @@ beforeEach(() => {
   mocks.from.mockReset()
   useActiveCaAccount()
   mocks.list.mockReset().mockResolvedValue([])
+  mocks.history.mockReset().mockResolvedValue([])
   mocks.review.mockReset()
   mocks.action.mockReset()
   mocks.verifyPassword.mockReset()
@@ -285,13 +289,13 @@ describe('GET /api/ca/queue', () => {
       status: 200,
       body: { success: true, data: [{ id: 1 }, { id: 2 }], count: 2, type: 'ngos' },
     })
-    expect(mocks.list).toHaveBeenCalledWith('ngos', 'unverified')
+    expect(mocks.list).toHaveBeenCalledWith('ngos', 'all')
   })
 
   it.each([
     ['/api/ca/queue?status=verified', 'verified'],
     ['/api/ca/queue?status=all', 'all'],
-    ['/api/ca/queue?type=', 'unverified'],
+    ['/api/ca/queue?type=', 'all'],
   ])('lists every type for %s', async (path, status) => {
     mocks.list.mockImplementation(async (type: string) => [{ type }])
     expect(await read(await queue(request(path, { token: caToken })))).toEqual({
@@ -316,6 +320,19 @@ describe('GET /api/ca/queue', () => {
       body: { error: 'Invalid queue type' },
     })
     expect(mocks.list).not.toHaveBeenCalled()
+  })
+
+  it('lists this CA’s review history', async () => {
+    mocks.history.mockResolvedValue([{ action: 'approve', stakeholder_name: 'Ramesh' }])
+    expect(await read(await history(request('/api/ca/history', { token: caToken })))).toEqual({
+      status: 200,
+      body: {
+        success: true,
+        data: [{ action: 'approve', stakeholder_name: 'Ramesh' }],
+        count: 1,
+      },
+    })
+    expect(mocks.history).toHaveBeenCalledWith(expect.objectContaining({ id: 3 }))
   })
 
   it('returns 500 when the queue fails', async () => {

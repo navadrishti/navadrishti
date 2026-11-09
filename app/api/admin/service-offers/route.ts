@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { getAdminUser } from '@/lib/server-auth';
-import { autoRejectExpiredServiceOffers } from '@/lib/admin-offer-automation';
-
 export async function GET(request: NextRequest) {
   try {
     if (!getAdminUser(request)) {
       return NextResponse.json({ error: 'Admin authentication required' }, { status: 401 });
     }
-
-    await autoRejectExpiredServiceOffers();
 
     const { data: offers, error } = await supabase
       .from('service_offers')

@@ -20,6 +20,10 @@ export function isCapabilityOfferInUse(
   return Array.isArray(offer.usage_records) && offer.usage_records.length > 0
 }
 
+/**
+ * Public catalog eligibility. Depends on operational lifecycle (active, expiry,
+ * in-use, CSR lock) — not admin_status or is_listed moderation/listing flags.
+ */
 export function isCapabilityOfferAvailableForListing(
   offer: {
     valid_until?: unknown
@@ -28,6 +32,8 @@ export function isCapabilityOfferAvailableForListing(
     isAssigned?: boolean
     usage_records?: unknown[]
     status?: string | null
+    admin_status?: string | null
+    is_listed?: boolean | null
     offer_details?: Record<string, unknown> | null
   } | null | undefined
 ): boolean {
@@ -45,21 +51,52 @@ export function isCapabilityOfferAvailableForListing(
   return true
 }
 
+export function isCapabilityOfferOpenForApplications(
+  offer: {
+    status?: string | null
+    admin_status?: string | null
+    is_listed?: boolean | null
+  } | null | undefined
+): boolean {
+  return isCapabilityOfferPubliclyVisible(offer)
+}
+
+/** Detail/apply visibility: active + not expired is enforced by callers where needed. */
+export function isCapabilityOfferPubliclyVisible(
+  offer: {
+    status?: string | null
+    admin_status?: string | null
+    is_listed?: boolean | null
+  } | null | undefined
+): boolean {
+  if (!offer) return false
+  return String(offer.status || '').toLowerCase() === 'active'
+}
+
+const OPEN_USAGE_STATUSES = new Set(['accepted', 'active', 'in_progress'])
+
+function usageIsOngoing(record: { status?: string | null } | null | undefined) {
+  return OPEN_USAGE_STATUSES.has(String(record?.status || '').toLowerCase())
+}
+
 export function classifyCapabilityOffer(offer: CapabilityOfferListItem) {
   const expired = Boolean(offer.is_expired ?? isOfferExpired(offer))
   const usageRecords = Array.isArray(offer.usage_records) ? offer.usage_records : []
   const used = Boolean(offer.isAssigned || usageRecords.length > 0)
   const status = String(offer.status || '').toLowerCase()
   const inactive = ['inactive', 'completed', 'cancelled', 'paused'].includes(status)
-  const isPast = expired || used || inactive
+  const listed = isCapabilityOfferOpenForApplications(offer)
+  const isOngoing = usageRecords.some(usageIsOngoing)
+  const isPast = inactive || expired || (used && !isOngoing) || (!isOngoing && !listed)
 
   let pastReason: CapabilityOfferPastReason | null = null
   if (isPast) {
     if (inactive && !expired && !used) pastReason = 'inactive'
     else if (expired && used) pastReason = 'expired_and_used'
     else if (used) pastReason = 'used'
-    else pastReason = 'expired'
+    else if (expired) pastReason = 'expired'
+    else pastReason = 'inactive'
   }
 
-  return { isPast, isActive: !isPast, pastReason, usageRecords }
+  return { isPast, isActive: !isPast, isOngoing, pastReason, usageRecords }
 }

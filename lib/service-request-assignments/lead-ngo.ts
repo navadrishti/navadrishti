@@ -2,10 +2,15 @@ import { NextResponse } from 'next/server'
 import { supabase, buildProjectLeadNgoPatch } from '@/lib/db'
 import { assertNgoCsr1CoversProject } from '@/lib/server-auth'
 import { parseJsonObject } from '@/lib/utils'
+import { parseProjectMeta, withProjectMeta } from '@/lib/service-request-allocation'
 import {
   EXPIRED_STATUS,
   LEAD_NGO_INVITE_CONTRIBUTION_TYPE,
+  OWNER_NGO_CANNOT_BE_LEAD_MESSAGE,
+  PENDING_LEAD_INVITE_STATUSES,
   isFullyVerifiedCompany,
+  isSamePositiveId,
+  parseProjectLeadInviteId,
   type AssignmentsPutContext,
 } from '@/lib/service-request-assignments/shared'
 
@@ -30,7 +35,10 @@ export async function respondToLeadNgoInvitation(ctx: AssignmentsPutContext) {
     .maybeSingle()
 
   if (inviteError) throw inviteError
-  if (!invite || Number(invite.contributor_id) !== Number(userId)) {
+  if (!invite) {
+    return await respondToMetaLeadInvitation(ctx, inviteId, decision)
+  }
+  if (Number(invite.contributor_id) !== Number(userId)) {
     return NextResponse.json({ error: 'Invitation not found' }, { status: 404 })
   }
 
@@ -39,10 +47,13 @@ export async function respondToLeadNgoInvitation(ctx: AssignmentsPutContext) {
     const { data: inviteProject } = inviteProjectId
       ? await supabase
           .from('service_request_projects')
-          .select('valid_until, timeline')
+          .select('ngo_id, valid_until, timeline')
           .eq('id', inviteProjectId)
           .maybeSingle()
       : { data: null }
+    if (isSamePositiveId(inviteProject?.ngo_id, userId)) {
+      return NextResponse.json({ error: OWNER_NGO_CANNOT_BE_LEAD_MESSAGE }, { status: 400 })
+    }
     const inviteCoverage = await assertNgoCsr1CoversProject(userId, inviteProject)
     if (!inviteCoverage.ok) {
       return NextResponse.json({ error: inviteCoverage.error }, { status: 403 })
@@ -144,6 +155,124 @@ export async function respondToLeadNgoInvitation(ctx: AssignmentsPutContext) {
   return NextResponse.json({ success: true, data: { inviteId, decision } })
 }
 
+async function respondToMetaLeadInvitation(
+  ctx: AssignmentsPutContext,
+  inviteId: string,
+  decision: string,
+) {
+  const { userId } = ctx
+  const parsed = parseProjectLeadInviteId(inviteId)
+  if (parsed && Number(parsed.ngoId) !== Number(userId)) {
+    return NextResponse.json({ error: 'Invitation not found' }, { status: 404 })
+  }
+
+  const projectSelect = 'id, description, lead_ngo_user_id, valid_until, timeline, ngo_id'
+  const { data: directProject, error: directProjectError } = parsed
+    ? await supabase
+        .from('service_request_projects')
+        .select(projectSelect)
+        .eq('id', parsed.projectId)
+        .maybeSingle()
+    : { data: null, error: null }
+
+  if (directProjectError) throw directProjectError
+
+  let match = directProject
+  if (!match) {
+    const { data: projects, error: projectsError } = await supabase
+      .from('service_request_projects')
+      .select(projectSelect)
+      .not('assigned_company_user_id', 'is', null)
+      .order('updated_at', { ascending: false })
+      .limit(500)
+
+    if (projectsError) throw projectsError
+    const projectRows = Array.isArray(projects) ? projects : projects ? [projects] : []
+    match = projectRows.find((project) =>
+      (parseProjectMeta(project.description).pending_lead_ngo_invites || []).some(
+        (invite) => invite.id === inviteId && Number(invite.ngo_id) === Number(userId)
+      )
+    ) || null
+  }
+  if (!match) {
+    return NextResponse.json({ error: 'Invitation not found' }, { status: 404 })
+  }
+
+  const meta = parseProjectMeta(match.description)
+  const invites = Array.isArray(meta.pending_lead_ngo_invites) ? [...meta.pending_lead_ngo_invites] : []
+  const invite = invites.find((item) => item.id === inviteId)
+  if (!invite || Number(invite.ngo_id) !== Number(userId)) {
+    return NextResponse.json({ error: 'Invitation not found' }, { status: 404 })
+  }
+
+  const currentStatus = String(invite.status || 'pending').toLowerCase()
+  if (!PENDING_LEAD_INVITE_STATUSES.includes(currentStatus)) {
+    return NextResponse.json({ error: 'This invitation is no longer actionable.' }, { status: 409 })
+  }
+
+  if (decision === 'accepted') {
+    if (isSamePositiveId(match.ngo_id, userId)) {
+      return NextResponse.json({ error: OWNER_NGO_CANNOT_BE_LEAD_MESSAGE }, { status: 400 })
+    }
+    if (invites.some((item) => item.id !== inviteId && String(item.status || '').toLowerCase() === 'accepted' && Number(item.inviting_company_id) === Number(invite.inviting_company_id))) {
+      invite.status = EXPIRED_STATUS
+      await supabase
+        .from('service_request_projects')
+        .update({
+          description: withProjectMeta(match.description, { pending_lead_ngo_invites: invites }),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', match.id)
+      return NextResponse.json({ error: 'A lead NGO is already accepted for this project invite.' }, { status: 409 })
+    }
+  }
+
+  const nextInvites = invites.map((item) => {
+    if (item.id === inviteId) {
+      return { ...item, status: decision }
+    }
+    if (
+      decision === 'accepted' &&
+      Number(item.inviting_company_id) === Number(invite.inviting_company_id) &&
+      PENDING_LEAD_INVITE_STATUSES.includes(String(item.status || 'pending').toLowerCase())
+    ) {
+      return { ...item, status: EXPIRED_STATUS }
+    }
+    return item
+  })
+
+  if (decision === 'accepted') {
+    const { data: claimedProject, error: updateProjectError } = await supabase
+      .from('service_request_projects')
+      .update({
+        ...buildProjectLeadNgoPatch(userId),
+        assignment_status: 'lead_selected',
+        description: withProjectMeta(match.description, { pending_lead_ngo_invites: nextInvites }),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', match.id)
+      .or(`lead_ngo_user_id.is.null,lead_ngo_user_id.eq.${Number(userId)}`)
+      .select('id')
+      .maybeSingle()
+
+    if (updateProjectError) throw updateProjectError
+    if (!claimedProject) {
+      return NextResponse.json({ error: 'A lead NGO is already assigned to this project.' }, { status: 409 })
+    }
+  } else {
+    const { error: updateError } = await supabase
+      .from('service_request_projects')
+      .update({
+        description: withProjectMeta(match.description, { pending_lead_ngo_invites: nextInvites }),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', match.id)
+    if (updateError) throw updateError
+  }
+
+  return NextResponse.json({ success: true, data: { inviteId, decision } })
+}
+
 export async function selectLeadNgo(ctx: AssignmentsPutContext) {
   const { body, userId, userType } = ctx
 
@@ -163,12 +292,11 @@ export async function selectLeadNgo(ctx: AssignmentsPutContext) {
 
   const { data: selectProjectRow } = await supabase
     .from('service_request_projects')
-    .select('valid_until, timeline')
+    .select('valid_until, timeline, ngo_id')
     .eq('id', projectId)
     .maybeSingle()
-  const selectCoverage = await assertNgoCsr1CoversProject(ngoId, selectProjectRow)
-  if (!selectCoverage.ok) {
-    return NextResponse.json({ error: selectCoverage.error }, { status: 403 })
+  if (isSamePositiveId(selectProjectRow?.ngo_id, ngoId)) {
+    return NextResponse.json({ error: OWNER_NGO_CANNOT_BE_LEAD_MESSAGE }, { status: 400 })
   }
 
   const { data: acceptedInvite, error: acceptedInviteError } = await supabase

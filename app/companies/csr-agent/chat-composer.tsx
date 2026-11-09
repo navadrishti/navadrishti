@@ -59,7 +59,7 @@ export function ChatComposer({
   }
 
   return (
-    <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-2.5 shadow-sm sm:p-3">
+    <div className="-mx-3 mt-auto shrink-0 border-t border-slate-200 bg-white px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:mx-0 lg:mt-4 lg:rounded-2xl lg:border lg:px-2.5 lg:py-3 lg:pb-3 lg:shadow-sm">
       {fixedChoiceOptions.length > 0 && !(conversationStage === 'milestone-count' && milestoneMode !== 'enter') && (
         <div className="mb-2 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:thin] md:flex-wrap md:overflow-visible md:pb-0">
           {fixedChoiceOptions.map((option) => (
@@ -85,7 +85,11 @@ export function ChatComposer({
               type="button"
               size="sm"
               variant="outline"
-              className={`rounded-full px-3 text-xs ${milestoneMode === 'enter' ? 'bg-slate-900 text-white border-transparent' : ''}`}
+              className={`rounded-full px-3 text-xs ${
+                milestoneMode === 'enter'
+                  ? 'border-transparent bg-[#1d4ed8] text-white hover:bg-[#1e40af]'
+                  : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+              }`}
               disabled={disabled}
               onClick={() => onChooseMilestoneMode('enter')}
             >
@@ -96,7 +100,11 @@ export function ChatComposer({
               type="button"
               size="sm"
               variant="outline"
-              className={`rounded-full px-3 text-xs ${milestoneMode === 'suggest' ? 'bg-slate-900 text-white border-transparent' : ''}`}
+              className={`rounded-full px-3 text-xs ${
+                milestoneMode === 'suggest'
+                  ? 'border-transparent bg-[#1d4ed8] text-white hover:bg-[#1e40af]'
+                  : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+              }`}
               disabled={disabled}
               onClick={() => onChooseMilestoneMode('suggest')}
             >
@@ -109,35 +117,44 @@ export function ChatComposer({
               </Button>
             )}
           </div>
-          <p className="mt-2 text-xs text-slate-500">Choose whether to enter milestones or use suggested sets.</p>
+          <p className="mt-2 text-xs text-slate-500">Choose whether to enter milestones or use Catalyst suggested sets.</p>
         </div>
       )}
 
       {showMilestoneSuggestions && suggestedMilestoneSets.length > 0 && (
         <div className="mb-3 grid gap-2">
           <div className="flex items-center justify-end gap-2">
-            <Button size="sm" variant="outline" onClick={refreshSuggestions}>{isRefreshingSuggestions ? 'Refreshing...' : 'Refresh suggestions'}</Button>
-            <Button size="sm" variant="ghost" onClick={onCloseSuggestions}>Close suggestions</Button>
+            <Button size="sm" variant="outline" onClick={refreshSuggestions}>
+              {isRefreshingSuggestions ? 'Refreshing...' : 'Refresh suggestions'}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={onCloseSuggestions}>
+              Close suggestions
+            </Button>
           </div>
           <div className="max-h-[36rem] overflow-y-auto pr-2">
             <div className="space-y-2">
               {suggestedMilestoneSets.map((set, idx) => (
-                <div key={set.id} className="rounded-lg border bg-white p-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">Suggested set — {set.milestones.length} milestones</p>
-                      <p className="text-xs text-slate-500">Suggested whole set selection</p>
+                <div key={set.id} className="rounded-xl border border-[#2B3E41]/20 bg-[#2B3E41] p-3 text-white shadow-sm">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-white">{set.title || `Suggested set — ${set.milestones.length} milestones`}</p>
+                      <p className="text-xs text-white/70">Based on your campaign details, budget, location, and timeline</p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button size="sm" variant="outline" disabled={disabled} onClick={() => onSelectSuggestedSet(idx)}>Select this set</Button>
-                    </div>
+                    <Button
+                      size="sm"
+                      className="w-full shrink-0 bg-[#1d4ed8] text-white hover:bg-[#1e40af] sm:w-auto"
+                      disabled={disabled}
+                      onClick={() => onSelectSuggestedSet(idx)}
+                    >
+                      Select this set
+                    </Button>
                   </div>
                   <div className="mt-2 grid gap-2">
                     {set.milestones.map((m, i) => (
-                      <div key={i} className="rounded-md border border-slate-100 bg-slate-50 p-2 text-xs text-slate-700">
-                        <p className="font-semibold text-slate-900">Milestone {i + 1}: {m.title || `Phase ${i + 1}`}</p>
-                        {m.description ? <p className="mt-1 break-words whitespace-normal">{m.description}</p> : null}
-                        <p className="mt-1 text-slate-600">
+                      <div key={i} className="rounded-lg border border-white/15 bg-white/10 p-2 text-xs text-white/90">
+                        <p className="font-semibold text-white">Milestone {i + 1}: {m.title || `Phase ${i + 1}`}</p>
+                        {m.description ? <p className="mt-1 break-words whitespace-normal text-white/80">{m.description}</p> : null}
+                        <p className="mt-1 text-white/65">
                           {formatCurrency(parseMoneyValue(m.budgetTarget) || 0)}
                           {m.startDate && m.endDate ? ` • ${m.startDate} to ${m.endDate}` : ''}
                         </p>
@@ -151,7 +168,7 @@ export function ChatComposer({
         </div>
       )}
 
-      <div className="flex flex-col gap-2 sm:flex-row">
+      <div className="flex items-end gap-2">
         <Input
           value={input}
           onChange={(event) => onInputChange(event.target.value)}
@@ -159,12 +176,13 @@ export function ChatComposer({
           onKeyDown={(event) => event.key === "Enter" && onSend()}
           placeholder={placeholder}
           disabled={disabled}
-          className="h-11 w-full flex-1 rounded-xl border-slate-200 bg-slate-50 sm:h-12"
+          className="h-11 w-full flex-1 rounded-2xl border-slate-200 bg-slate-50 lg:h-12"
         />
         <Button
           onClick={() => void onSend()}
           disabled={!input.trim() || disabled}
-          className="h-11 w-full rounded-xl bg-slate-950 px-4 text-white hover:bg-slate-800 sm:h-12 sm:w-auto sm:px-5"
+          aria-label="Send"
+          className="h-11 w-11 shrink-0 rounded-2xl bg-[#1d4ed8] px-0 text-white hover:bg-[#1e40af] lg:h-12 lg:w-auto lg:px-5"
         >
           <Send className="h-4 w-4" />
         </Button>

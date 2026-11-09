@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isCompanyCaAssignedToProject } from '@/lib/company-ca';
 import { supabase } from '@/lib/db';
 import { getEvidenceApproverContext,
   authErrorStatus, type EvidenceApproverContext } from '@/lib/server-auth';
@@ -57,8 +58,27 @@ export async function POST(
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
 
-    if (approver.companyUserId !== null && approver.companyUserId !== project.company_user_id) {
-      return NextResponse.json({ error: 'Company CA is not authorized for this company project' }, { status: 403 });
+    if (approver.companyUserId !== null) {
+      if (approver.companyUserId !== project.company_user_id) {
+        return NextResponse.json(
+          { error: 'Evidence Verifier is not authorized for this company project' },
+          { status: 403 }
+        );
+      }
+      // Platform CA actors have companyUserId null; Company Evidence Verifiers must be assigned.
+      if (approver.actorType === 'company_ca' && approver.reviewerUserId != null) {
+        const assigned = await isCompanyCaAssignedToProject({
+          companyCaUserId: approver.reviewerUserId,
+          companyUserId: approver.companyUserId,
+          projectId: String(project.id),
+        });
+        if (!assigned) {
+          return NextResponse.json(
+            { error: 'Evidence Verifier is not assigned to this project' },
+            { status: 403 }
+          );
+        }
+      }
     }
 
     if (!REVIEWABLE_STATUSES.includes(String(milestone.status || '').toLowerCase())) {
@@ -161,7 +181,7 @@ export async function POST(
           comments: comments ?? null
         }
       });
-      if (actionLogError) console.error('Failed to write Company CA action log:', actionLogError);
+      if (actionLogError) console.error('Failed to write Evidence Verifier action log:', actionLogError);
     }
 
     return NextResponse.json({ success: true, data: review });

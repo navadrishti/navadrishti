@@ -22,7 +22,7 @@ export function RequestNeedDetailsSection({ request }: { request: RequestRecord 
   const budget = request.estimated_budget ?? requirements.estimated_budget ?? requirements.budget
   const beneficiaryCount = request.beneficiary_count ?? Number(requirements.beneficiary_count || 0)
   const impactDescription = request.impact_description ?? requirements.impact_description
-  const contactInfo = requirements.contactInfo ?? requirements.contact_info
+  const contactInfo = request.contact_info ?? requirements.contactInfo ?? requirements.contact_info
   const timeline = request.timeline || request.deadline || requirements.timeline
   const linkedProjectId = String(request.project?.id || requirements.projectId || requirements.project_id || '').trim()
   const linkedProjectTitle = String(
@@ -55,14 +55,10 @@ export function RequestNeedDetailsSection({ request }: { request: RequestRecord 
 
         <div className="grid grid-cols-1 gap-x-12 gap-y-6 md:grid-cols-2">
           <DetailField label="Need Type" value={requestType} />
-          {!linkedToProject ? (
-            <DetailField
-              label="Beneficiary Count"
-              value={beneficiaryCount > 0 ? beneficiaryCount.toLocaleString('en-IN') : 'Not set'}
-            />
-          ) : (
-            <DetailField label="Beneficiary Count" value="Inherited from project" />
-          )}
+          <DetailField
+            label="Beneficiary Count"
+            value={beneficiaryCount > 0 ? beneficiaryCount.toLocaleString('en-IN') : 'Not set'}
+          />
           <DetailField label="Budget Range" value={displayValue(budget)} />
         </div>
 
@@ -74,11 +70,7 @@ export function RequestNeedDetailsSection({ request }: { request: RequestRecord 
         </section>
 
         <div className="grid grid-cols-1 gap-x-12 gap-y-6 md:grid-cols-2">
-          {linkedToProject ? (
-            <DetailField label="Timeline / Deadline" value="Inherited from project" />
-          ) : (
-            <DetailField label="Timeline / Deadline" value={displayValue(timeline)} />
-          )}
+          <DetailField label="Timeline / Deadline" value={displayValue(timeline)} />
           <div className="md:col-span-2">
             <DetailField label="Contact Information" value={displayValue(contactInfo)} />
           </div>

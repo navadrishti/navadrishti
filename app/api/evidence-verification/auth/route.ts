@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db, supabase } from '@/lib/db';
-import { comparePassword, generateToken, type UserData } from '@/lib/auth';
+import { comparePassword, generateCompanyCAToken, type UserData } from '@/lib/auth';
 import { ensureCompanyCaIdAssigned } from '@/lib/company-ca';
 import { setEvidenceVerificationTokenCookie } from '@/lib/server-auth';
 import { limitAttempts } from '@/lib/rate-limit';
+import { zodIssuesToUserMessage } from '@/lib/user-facing-error';
 
 const loginSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
@@ -17,7 +18,7 @@ export async function POST(request: NextRequest) {
     const parsed = loginSchema.safeParse(body);
 
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.issues[0]?.message || 'Invalid credentials' }, { status: 400 });
+      return NextResponse.json({ error: zodIssuesToUserMessage(parsed.error.issues) || 'Invalid email or password' }, { status: 400 });
     }
 
     const { email, password } = parsed.data;
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
 
     const caId = await ensureCompanyCaIdAssigned(identity.id, identity.company_user_id, identity.ca_id);
 
-    const token = generateToken({
+    const token = generateCompanyCAToken({
       id: user.id,
       email: user.email,
       name: user.name,
@@ -88,7 +89,7 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (error) {
-    console.error('Company CA login error:', error);
+    console.error('Evidence Verifier login error:', error);
     return NextResponse.json({ error: 'Failed to login company CA' }, { status: 500 });
   }
 }

@@ -32,6 +32,12 @@ const CampaignDraftSchema = z.object({
   impact_metrics: z.object({
     beneficiaries: coerceInteger(z.number().int().nonnegative()),
     duration:      z.string(),
+    volunteer_requirement: z.union([z.string(), z.number()]).optional(),
+    volunteer_limit: z.number().int().nonnegative().optional(),
+    expected_beneficiaries: z.number().int().nonnegative().optional(),
+    city: z.string().optional(),
+    state: z.string().optional(),
+    selected_existing_project_id: z.string().nullable().optional(),
   }),
   milestones: z.array(
     z.object({
@@ -60,9 +66,13 @@ export async function getCampaignStatus(id: string, company_id: number) {
   return data?.status || null;
 }
 
+/** Owner-editable campaign statuses after creation (not terminal/archived states). */
+export const OWNER_EDITABLE_CAMPAIGN_STATUSES = ['draft', 'active'] as const
+
 /**
- * Only drafts can be edited. impact_metrics is merged into the stored object because the schema
- * strips server-owned keys (lead NGO invites, rentals, invited offers) that must survive the edit.
+ * Owner edits for draft and active campaigns. impact_metrics is merged into the stored object
+ * because the schema strips server-owned keys (lead NGO invites, rentals, invited offers)
+ * that must survive the edit. Status is never rewritten here.
  */
 export async function updateCampaignDb(
   id: string,
@@ -95,7 +105,7 @@ export async function updateCampaignDb(
     .update(payload)
     .eq("id", id)
     .eq("company_id", company_id)
-    .eq("status", "draft");
+    .in("status", [...OWNER_EDITABLE_CAMPAIGN_STATUSES]);
   if (previousUpdatedAt !== undefined) {
     query = previousUpdatedAt ? query.eq("updated_at", previousUpdatedAt) : query.is("updated_at", null);
   }

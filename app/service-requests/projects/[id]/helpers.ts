@@ -1,11 +1,96 @@
-import type { NeedItem, ProjectDetail, ProjectDetailPayload } from './types';
+import { formatStatusLabel } from '@/lib/format-date';
+import type { CompanyApplication, NeedItem, ProjectDetail, ProjectDetailPayload } from './types';
+
+export function mergeOwnApplication(payload: ProjectDetailPayload, application: CompanyApplication): ProjectDetailPayload {
+  const others = (payload.company_applications || []).filter(
+    (item) => Number(item.company_id) !== Number(application.company_id)
+  )
+  const project = payload.project
+    ? {
+        ...payload.project,
+        pending_company_applications: [
+          ...(payload.project.pending_company_applications || []).filter(
+            (item) => Number(item.company_id) !== Number(application.company_id)
+          ),
+          { company_id: application.company_id, status: application.status },
+        ],
+      }
+    : payload.project
+  return { ...payload, project, company_applications: [...others, application] }
+}
+
+export function keepOwnApplication(
+  previous: ProjectDetailPayload | null,
+  next: ProjectDetailPayload,
+  companyId: number | undefined,
+  userType: string | undefined,
+  sticky: CompanyApplication | null = null,
+): ProjectDetailPayload {
+  if (userType !== 'company' || !companyId) return next
+
+  const incomingListed = (next.company_applications || []).find(
+    (item) => Number(item.company_id) === Number(companyId)
+  )
+  if (incomingListed) return next
+
+  const incomingMeta = (next.project?.pending_company_applications || []).find(
+    (item) => Number(item.company_id) === Number(companyId)
+  )
+  if (incomingMeta) {
+    return mergeOwnApplication(next, {
+      company_id: Number(incomingMeta.company_id),
+      status: String(incomingMeta.status || 'pending'),
+      needs: [],
+    })
+  }
+
+  const mine =
+    (previous?.company_applications || []).find((item) => Number(item.company_id) === Number(companyId)) || sticky
+  if (mine) return mergeOwnApplication(next, mine)
+  return next
+}
+
+export function readReturnedApplication(payload: unknown, companyId: number | undefined): CompanyApplication | null {
+  if (!payload || typeof payload !== 'object' || !companyId) return null
+  const root = payload as { application?: unknown; data?: { application?: unknown } }
+  const raw = root.application || root.data?.application
+  if (!raw || typeof raw !== 'object') return null
+  const row = raw as { company_id?: unknown; status?: unknown; needs?: unknown }
+  return {
+    company_id: Number(row.company_id || companyId),
+    status: String(row.status || 'pending'),
+    needs: Array.isArray(row.needs) ? (row.needs as CompanyApplication['needs']) : [],
+  }
+}
+
+export function applicationStatusCopy(status: string) {
+  const normalized = String(status || '').toLowerCase()
+  if (normalized === 'accepted') {
+    return 'The NGO accepted your takeover. Invite a lead NGO from the Company Dashboard.'
+  }
+  if (normalized === 'rejected') {
+    return 'The NGO declined this takeover application.'
+  }
+  if (normalized === 'expired' || normalized === 'cancelled') {
+    return 'This takeover application is no longer active.'
+  }
+  if (normalized === 'pending' || normalized === 'pledged') {
+    return 'Your takeover application is waiting for the NGO to review.'
+  }
+  return `Your company has already applied for this project (${formatStatusLabel(normalized)}).`
+}
+
+export function canReapplyForTakeover(status: string) {
+  return ['rejected', 'expired', 'cancelled'].includes(String(status || '').toLowerCase())
+}
 
 export const statusBadgeClass = (status: string) => {
   const normalized = String(status || '').toLowerCase();
   if (normalized === 'completed') return 'border-[#D5E2DA] bg-[#F1F6F3] text-[#4F6B5C]';
   if (normalized === 'in_progress' || normalized === 'active') return 'border-[#D9E0E4] bg-[#F0F3F4] text-udaan-blue';
-  if (normalized === 'pending' || normalized === 'accepted') return 'border-[#E9DFCC] bg-[#F8F4EC] text-[#8A6F45]';
-  if (normalized === 'cancelled' || normalized === 'rejected') return 'border-[#E8D8D8] bg-[#F8F1F1] text-[#8C5555]';
+  if (normalized === 'accepted') return 'border-[#D5E2DA] bg-[#F1F6F3] text-[#4F6B5C]';
+  if (normalized === 'pending' || normalized === 'pledged') return 'border-[#E9DFCC] bg-[#F8F4EC] text-[#8A6F45]';
+  if (normalized === 'cancelled' || normalized === 'rejected' || normalized === 'expired') return 'border-[#E8D8D8] bg-[#F8F1F1] text-[#8C5555]';
   return 'border-gram-border bg-gram-page text-gram-muted';
 };
 

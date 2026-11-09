@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
 import { getTokenClaims } from '@/lib/auth';
-import { resolveEffectiveVerificationStatus } from '@/lib/server-auth';
-import { isOfferExpired, getCapabilityNeedRequestTypes, isCapabilityRentalTransaction, dedupeSelectedNeedSummaries } from '@/lib/service-offers';
+import { authErrorResponse, resolveEffectiveVerificationStatus } from '@/lib/server-auth';
+import { parseJsonObject } from '@/lib/utils';
+import { isOfferExpired, getCapabilityNeedRequestTypes, isCapabilityRentalTransaction, dedupeSelectedNeedSummaries, isCapabilityOfferOpenForApplications, CAPABILITY_NGO_LEGAL_ENTITY_REQUIRED_MESSAGE, ngoHasLegalEntityTag } from '@/lib/service-offers';
+import { emitOfferMarketplaceEvent } from '@/lib/service-offers/marketplace-events';
 import type { Tables } from '@/lib/database.types';
 
 function parseNeedIds(value: unknown): number[] {
@@ -16,7 +18,7 @@ function parseNeedIds(value: unknown): number[] {
 
 type LinkedNeed = Pick<
   Tables<'service_requests'>,
-  'id' | 'title' | 'status' | 'request_type' | 'estimated_budget' | 'target_amount' | 'target_quantity' | 'beneficiary_count' | 'project_id'
+  'id' | 'title' | 'status' | 'request_type' | 'estimated_budget' | 'target_amount' | 'target_quantity' | 'beneficiary_count'
 >;
 
 function summarizeNeeds(needs: LinkedNeed[]) {
@@ -31,7 +33,6 @@ function summarizeNeeds(needs: LinkedNeed[]) {
       target_amount: need.target_amount != null ? Number(need.target_amount) : null,
       target_quantity: need.target_quantity != null ? Number(need.target_quantity) : null,
       beneficiary_count: need.beneficiary_count != null ? Number(need.beneficiary_count) : null,
-      project_id: need.project_id || null
     })),
     1
   )
@@ -43,7 +44,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const decoded = getTokenClaims(request);
+    const decoded = await getTokenClaims(request);
     if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
@@ -98,6 +99,8 @@ export async function GET(
     });
 
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Error fetching clients:', error);
     return NextResponse.json(
       { error: 'Failed to fetch clients' },
@@ -112,7 +115,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const claims = getTokenClaims(request);
+    const claims = await getTokenClaims(request);
     if (!claims) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
@@ -147,6 +150,23 @@ export async function POST(
       }, { status: 403 });
     }
 
+    const { data: ngoVerification } = await supabase
+      .from('ngo_verifications')
+      .select('registration_type')
+      .eq('user_id', clientId)
+      .maybeSingle();
+    if (
+      !ngoHasLegalEntityTag({
+        profile_data: parseJsonObject(user.profile_data),
+        registration_type: ngoVerification?.registration_type,
+      })
+    ) {
+      return NextResponse.json({
+        error: CAPABILITY_NGO_LEGAL_ENTITY_REQUIRED_MESSAGE,
+        requiresLegalTags: true,
+      }, { status: 403 });
+    }
+
     // Prevent self-response to own capability offer
     const offer = Number.isFinite(offerId) ? await db.serviceOffers.getById(offerId) : null;
     if (!offer) {
@@ -159,7 +179,7 @@ export async function POST(
       );
     }
 
-    if (offer.status !== 'active' || offer.admin_status !== 'approved' || !offer.is_listed) {
+    if (!isCapabilityOfferOpenForApplications(offer)) {
       return NextResponse.json({ error: 'This capability offer is not open for applications.' }, { status: 409 });
     }
 
@@ -182,7 +202,7 @@ export async function POST(
 
     const { data: linkedNeeds, error: linkedNeedsError } = await supabase
       .from('service_requests')
-      .select('id, title, status, request_type, estimated_budget, target_amount, target_quantity, beneficiary_count, ngo_id, project_id')
+      .select('id, title, status, request_type, estimated_budget, target_amount, target_quantity, beneficiary_count, ngo_id')
       .in('id', needIds)
       .eq('ngo_id', clientId)
       .not('status', 'in', '(completed,cancelled)');
@@ -276,9 +296,26 @@ export async function POST(
       throw insertError;
     }
 
+    const ownerId = Number(offer.creator_id ?? offer.ngo_id ?? 0)
+    const applicantName = String((result as { client?: { name?: string | null } | null })?.client?.name || user.name || '').trim() || null
+    if (ownerId > 0 && result?.id) {
+      await emitOfferMarketplaceEvent({
+        eventType: 'offer_request_submitted',
+        applicationId: Number(result.id),
+        offerId,
+        offerTitle: String(offer.title || ''),
+        actorUserId: clientId,
+        actorDisplayName: applicantName,
+        recipientUserId: ownerId,
+        relatedUserId: clientId,
+      })
+    }
+
     return NextResponse.json(result, { status: 201 });
 
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('Error creating client application:', error);
     return NextResponse.json(
       { error: 'Internal server error' },

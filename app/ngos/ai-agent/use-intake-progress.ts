@@ -1,5 +1,6 @@
 import { useMemo } from "react"
 import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_CATEGORIES } from "@/lib/categories"
+import { firstUnfilledQuestionIndex, resolveNgoPromptBefore } from "./conversation"
 import {
   type NeedIntakeData,
   type ProjectIntakeData,
@@ -15,15 +16,14 @@ const TRAILING_PARENTHETICAL = /\s*\([^)]*\)\s*$/
 
 /** Derived progress, prompt labels and quick-pick options for the current intake step. */
 export function useIntakeProgress({
+  messages,
   needsData,
   projectData,
   intakePath,
   generatedDraft,
   conversationStage,
-  projectStep,
   needCount,
   activeNeedIndex,
-  activeNeedQuestionIndex,
 }: IntakeState) {
   const answeredNeedQuestions = useMemo(() => {
     if (needsData.length === 0) return 0
@@ -64,17 +64,26 @@ export function useIntakeProgress({
 
   const activeQuestion = useMemo(() => {
     if (generatedDraft) return null
-    if (conversationStage === 'entry') return null
+    const promptTarget = resolveNgoPromptBefore(messages, messages.length, needsData)
+    if (promptTarget?.type === 'project') return projectQuestions[promptTarget.index]
+    if (promptTarget?.type === 'need') {
+      const currentNeed = needsData[promptTarget.needIndex] || createEmptyNeed()
+      const questionSet = getNeedQuestions(currentNeed.requestType)
+      return questionSet[promptTarget.questionIndex] || null
+    }
+    if (conversationStage === 'entry' || promptTarget?.type === 'entry') return null
     if (conversationStage === 'project') {
-      return projectQuestions[Math.min(projectStep, projectQuestions.length - 1)]
+      const idx = firstUnfilledQuestionIndex(projectQuestions, projectData)
+      return projectQuestions[Math.min(idx, projectQuestions.length - 1)]
     }
     if (conversationStage === 'need') {
       const currentNeed = needsData[activeNeedIndex] || createEmptyNeed()
       const questionSet = getNeedQuestions(currentNeed.requestType)
-      return questionSet[Math.min(activeNeedQuestionIndex, questionSet.length - 1)] || null
+      const idx = firstUnfilledQuestionIndex(questionSet, currentNeed)
+      return questionSet[Math.min(idx, Math.max(questionSet.length - 1, 0))] || null
     }
     return null
-  }, [generatedDraft, conversationStage, projectStep, needsData, activeNeedIndex, activeNeedQuestionIndex])
+  }, [generatedDraft, conversationStage, messages, projectData, needsData, activeNeedIndex])
 
   const fixedChoiceOptions = useMemo(() => {
     const key = activeQuestion?.key
@@ -89,7 +98,11 @@ export function useIntakeProgress({
     const effectiveNeedCount = needCount || 1
     const need = needsData[activeNeedIndex] || createEmptyNeed()
     const questionSet = getNeedQuestions(need.requestType)
-    const question = questionSet[Math.min(activeNeedQuestionIndex, questionSet.length - 1)]
+    const promptTarget = resolveNgoPromptBefore(messages, messages.length, needsData)
+    const questionIndex = promptTarget?.type === 'need'
+      ? promptTarget.questionIndex
+      : firstUnfilledQuestionIndex(questionSet, need)
+    const question = questionSet[Math.min(questionIndex, Math.max(questionSet.length - 1, 0))]
     return `Need ${activeNeedIndex + 1} of ${effectiveNeedCount}: ${question.question}`
   }
 
@@ -98,7 +111,7 @@ export function useIntakeProgress({
     : conversationStage === 'entry'
       ? 'Need or Project?'
       : conversationStage === 'project'
-        ? projectQuestions[Math.min(projectStep, projectQuestions.length - 1)].question.replace(TRAILING_PARENTHETICAL, '').trim()
+        ? (activeQuestion?.question || projectQuestions[Math.min(firstUnfilledQuestionIndex(projectQuestions, projectData), projectQuestions.length - 1)].question).replace(TRAILING_PARENTHETICAL, '').trim()
         : conversationStage === 'need'
           ? getCurrentNeedPrompt().replace(TRAILING_PARENTHETICAL, '').trim()
           : 'Complete'

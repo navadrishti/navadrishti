@@ -76,7 +76,9 @@ export const getStatusColor = (status: string) => {
 export function toCampaign(item: CampaignApiItem, currentUserId: number): Campaign {
   const metrics = parseJsonObject(item.impact_metrics)
   const applications: VolunteerApplication[] = Array.isArray(metrics.volunteer_applications) ? metrics.volunteer_applications : []
-  const volunteerCount = sumVolunteerApplicationCount(applications)
+  const volunteerCount = metrics.volunteer_count != null && Number.isFinite(Number(metrics.volunteer_count))
+    ? Number(metrics.volunteer_count)
+    : sumVolunteerApplicationCount(applications)
   const volunteerLimit = Number(metrics.volunteer_requirement || metrics.volunteer_limit || 0) || undefined
   const appliedByCurrentUser = currentUserId > 0
     ? applications.some((application) => Number(application?.user_id || 0) === currentUserId)

@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { getAuthUserFromRequest, assertUserType, hasActiveCASession } from '@/lib/server-auth';
+import { isProjectFinancialLead } from '@/lib/csr-agent/project-financial-access';
+import { resolveNgoProjectViewer } from '@/lib/csr-agent/ngo-project-viewer';
 
 async function getProjectById(projectId: string) {
   const { data, error } = await supabase
     .from('csr_projects')
-    .select('*')
+    .select('*, campaigns(lead_ngo_user_id)')
     .eq('id', projectId)
     .single();
 
@@ -21,8 +23,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const caMode = await hasActiveCASession(request);
-    const user = caMode ? null : getAuthUserFromRequest(request);
+    const ngoViewer = await resolveNgoProjectViewer(request);
+    const caMode = ngoViewer ? false : await hasActiveCASession(request);
+    const user = ngoViewer || (caMode ? null : await getAuthUserFromRequest(request));
 
     if (user) {
       assertUserType(user, ['company', 'ngo']);
@@ -44,7 +47,7 @@ export async function GET(
 
     if (
       user?.user_type === 'ngo' &&
-      project.ngo_user_id !== user.id
+      !isProjectFinancialLead(project, user.id)
     ) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
@@ -80,7 +83,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const user = getAuthUserFromRequest(request);
+    const user = await getAuthUserFromRequest(request);
     assertUserType(user, ['company']);
 
     const { id: projectId } = await params;

@@ -130,24 +130,19 @@ async function recommendedOffersAreValid(requestType: string, details: CreateNee
 
   const expectedOfferType = mapRequestTypeToOfferType(requestType);
   if (!expectedOfferType) return true;
+  if (selectedRecommendedOfferIds.length === 0) return true;
 
   const { data: matchingOffers, error: matchingOffersError } = await supabase
     .from('service_offers')
     .select('id')
+    .in('id', selectedRecommendedOfferIds)
     .eq('offer_type', expectedOfferType)
-    .eq('status', 'active')
-    .limit(60);
+    .eq('status', 'active');
 
   if (matchingOffersError) throw matchingOffersError;
 
   const offers = Array.isArray(matchingOffers) ? matchingOffers : [];
-
-  if (selectedRecommendedOfferIds.length > 0) {
-    const selectedOffers = offers.filter((offer) => selectedRecommendedOfferIds.includes(Number(offer.id)));
-    return selectedOffers.length === selectedRecommendedOfferIds.length;
-  }
-
-  return true;
+  return offers.length === selectedRecommendedOfferIds.length;
 }
 
 /** Validates and inserts a need for an NGO whose verification has already been confirmed. */

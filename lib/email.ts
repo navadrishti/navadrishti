@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import nodemailer from 'nodemailer';
 import { createServerClient } from '@/lib/db';
+import { assertPublishableKey } from '@/lib/runtime-services';
 
 interface EmailOptions {
   to: string;
@@ -128,10 +129,14 @@ export async function prepareEmailOtpSession(emailInput: string): Promise<
   return { ok: true };
 }
 
-const createPublicAuthClient = () =>
-  createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, {
+const createPublicAuthClient = () => {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '';
+  assertPublishableKey(key);
+  return createClient(url, key, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
+};
 
 /** Emails a Supabase OTP to an existing auth user; never creates one. */
 export async function sendEmailOtpWithSupabase(

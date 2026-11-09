@@ -160,7 +160,7 @@ describe('CA review OCR', () => {
     })
     const review = await getCAReview('individuals', 4)
     expect(mocks.extract).not.toHaveBeenCalled()
-    expect(review.documents[0].ocr_status).toBe('skipped')
+    expect(review.documents).toEqual([])
   })
 
   it('merges OCR results into the latest profile instead of the copy read before OCR', async () => {

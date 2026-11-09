@@ -78,6 +78,53 @@ describe('mapQueueItem', () => {
       ocr_error: '',
     })
     expect(item.field_comparisons).toHaveLength(6)
+    expect(item.ca_badge_number).toBeNull()
+    expect(item.reverification_pending).toBe(false)
+  })
+
+  it('hides leftover documents and KYC after an account is unverified', () => {
+    const item = mapQueueItem(
+      'individuals',
+      row(
+        { verification_status: 'unverified', pan_number: 'PQRSTUB212', aadhaar_number: '123456789012' },
+        { verification_status: 'unverified' },
+        withDocs('individual', {
+          individualPanCard: panUrl,
+          individualAadhaar: aadhaarUrl,
+          bankStatement: panUrl,
+        })
+      )
+    )
+    expect(item).toMatchObject({
+      verification_status: 'unverified',
+      documents_total: 0,
+      pan: '',
+      aadhaar: '',
+    })
+    expect(item.documents).toEqual([])
+  })
+
+  it('treats an admin unverified override as unverified even if the type row is still pending', () => {
+    const item = mapQueueItem(
+      'individuals',
+      row({ verification_status: 'pending', pan_number: 'ABCDE1234F' }, { verification_status: 'unverified' }, individualProfile)
+    )
+    expect(item.verification_status).toBe('unverified')
+    expect(item.documents_total).toBe(0)
+    expect(item.pan).toBe('')
+  })
+
+  it('exposes the CA badge on verified accounts', () => {
+    const item = mapQueueItem(
+      'individuals',
+      row(
+        { verification_status: 'verified' },
+        { verification_status: 'verified' },
+        { ca_badge_number: 'ND-CA-ABCDEF12' }
+      )
+    )
+    expect(item.ca_badge_number).toBe('ND-CA-ABCDEF12')
+    expect(item.reverification_pending).toBe(false)
   })
 
   it.each([
@@ -115,7 +162,7 @@ describe('mapQueueItem', () => {
     const item = mapQueueItem(
       'ngos',
       row(
-        { ngo_name: 'Seva Trust', registration_number: 'REG-1', fcra_number: null },
+        { ngo_name: 'Seva Trust', registration_number: 'REG-1', registration_type: 'trust', fcra_number: null },
         { verification_status: 'verified' },
         {
           twelve_a_number: 'T12',
@@ -132,6 +179,7 @@ describe('mapQueueItem', () => {
     expect(item).toMatchObject({
       ngo_name: 'Seva Trust',
       registration_number: 'REG-1',
+      registration_type: 'trust',
       fcra_number: 'F1',
       fcra_expiry: '2098-01-01',
       twelve_a: 'T12',
@@ -167,27 +215,27 @@ describe('listCAQueue', () => {
 
   it.each([
     ['verified', ['eq', 'verification_status', 'verified']],
-    ['unverified', ['in', 'verification_status', ['pending', 'unverified']]],
+    ['pending', ['eq', 'verification_status', 'pending']],
+    ['unverified', ['eq', 'verification_status', 'pending']],
   ])('filters %s rows', async (status, filter) => {
     const fake = useDb()
     await listCAQueue('individuals', status)
     expect(fake.queries[0].filters).toContainEqual(filter)
   })
 
-  it('drops unverified rows that have nothing to review', async () => {
+  it('keeps pending rows on the pending tab and ignores leftover unverified files', async () => {
     useDb({
       'individual_verifications.select': [
         {
           data: [
-            row({ id: 1, verification_status: 'unverified' }),
             row({ id: 2, verification_status: 'pending' }),
-            row({ id: 3, verification_status: 'unverified' }, {}, individualProfile),
           ],
         },
+        { data: [] },
       ],
     })
-    const items = await listCAQueue('individuals', 'unverified')
-    expect(items.map((item) => item.id)).toEqual([2, 3])
+    const items = await listCAQueue('individuals', 'pending')
+    expect(items.map((item) => item.id)).toEqual([2])
   })
 
   it('keeps every row for other statuses', async () => {
@@ -197,7 +245,7 @@ describe('listCAQueue', () => {
 
   it('throws when the query fails', async () => {
     useDb({ 'company_verifications.select': [{ error: { message: 'boom' } }] })
-    await expect(listCAQueue('companies', 'unverified')).rejects.toEqual({ message: 'boom' })
+    await expect(listCAQueue('companies', 'pending')).rejects.toEqual({ message: 'boom' })
   })
 
   it('appends verified NGOs with a pending reverification', async () => {
@@ -213,7 +261,7 @@ describe('listCAQueue', () => {
         },
       ],
     })
-    const items = await listCAQueue('ngos', 'unverified')
+    const items = await listCAQueue('ngos', 'pending')
     expect(items.map((item) => [item.id, item.reverification_pending])).toEqual([
       [1, false],
       [5, true],
@@ -226,7 +274,7 @@ describe('listCAQueue', () => {
     useDb({
       'ngo_verifications.select': [{ data: [row({ id: 1 })] }, { error: { message: 'down' } }],
     })
-    expect((await listCAQueue('ngos', 'unverified')).map((item) => item.id)).toEqual([1])
+    expect((await listCAQueue('ngos', 'pending')).map((item) => item.id)).toEqual([1])
   })
 
   it('skips the reverification lookup for other statuses and types', async () => {
@@ -234,7 +282,7 @@ describe('listCAQueue', () => {
     await listCAQueue('ngos', 'verified')
     expect(ngo.queries).toHaveLength(1)
     const company = useDb()
-    await listCAQueue('companies', 'unverified')
+    await listCAQueue('companies', 'verified')
     expect(company.queries).toHaveLength(1)
   })
 })

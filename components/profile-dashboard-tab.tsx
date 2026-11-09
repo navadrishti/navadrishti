@@ -1,4 +1,6 @@
 "use client"
+import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 
 import { useEffect, useEffectEvent, useState } from 'react'
 import { useIsClient } from '@/hooks/use-is-client'
@@ -81,7 +83,7 @@ export function ProfileDashboardTab() {
   const fetchProfile = async () => {
     try {
       setLoading(true)
-      const token = localStorage.getItem('token')
+      const token = getClientSessionToken()
       if (!token || !user?.id) return
 
       const response = await fetch('/api/auth/me', {
@@ -116,7 +118,7 @@ export function ProfileDashboardTab() {
 
   const fetchVerificationStatus = async () => {
     try {
-      const token = localStorage.getItem('token')
+      const token = getClientSessionToken()
       if (!token || !user?.user_type) return
 
       const response = await fetch(`/api/verification/${user.user_type}`, {
@@ -213,7 +215,7 @@ export function ProfileDashboardTab() {
 
       const data = await response.json().catch(() => null)
       if (!response.ok) {
-        throw new Error(data?.error || 'Failed to update profile')
+        throw new Error(readApiError(data, 'Failed to update profile'))
       }
 
       updateUser({
@@ -238,7 +240,7 @@ export function ProfileDashboardTab() {
       await refreshUser()
       toast.success('Profile saved successfully!')
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to save profile. Please try again.')
+      toast.error(readApiError(error, 'Failed to save profile. Please try again.'))
     } finally {
       setLoading(false)
     }

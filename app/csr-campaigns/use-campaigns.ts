@@ -1,10 +1,10 @@
+import { readApiError } from '@/lib/user-facing-error'
 import { useEffect, useEffectEvent, useState } from "react"
 import { toast } from "sonner"
+import { clientAuthHeaders } from "@/lib/client-session"
 import { getErrorMessage } from "@/lib/utils"
 import { toCampaign } from "./helpers"
 import type { Campaign, CampaignApiItem } from "./types"
-
-const readToken = () => (typeof window !== 'undefined' ? localStorage.getItem('token') : null)
 
 export function useCampaigns(currentUserId: number, userType?: string) {
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
@@ -16,9 +16,9 @@ export function useCampaigns(currentUserId: number, userType?: string) {
     setLoading(true)
 
     try {
-      const token = readToken()
       const response = await fetch('/api/campaigns', {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined
+        credentials: 'include',
+        headers: clientAuthHeaders(),
       })
       const payload = await response.json()
 
@@ -44,18 +44,16 @@ export function useCampaigns(currentUserId: number, userType?: string) {
   }, [currentUserId, userType])
 
   const volunteerForCampaign = async (campaignId: string) => {
-    const token = readToken()
-    if (!token) return
-
     try {
       setApplyingCampaignId(campaignId)
       const response = await fetch(`/api/campaigns/${campaignId}/volunteer`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }
+        credentials: 'include',
+        headers: clientAuthHeaders(),
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error || 'Failed to volunteer')
+        throw new Error(readApiError(payload, 'Failed to volunteer'))
       }
       await loadCampaigns()
     } catch (error) {
@@ -67,19 +65,18 @@ export function useCampaigns(currentUserId: number, userType?: string) {
   }
 
   const deleteCampaign = async (campaignId: string) => {
-    const token = readToken()
-    if (!token) return
     if (!confirm('Delete this CSR campaign?')) return
 
     try {
       setDeletingCampaignId(campaignId)
       const response = await fetch(`/api/campaigns/${campaignId}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
+        credentials: 'include',
+        headers: clientAuthHeaders(),
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error || 'Failed to delete campaign')
+        throw new Error(readApiError(payload, 'Failed to delete campaign'))
       }
       await loadCampaigns()
     } catch (error) {

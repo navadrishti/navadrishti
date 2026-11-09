@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { GET, POST } from '@/app/api/ai-agent/progress/route'
 import { jsonRequest, tokenFor } from './support/requests'
-import { supabaseFake, type FakeQuery } from './support/supabase-fake'
+import { eqValue, supabaseFake, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
 vi.mock('server-only', () => ({}))
 
@@ -16,8 +16,18 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0
 const OWN_ID = '11111111-2222-4333-8444-555555555555'
 const FOREIGN_ID = '99999999-8888-4777-8666-555555555555'
 
+function resetWithSession(handler: (query: FakeQuery) => FakeResult | undefined) {
+  supabaseFake.reset((query) => {
+    if (query.table === 'users' && query.columns === 'account_status, locked_until, profile_data, user_type, verification_status') {
+      return { data: { id: eqValue(query, 'id'), user_type: 'company', account_status: 'active', verification_status: 'verified', profile_data: {} } }
+    }
+    if (['company_ca_identities', 'ngo_field_officer_identities', 'company_employee_identities'].includes(query.table) && eqValue(query, 'user_id') !== undefined) return { data: null }
+    return handler(query)
+  })
+}
+
 function save(userId: number, sessions: Row[], owners: Record<string, number> = {}) {
-  supabaseFake.reset((query: FakeQuery) => {
+  resetWithSession((query: FakeQuery) => {
     if (query.table === 'csr_ai_agent_sessions' && query.op === 'select') {
       if (query.columns === 'id, user_id') {
         return { data: Object.entries(owners).map(([id, user_id]) => ({ id, user_id })) }
@@ -108,7 +118,7 @@ describe('CSR agent ui_state round trip', () => {
   })
 
   it('restores them on GET', async () => {
-    supabaseFake.reset((query: FakeQuery) => {
+    resetWithSession((query: FakeQuery) => {
       if (query.table === 'csr_ai_agent_sessions') return { data: [{ id: OWN_ID, title: 'Mine', status: 'active', project_context: {} }] }
       if (query.table === 'csr_ai_agent_session_state') {
         return {
@@ -131,5 +141,50 @@ describe('CSR agent ui_state round trip', () => {
       invitedOfferIds: [4],
       selectedProjectSuggestionId: 's-1',
     })
+  })
+
+  it('returns a session id that actually exists instead of a stale profile active id', async () => {
+    resetWithSession((query: FakeQuery) => {
+      if (query.table === 'csr_ai_agent_sessions') {
+        return {
+          data: [
+            { id: OWN_ID, title: 'Mine', status: 'active', project_context: {}, updated_at: '2026-09-01T00:00:00.000Z' },
+          ],
+        }
+      }
+      if (query.table === 'csr_ai_agent_session_state') {
+        return { data: [{ session_id: OWN_ID, ui_state: { legacyId: 'session-older' } }] }
+      }
+      if (query.table === 'users') {
+        return { data: { profile_data: { csr_ai_agent_progress: { activeSessionId: 'missing-session' } } } }
+      }
+      return undefined
+    })
+    const response = await GET(jsonRequest('http://localhost/api/ai-agent/progress?agent=csr', { token: tokenFor(7, 'company') }))
+    const { data } = await response.json()
+    expect(data.activeSessionId).toBe(OWN_ID)
+    expect(data.sessions[0].legacyId).toBe('session-older')
+  })
+
+  it('maps a legacy profile active id onto the stored uuid', async () => {
+    resetWithSession((query: FakeQuery) => {
+      if (query.table === 'csr_ai_agent_sessions') {
+        return {
+          data: [
+            { id: OWN_ID, title: 'Mine', status: 'active', project_context: {}, updated_at: '2026-09-01T00:00:00.000Z' },
+          ],
+        }
+      }
+      if (query.table === 'csr_ai_agent_session_state') {
+        return { data: [{ session_id: OWN_ID, ui_state: { legacyId: 'session-older' } }] }
+      }
+      if (query.table === 'users') {
+        return { data: { profile_data: { csr_ai_agent_progress: { activeSessionId: 'session-older' } } } }
+      }
+      return undefined
+    })
+    const response = await GET(jsonRequest('http://localhost/api/ai-agent/progress?agent=csr', { token: tokenFor(7, 'company') }))
+    const { data } = await response.json()
+    expect(data.activeSessionId).toBe(OWN_ID)
   })
 })

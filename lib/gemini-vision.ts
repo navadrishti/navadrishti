@@ -23,8 +23,9 @@ export async function GeminiVisionJSON(
   const API_KEY = process.env.GEMINI_API_KEY
   if (!API_KEY) throw new Error('GEMINI_API_KEY is missing.')
 
-  const PRIMARY = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
-  const FALLBACK = process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.5-flash-lite'
+  // Defaults track Google AI models available to new API keys (2026-11 probe).
+  const PRIMARY = process.env.GEMINI_MODEL || 'gemini-3.5-flash'
+  const FALLBACK = process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.5-flash-lite'
   const currentModel = retryCount < 2 ? PRIMARY : FALLBACK
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${API_KEY}`
 
@@ -303,7 +304,36 @@ export function isGeminiOcrUnavailable(error: unknown) {
 }
 
 async function fetchDocumentForGemini(fileUrl: string) {
-  if (!isTrustedDocumentUrl(fileUrl)) {
+  const { parseKycDocumentRef, isKycDocumentRef } = await import('@/lib/kyc/document-refs')
+  const {
+    downloadKycAssetBytes,
+    loadVerificationDocumentById,
+    storageFromDocumentRow,
+  } = await import('@/lib/kyc/document-access')
+
+  // Authenticated KYC refs or content-proxy paths — never use a public CDN URL.
+  const ref = parseKycDocumentRef(fileUrl)
+  const contentMatch = fileUrl.match(/^\/api\/verification\/documents\/([0-9a-f-]{36})\/file$/i)
+  if (ref || contentMatch) {
+    let storage = ref
+    if (!storage && contentMatch) {
+      const row = await loadVerificationDocumentById(contentMatch[1])
+      storage = row ? storageFromDocumentRow(row) : null
+    }
+    if (!storage) {
+      throw new Error('Document storage reference is invalid')
+    }
+    const { buffer, contentType } = await downloadKycAssetBytes(storage)
+    if (buffer.byteLength > MAX_OCR_BYTES) {
+      throw new Error('Document is too large to read')
+    }
+    return {
+      data: buffer.toString('base64'),
+      mimeType: guessMimeType(storage.publicId, contentType),
+    }
+  }
+
+  if (isKycDocumentRef(fileUrl) || !isTrustedDocumentUrl(fileUrl)) {
     throw new Error('Document URL is not an allowed upload location')
   }
   const response = await fetch(fileUrl, { signal: AbortSignal.timeout(20000), redirect: 'error' })

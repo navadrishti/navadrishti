@@ -145,7 +145,7 @@ export function CampaignCard({ campaign, isOwner, isDeleting, volunteerState, on
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem asChild>
-                  <Link href={`/companies/csr-agent?campaign_id=${campaign.id}`} className="cursor-pointer">
+                  <Link href={`/csr-campaigns/create?campaign_id=${campaign.id}`} className="cursor-pointer">
                     <Pencil className="mr-2 h-4 w-4" />
                     Edit
                   </Link>

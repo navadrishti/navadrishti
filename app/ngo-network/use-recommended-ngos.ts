@@ -1,4 +1,5 @@
 "use client"
+import { clientAuthHeaders } from '@/lib/client-session';
 
 import { useCallback, useEffect, useState } from "react"
 import type { NetworkNgo } from "./types"
@@ -14,12 +15,6 @@ export function useRecommendedNgos(userId: number | undefined) {
       return
     }
 
-    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null
-    if (!token) {
-      setRecommended([])
-      return
-    }
-
     const isRefresh = Boolean(opts?.refresh)
     if (isRefresh) setRefreshingRecommended(true)
     else setLoadingRecommended(true)
@@ -28,10 +23,11 @@ export function useRecommendedNgos(userId: number | undefined) {
       const params = new URLSearchParams({
         recommend: "1",
         verified_only: "true",
-        shuffle: "1",
+        shuffle: isRefresh ? "1" : "0",
       })
       const response = await fetch(`/api/ngos/network?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
+        headers: clientAuthHeaders(),
       })
       const data = await response.json()
       if (response.ok && data?.success) {

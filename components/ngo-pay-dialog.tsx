@@ -1,8 +1,13 @@
 "use client"
+import { toast } from 'sonner'
+import { readApiError } from '@/lib/user-facing-error'
+import { getClientSessionToken } from '@/lib/client-session';
 
 import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
+import { CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE, isCaVerifiedAccount } from '@/lib/auth'
+import { VerificationRequiredNotice } from '@/components/verification-required-notice'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -14,7 +19,6 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useToast } from '@/hooks/use-toast'
 import { openRazorpayCheckout } from '@/lib/razorpay-checkout'
 import { PlatformPaymentSummary, getTotalChargeLabel } from '@/components/platform-payment-summary'
 
@@ -40,9 +44,9 @@ export function NgoPayDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const { user } = useAuth()
-  const { toast: notify } = useToast()
   const [paymentAmount, setPaymentAmount] = useState('')
   const [paying, setPaying] = useState(false)
+  const payerVerified = isCaVerifiedAccount(user?.verification_status)
 
   const close = () => {
     onOpenChange(false)
@@ -52,23 +56,20 @@ export function NgoPayDialog({
   const handlePay = async () => {
     if (!ngo || !user) return
 
-    const token = localStorage.getItem('token')
+    const token = getClientSessionToken()
     if (!token) {
-      notify({
-        title: 'Sign in required',
-        description: 'Log in as a company or individual to pay NGOs.',
-        variant: 'destructive',
-      })
+      toast.error('Sign in required', { description: 'Log in as a company or individual to pay NGOs.' })
+      return
+    }
+
+    if (!payerVerified) {
+      toast.error('Verification required', { description: CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE })
       return
     }
 
     const requestedInr = parseNgoPayAmountToInr(paymentAmount)
     if (requestedInr <= 0) {
-      notify({
-        title: 'Invalid amount',
-        description: 'Enter a valid contribution amount in INR.',
-        variant: 'destructive',
-      })
+      toast.error('Invalid amount', { description: 'Enter a valid contribution amount in INR.' })
       return
     }
 
@@ -85,11 +86,7 @@ export function NgoPayDialog({
 
       const orderPayload = await orderRes.json()
       if (!orderRes.ok || !orderPayload?.success) {
-        notify({
-          title: 'Unable to start payment',
-          description: orderPayload?.error || 'Failed to create payment order',
-          variant: 'destructive',
-        })
+        toast.error('Unable to start payment', { description: readApiError(orderPayload, 'Failed to create payment order') })
         return
       }
 
@@ -128,34 +125,19 @@ export function NgoPayDialog({
 
           const verifyPayload = await verifyRes.json()
           if (!verifyRes.ok || !verifyPayload?.success) {
-            notify({
-              title: 'Payment verification failed',
-              description: verifyPayload?.error || 'Please contact support with your payment reference.',
-              variant: 'destructive',
-            })
+            toast.error('Payment verification failed', { description: readApiError(verifyPayload, 'Please contact support with your payment reference.') })
             return
           }
 
-          notify({
-            title: 'Payment successful',
-            description: verifyPayload?.data?.message || `Your support for ${activeNgo.name} was recorded.`,
-          })
+          toast.success('Payment successful', { description: verifyPayload?.data?.message || `Your support for ${activeNgo.name} was recorded.` })
           close()
         },
         onFailure: (error) => {
-          notify({
-            title: 'Payment failed',
-            description: error.description || error.reason || 'Payment could not be completed.',
-            variant: 'destructive',
-          })
+          toast.error('Payment failed', { description: error.description || error.reason || 'Payment could not be completed.' })
         },
       })
     } catch (error) {
-      notify({
-        title: 'Payment failed',
-        description: error instanceof Error ? error.message : 'Could not open checkout.',
-        variant: 'destructive',
-      })
+      toast.error('Payment failed', { description: readApiError(error, 'Could not open checkout.') })
     } finally {
       setPaying(false)
     }
@@ -179,6 +161,10 @@ export function NgoPayDialog({
           </DialogDescription>
         </DialogHeader>
 
+        {!payerVerified ? (
+          <VerificationRequiredNotice description={CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE} />
+        ) : null}
+
         <div className="space-y-2 py-2">
           <Label htmlFor="ngo-payment-amount">NGO support amount (INR)</Label>
           <Input
@@ -187,16 +173,16 @@ export function NgoPayDialog({
             placeholder="e.g. 1000"
             value={paymentAmount}
             onChange={(event) => setPaymentAmount(event.target.value)}
-            disabled={paying}
+            disabled={paying || !payerVerified}
           />
-          <PlatformPaymentSummary baseAmountInr={parseNgoPayAmountToInr(paymentAmount)} />
+          {payerVerified ? <PlatformPaymentSummary baseAmountInr={parseNgoPayAmountToInr(paymentAmount)} /> : null}
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
           <Button type="button" variant="outline" onClick={close} disabled={paying}>
             Cancel
           </Button>
-          <Button type="button" onClick={handlePay} disabled={paying || parseNgoPayAmountToInr(paymentAmount) <= 0}>
+          <Button type="button" onClick={handlePay} disabled={!payerVerified || paying || parseNgoPayAmountToInr(paymentAmount) <= 0}>
             {paying ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

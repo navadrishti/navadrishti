@@ -5,10 +5,16 @@ import {
   getAdminModeration,
   type AdminModerationState,
 } from '@/lib/auth';
-import { parseJsonObject, getErrorMessage } from '@/lib/utils';
+import { parseJsonObject, getErrorMessage, type JsonRecord } from '@/lib/utils';
 import type { Json, TablesUpdate } from '@/lib/database.types';
+import {
+  applyAdminVerificationToProfile,
+  syncAdminVerificationArtifacts,
+} from '@/lib/admin-verification-status';
+import { newsletterEventId, withNewsletterHistory } from '@/lib/platform-newsletter/history';
+import type { NewsletterKind } from '@/lib/platform-newsletter/actors';
 
-const allowedUserTypes = new Set(['individual', 'ngo', 'company', 'admin']);
+const allowedUserTypes = new Set(['individual', 'ngo', 'company']);
 const allowedVerificationStatuses = new Set(['unverified', 'pending', 'verified', 'suspended']);
 const USER_SELECT =
   'id, name, email, phone, user_type, verification_status, account_status, locked_until, city, state_province, profile_image, profile_data, created_at, updated_at';
@@ -23,6 +29,20 @@ async function updateUser(userId: number, updatePayload: TablesUpdate<'users'>) 
   if (error) throw error;
   forgetSessionBlockReason(userId);
   return data;
+}
+
+function appendAdminNewsletterEvent(
+  profileData: unknown,
+  userId: number,
+  kind: NewsletterKind,
+  at: string
+): Json {
+  return withNewsletterHistory(profileData, {
+    id: newsletterEventId(kind, userId, at),
+    kind,
+    at,
+    source: 'admin',
+  }) as Json
 }
 
 function withModeration(
@@ -73,17 +93,23 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       const until = new Date();
       until.setUTCDate(until.getUTCDate() + days);
       const reason = String(body?.reason || '').trim() || null;
+      const at = new Date().toISOString();
       const updatePayload: TablesUpdate<'users'> = {
         locked_until: until.toISOString(),
         account_status: 'suspended',
-        profile_data: withModeration(existingUser.profile_data, {
-          permanently_banned: false,
-          suspended_at: new Date().toISOString(),
-          suspended_until: until.toISOString(),
-          suspend_days: days,
-          reason,
-        }),
-        updated_at: new Date().toISOString(),
+        profile_data: appendAdminNewsletterEvent(
+          withModeration(existingUser.profile_data, {
+            permanently_banned: false,
+            suspended_at: at,
+            suspended_until: until.toISOString(),
+            suspend_days: days,
+            reason,
+          }),
+          userId,
+          'suspended',
+          at
+        ),
+        updated_at: at,
       };
 
       const data = await updateUser(userId, updatePayload);
@@ -120,20 +146,26 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     if (action === 'ban') {
       const reason = String(body?.reason || '').trim() || null;
+      const at = new Date().toISOString();
       const updatePayload: TablesUpdate<'users'> = {
         account_status: 'banned',
         locked_until: null,
-        profile_data: withModeration(existingUser.profile_data, {
-          permanently_banned: true,
-          banned_at: new Date().toISOString(),
-          banned_email: existingUser.email,
-          banned_phone: existingUser.phone || null,
-          suspended_at: null,
-          suspended_until: null,
-          suspend_days: null,
-          reason,
-        }),
-        updated_at: new Date().toISOString(),
+        profile_data: appendAdminNewsletterEvent(
+          withModeration(existingUser.profile_data, {
+            permanently_banned: true,
+            banned_at: at,
+            banned_email: existingUser.email,
+            banned_phone: existingUser.phone || null,
+            suspended_at: null,
+            suspended_until: null,
+            suspend_days: null,
+            reason,
+          }),
+          userId,
+          'banned',
+          at
+        ),
+        updated_at: at,
       };
 
       const data = await updateUser(userId, updatePayload);
@@ -177,19 +209,21 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         return NextResponse.json({ error: 'Invalid verification status' }, { status: 400 });
       }
       updatePayload.verification_status = nextVerification;
-
-      // When the admin explicitly downgrades to unverified, clear CA badge and
-      // reverification flag from profile_data so the user sees the correct state.
-      if (nextVerification === 'unverified') {
-        const currentProfile = parseJsonObject(existingUser.profile_data);
-        const cleaned = { ...currentProfile };
-        delete cleaned.ca_badge_number;
-        delete cleaned.reverification_pending;
-        delete cleaned.allotted_compliance_tags;
-        // An empty list (not a missing key) stops getStoredCaComplianceTags re-inferring tags.
-        cleaned.ca_compliance_tags = [];
-        updatePayload.profile_data = cleaned;
+      const userType = String((updatePayload.user_type || existingUser.user_type) || '').toLowerCase();
+      let nextProfile = applyAdminVerificationToProfile(
+        existingUser.profile_data,
+        userType,
+        nextVerification
+      );
+      const previousStatus = String(existingUser.verification_status || '').toLowerCase();
+      if (
+        (nextVerification === 'verified' || nextVerification === 'unverified') &&
+        previousStatus !== nextVerification
+      ) {
+        const at = String(updatePayload.updated_at);
+        nextProfile = appendAdminNewsletterEvent(nextProfile, userId, nextVerification, at) as JsonRecord;
       }
+      updatePayload.profile_data = nextProfile;
     }
 
     if (Object.keys(updatePayload).length === 1) {
@@ -205,25 +239,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     if (error) throw error;
 
-    // Sync the type-specific verification table so downstream CA-queue checks
-    // and resolveEffectiveVerificationStatus fall back correctly.
     if (nextVerification !== null) {
       const userType = String((updatePayload.user_type || existingUser.user_type) || '').toLowerCase();
-      const verificationTable =
-        userType === 'individual'
-          ? 'individual_verifications'
-          : userType === 'company'
-            ? 'company_verifications'
-            : userType === 'ngo'
-              ? 'ngo_verifications'
-              : null;
-
-      if (verificationTable) {
-        await supabase
-          .from(verificationTable)
-          .update({ verification_status: nextVerification, updated_at: new Date().toISOString() })
-          .eq('user_id', userId);
-      }
+      await syncAdminVerificationArtifacts({
+        userId,
+        userType,
+        nextStatus: nextVerification,
+        profileData: updatePayload.profile_data ?? existingUser.profile_data,
+      });
     }
 
     return NextResponse.json({ success: true, data, previous: existingUser });

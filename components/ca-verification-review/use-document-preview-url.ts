@@ -9,7 +9,7 @@ export function useDocumentPreviewUrl(url: string, isImage: boolean, isPdf: bool
     let cancelled = false
     let objectUrl: string | null = null
 
-    fetch(url)
+    fetch(url, { credentials: 'same-origin', cache: 'no-store' })
       .then((response) => {
         if (!response.ok) throw new Error('Failed to load document')
         return response.blob()

@@ -132,6 +132,8 @@ describe('format-date', () => {
 
   it.each([
     [{ campaignStatus: 'cancelled', startDate: '2026-07-01' }, 'completed'],
+    [{ campaignStatus: 'finished' }, 'completed'],
+    [{ campaignStatus: 'done' }, 'completed'],
     [{ startDate: '2026-05-01', endDate: '2026-05-31' }, 'completed'],
     [{ startDate: '2026-06-10', endDate: '2026-06-10' }, 'started'],
     [{ startDate: '2026-06-11' }, 'yet_to_start'],
@@ -222,7 +224,7 @@ describe('document generation helpers', () => {
         { title: '', milestone_order: 1, amount: '250', status: '', due_date: '2026-02-01' },
       ],
       csr_payment_confirmations: [
-        { amount: 1000, payment_status: 'Confirmed', payment_reference: 'UTR1' },
+        { amount: 1000, payment_status: 'Confirmed', payment_reference: 'UTR1', confirmed_refund_inr: 0 },
         { amount: 400, payment_status: 'pending', payment_reference: '' },
       ],
     }
@@ -234,8 +236,13 @@ describe('document generation helpers', () => {
     ])
     expect(confirmedFunds(project as never)).toBe(1000)
     expect(paymentLineItems(project as never)).toEqual([
-      { label: 'Payment 1', amount: 1000, status: 'Confirmed', note: 'UTR1' },
-      { label: 'Payment 2', amount: 400, status: 'pending', note: null },
+      { label: 'Payment 1', amount: 1000, status: 'Confirmed', note: 'UTR1 · Net (= gross; no processed refund)' },
+      {
+        label: 'Payment 2',
+        amount: null,
+        status: 'pending',
+        note: 'Gross pending refund reconciliation — excluded from Amount Received (Net Confirmed)',
+      },
     ])
   })
 

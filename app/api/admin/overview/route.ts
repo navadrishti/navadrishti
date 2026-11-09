@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
+import {
+  aggregateAdminPaymentTotals,
+  withAdminPaymentTotalsScope,
+} from '@/lib/dashboard/admin-payment-totals';
 import { assertAdminUser, authErrorResponse } from '@/lib/server-auth';
-import { autoRejectExpiredServiceOffers } from '@/lib/admin-offer-automation';
 import { getErrorMessage } from '@/lib/utils';
+import type { Tables } from '@/lib/database.types';
+
+const PAYMENT_OVERVIEW_CAP = 1000;
 
 async function safeQuery<T>(
   label: string,
@@ -27,10 +33,8 @@ export async function GET(request: NextRequest) {
   try {
     assertAdminUser(request);
 
-    await autoRejectExpiredServiceOffers();
-
     const users = await safeQuery('users', supabase.from('users').select('id, user_type, verification_status, created_at'), []);
-    const offers = await safeQuery('service_offers', supabase.from('service_offers').select('id, admin_status, created_at, submitted_for_review_at'), []);
+    const offers = await safeQuery('service_offers', supabase.from('service_offers').select('id, status, created_at'), []);
     const allRequests = await safeQuery('service_requests summary', supabase.from('service_requests').select('id, status'), []);
     const allProjects = await safeQuery('service_request_projects summary', supabase.from('service_request_projects').select('id, status'), []);
     const allTickets = await safeQuery('support_tickets summary', supabase.from('support_tickets').select('ticket_id, status'), []);
@@ -107,10 +111,66 @@ export async function GET(request: NextRequest) {
     }, {});
 
     const countsByOfferStatus = offers.reduce((acc: Record<string, number>, offer) => {
-      const key = String(offer.admin_status || 'pending');
+      const key = String(offer.status || 'unknown').toLowerCase();
       acc[key] = (acc[key] || 0) + 1;
       return acc;
-    }, { pending: 0, approved: 0, rejected: 0 } as Record<string, number>);
+    }, { active: 0, inactive: 0 } as Record<string, number>);
+
+    const paymentRows = await safeQuery(
+      'razorpay_payments overview',
+      supabase
+        .from('razorpay_payments')
+        .select('id, amount_inr, amount_paise, payment_status')
+        .order('created_at', { ascending: false })
+        .limit(PAYMENT_OVERVIEW_CAP),
+      [] as Array<Pick<Tables<'razorpay_payments'>, 'id' | 'amount_inr' | 'amount_paise' | 'payment_status'>>,
+    );
+
+    const paymentIds = paymentRows.map((row) => row.id).filter(Boolean);
+    const refundRows =
+      paymentIds.length > 0
+        ? await safeQuery(
+            'razorpay_refunds overview',
+            supabase
+              .from('razorpay_refunds')
+              .select('id, payment_id, razorpay_refund_id, amount_inr, amount_paise, refund_status')
+              .in('payment_id', paymentIds),
+            [] as Array<
+              Pick<
+                Tables<'razorpay_refunds'>,
+                'id' | 'payment_id' | 'razorpay_refund_id' | 'amount_inr' | 'amount_paise' | 'refund_status'
+              >
+            >,
+          )
+        : [];
+
+    const refundsByPaymentId = refundRows.reduce(
+      (acc: Record<string, typeof refundRows>, row) => {
+        const key = String(row.payment_id);
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(row);
+        return acc;
+      },
+      {},
+    );
+
+    const paymentOverviewComplete = paymentRows.length < PAYMENT_OVERVIEW_CAP;
+    const paymentTotals = withAdminPaymentTotalsScope(
+      aggregateAdminPaymentTotals(
+        paymentRows.map((row) => ({
+          id: row.id,
+          amount_inr: row.amount_inr,
+          amount_paise: row.amount_paise,
+          payment_status: row.payment_status,
+          refunds: refundsByPaymentId[String(row.id)] || [],
+        })),
+      ),
+      {
+        scope: paymentOverviewComplete ? 'global' : 'fetched_window',
+        window_cap: PAYMENT_OVERVIEW_CAP,
+        total_matching: paymentRows.length,
+      },
+    );
 
     return NextResponse.json({
       success: true,
@@ -142,6 +202,7 @@ export async function GET(request: NextRequest) {
             return acc;
           }, {}),
         },
+        payment_totals: paymentTotals,
         recent: {
           service_requests: requests,
           service_request_projects: projects,

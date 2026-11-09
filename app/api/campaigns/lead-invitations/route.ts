@@ -9,7 +9,7 @@ type CompanySummary = Pick<Tables<'users'>, 'id' | 'name' | 'email' | 'verificat
 
 export async function GET(request: NextRequest) {
   try {
-    const user = getAuthUserFromRequest(request)
+    const user = await getAuthUserFromRequest(request)
     assertUserType(user, ['ngo'])
 
     const { data: campaigns, error } = await supabase

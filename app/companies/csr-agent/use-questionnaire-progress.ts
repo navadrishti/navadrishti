@@ -1,8 +1,14 @@
 import { useMemo } from "react"
 import { CSR_SCHEDULE_VII_CATEGORIES } from "@/lib/categories"
-import { isQuestionnaireCompleteFor } from "./helpers"
+import {
+  CSR_MILESTONE_COUNT_LABEL,
+  firstUnfilledProjectIndex,
+  isQuestionnaireCompleteFor,
+  resolveCsrPromptBefore,
+} from "./helpers"
 import {
   type ConversationStage,
+  type Message,
   type MilestoneInput,
   type ProjectIntakeData,
   fixedBudgetOptions,
@@ -12,34 +18,26 @@ import {
 } from "./session"
 
 type QuestionnaireProgressOptions = {
+  messages: Message[]
   projectData: ProjectIntakeData
   milestoneCount: number | null
   milestoneInputs: MilestoneInput[]
   conversationStage: ConversationStage
-  projectStep: number
   milestoneQuestionIndex: number
   generatedCampaignCount: number
   selectedProjectSuggestionId: string | null
 }
 
 export function useQuestionnaireProgress({
+  messages,
   projectData,
   milestoneCount,
   milestoneInputs,
   conversationStage,
-  projectStep,
   milestoneQuestionIndex,
   generatedCampaignCount,
   selectedProjectSuggestionId,
 }: QuestionnaireProgressOptions) {
-  const fixedChoiceOptions = useMemo(() => {
-    if (conversationStage === "project") {
-      if (projectStep === 1) return CSR_SCHEDULE_VII_CATEGORIES
-      if (projectStep === 4) return fixedBudgetOptions
-    }
-    if (conversationStage === "milestone-count") return fixedMilestoneCountOptions
-    return [] as string[]
-  }, [conversationStage, projectStep])
 
   const totalQuestions = useMemo(() => {
     const milestoneQuestionsCount = milestoneCount ? milestoneCount * milestoneQuestions.length : 0
@@ -74,11 +72,31 @@ export function useQuestionnaireProgress({
 
   const activeQuestion = useMemo(() => {
     if (generatedCampaignCount > 0 || isQuestionnaireComplete) return null
-    if (conversationStage === "project") return projectQuestions[Math.min(projectStep, projectQuestions.length - 1)]
-    if (conversationStage === "milestone-count") return { key: "milestoneCount", question: "How many milestones should I plan?" }
+
+    const promptTarget = resolveCsrPromptBefore(messages, messages.length)
+    if (promptTarget?.type === "project") return projectQuestions[promptTarget.index]
+    if (promptTarget?.type === "milestone-count") return { key: "milestoneCount", question: CSR_MILESTONE_COUNT_LABEL }
+    if (promptTarget?.type === "milestone") {
+      return milestoneQuestions[Math.min(promptTarget.questionIndex, milestoneQuestions.length - 1)]
+    }
+
+    if (conversationStage === "project") {
+      const idx = firstUnfilledProjectIndex(projectData)
+      if (idx >= projectQuestions.length) return { key: "milestoneCount", question: CSR_MILESTONE_COUNT_LABEL }
+      return projectQuestions[idx]
+    }
+    if (conversationStage === "milestone-count") return { key: "milestoneCount", question: CSR_MILESTONE_COUNT_LABEL }
     if (conversationStage === "milestones") return milestoneQuestions[Math.min(milestoneQuestionIndex, milestoneQuestions.length - 1)]
     return null
-  }, [conversationStage, projectStep, milestoneQuestionIndex, generatedCampaignCount, isQuestionnaireComplete])
+  }, [messages, conversationStage, projectData, milestoneQuestionIndex, generatedCampaignCount, isQuestionnaireComplete])
+
+  const fixedChoiceOptions = useMemo(() => {
+    const key = activeQuestion?.key
+    if (key === "category") return CSR_SCHEDULE_VII_CATEGORIES
+    if (key === "budget" || key === "budgetTarget") return fixedBudgetOptions
+    if (key === "milestoneCount" || conversationStage === "milestone-count") return fixedMilestoneCountOptions
+    return [] as string[]
+  }, [activeQuestion?.key, conversationStage])
 
   return {
     fixedChoiceOptions,
@@ -96,6 +114,7 @@ type StatusLabelInput = {
   isQuestionnaireComplete: boolean
   hasLeadInvites: boolean
   hasAcceptedLead: boolean
+  hasEvidenceVerifier?: boolean
   isGeneratingCampaigns: boolean
   conversationStage: ConversationStage
   activeQuestion: { question: string } | null
@@ -106,6 +125,7 @@ export function getActiveQuestionLabel({
   isQuestionnaireComplete,
   hasLeadInvites,
   hasAcceptedLead,
+  hasEvidenceVerifier = false,
   isGeneratingCampaigns,
   activeQuestion,
 }: StatusLabelInput) {
@@ -113,13 +133,22 @@ export function getActiveQuestionLabel({
   if (!isQuestionnaireComplete) return activeQuestion?.question || "Campaign details"
   if (!hasLeadInvites) return "All details captured — invite a lead NGO to continue"
   if (!hasAcceptedLead) return "Waiting for lead NGO acceptance"
-  return isGeneratingCampaigns ? "Generating campaign draft..." : "Ready to publish"
+  if (!hasEvidenceVerifier) return "Allot an Evidence Verifier to start drafting"
+  return isGeneratingCampaigns ? "Catalyst is assembling the draft..." : "Ready to publish"
 }
 
-export function getPromptTitle({ hasDraft, isQuestionnaireComplete, hasLeadInvites, hasAcceptedLead, conversationStage }: StatusLabelInput) {
+export function getPromptTitle({
+  hasDraft,
+  isQuestionnaireComplete,
+  hasLeadInvites,
+  hasAcceptedLead,
+  hasEvidenceVerifier = false,
+  conversationStage,
+}: StatusLabelInput) {
   if (hasDraft) return "Ready to publish"
   if (isQuestionnaireComplete) {
-    if (hasAcceptedLead) return "Ready to publish"
+    if (hasAcceptedLead && hasEvidenceVerifier) return "Catalyst drafting"
+    if (hasAcceptedLead) return "Allot Evidence Verifier"
     return hasLeadInvites ? "Waiting for lead NGO" : "Invite a lead NGO"
   }
   if (conversationStage === "project") return "Step 1: Campaign details"

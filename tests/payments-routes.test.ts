@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { POST as settle } from '@/app/api/service-assignments/[id]/settle/route'
 import { POST as verifyOfferPayment } from '@/app/api/service-offers/[id]/clients/[clientId]/payments/verify/route'
 import { razorpaySignature, tokenFor } from './support/requests'
-import { createSupabaseFake, fakeAdjustProgress, hasCall, type FakeQuery, type FakeResult } from './support/supabase-fake'
+import { createSupabaseFake, eqValue, fakeAdjustProgress, hasCall, type FakeQuery, type FakeResult } from './support/supabase-fake'
+import { setLiveUserTypeOverlay } from '@/lib/auth/session'
+import { overlayLiveUserType } from '@/lib/server-auth'
 
 const mocks = vi.hoisted(() => ({
   supabase: { from: vi.fn() },
@@ -18,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   },
 }))
 
+vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db', () => ({ supabase: mocks.supabase, db: mocks.db, adjustServiceRequestProgress: mocks.adjustProgress }))
 vi.mock('razorpay', () => ({
   default: vi.fn(function () {
@@ -25,7 +28,14 @@ vi.mock('razorpay', () => ({
   }),
 }))
 function useSupabase(respond: (query: FakeQuery) => FakeResult | undefined) {
-  const fake = createSupabaseFake(respond)
+  const fake = createSupabaseFake((query) => {
+    if (query.table === 'users' && query.columns === 'account_status, locked_until, profile_data, user_type, verification_status') {
+      const id = Number(eqValue(query, 'id'))
+      return { data: { id, user_type: id === 12 ? 'ngo' : 'company', account_status: 'active', verification_status: 'verified', profile_data: {} } }
+    }
+    if (['company_ca_identities', 'ngo_field_officer_identities', 'company_employee_identities'].includes(query.table) && eqValue(query, 'user_id') !== undefined) return { data: null }
+    return respond(query)
+  })
   mocks.supabase.from.mockImplementation(fake.from)
   return fake
 }
@@ -63,6 +73,7 @@ const verification = {
 }
 
 beforeEach(() => {
+  setLiveUserTypeOverlay((claims, pathname) => overlayLiveUserType(claims, pathname))
   vi.stubEnv('NEXT_PUBLIC_RAZORPAY_KEY_ID', 'key')
   vi.stubEnv('RAZORPAY_KEY_SECRET', 'rzp_secret')
   vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -88,9 +99,22 @@ describe('engagement settlement verify', () => {
     fake.writes('service_engagement_assignments').filter((query) => (query.payload as { status?: string }).status === 'completed')
 
   function setup(orderNotes: Record<string, unknown> = {}) {
+    const attendanceEntry = {
+      id: 'entry_1',
+      payment_status: 'pending',
+      amount_due: 600,
+      paid_order_id: null as string | null,
+    }
     return useSupabase((query) => {
       if (query.table === 'service_engagement_assignments' && query.op === 'update') return { data: assignment }
       if (query.table === 'service_engagement_assignments') return { data: assignment }
+      if (query.table === 'service_attendance_entries' && query.op === 'update') {
+        Object.assign(attendanceEntry, query.payload)
+        return { data: attendanceEntry }
+      }
+      if (query.table === 'service_attendance_entries' && query.op === 'select') {
+        return { data: [attendanceEntry] }
+      }
       if (query.table === 'razorpay_payment_orders' && hasCall(query, 'maybeSingle')) {
         return { data: { order_notes: { assignment_id: 'asg_1', ...orderNotes }, payer_user_id: 12, order_status: 'created' } }
       }
@@ -131,6 +155,13 @@ describe('engagement settlement verify', () => {
     expect(finalized.payload).toMatchObject({
       meta: expect.objectContaining({ settled_amount: 600, razorpay_order_id: 'order_1', razorpay_payment_id: 'pay_1' }),
     })
+    const [attendanceUpdate] = fake.writes('service_attendance_entries')
+    expect(attendanceUpdate.payload).toMatchObject({
+      payment_status: 'paid',
+      paid_order_id: 'order_1',
+    })
+    expect(attendanceUpdate.filters).toContainEqual(['eq', 'id', 'entry_1'])
+    expect(attendanceUpdate.filters).toContainEqual(['in', 'payment_status', ['pending', 'billed']])
   })
 })
 

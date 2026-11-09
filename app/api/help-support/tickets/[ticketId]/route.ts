@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { sendEmail } from '@/lib/email';
 import { getTokenClaims } from '@/lib/auth';
+import { authErrorResponse } from '@/lib/server-auth';
 import { getErrorMessage } from '@/lib/utils';
 import type { Tables } from '@/lib/database.types';
 
@@ -17,7 +18,7 @@ const escapeHtml = (value: string) =>
     .replace(/'/g, '&#39;');
 
 const getAuthenticatedUser = async (request: NextRequest) => {
-  const claims = getTokenClaims(request);
+  const claims = await getTokenClaims(request);
   if (!claims) return null;
   const user = await db.users.findById(claims.id);
   if (!user) return null;
@@ -78,6 +79,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       messages: userMessages,
     });
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('User support ticket fetch error:', error);
     return NextResponse.json({ error: getErrorMessage(error) || 'Failed to load ticket' }, { status: 500 });
   }
@@ -165,6 +168,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       })),
     });
   } catch (error) {
+    const auth = authErrorResponse(error);
+    if (auth) return auth;
     console.error('User support ticket reply error:', error);
     return NextResponse.json({ error: getErrorMessage(error) || 'Failed to send message' }, { status: 500 });
   }

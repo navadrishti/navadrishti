@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase, ensureCampaignVolunteerAssignment } from '@/lib/db'
-import { getTokenClaims, isFullyVerifiedAccount } from '@/lib/auth'
+import { getTokenClaims, isCaVerifiedAccount } from '@/lib/auth'
 import { isCampaignStarted, isVolunteerRegistrationPastDeadline } from '@/lib/format-date'
 import {
   getVolunteerApplicationCapacity,
@@ -9,6 +9,7 @@ import {
 } from '@/lib/campaign-schema'
 import { isCampaignLeadNgo } from '@/lib/campaign-volunteer-attendance'
 import { redactCampaignForViewer } from '@/lib/campaign-public-view'
+import { authErrorResponse } from '@/lib/server-auth'
 
 import { parseJsonObject, getErrorMessage } from '@/lib/utils'
 
@@ -30,7 +31,7 @@ async function loadCampaign(campaignId: string) {
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const decoded = getTokenClaims(request)
+    const decoded = await getTokenClaims(request)
     if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
@@ -57,6 +58,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const existing = volunteerApplications.find((entry) => Number(entry?.user_id || 0) === Number(decoded.id))
     if (existing) {
+      if (decoded.user_type === 'individual') {
+        try {
+          await ensureCampaignVolunteerAssignment({
+            campaign,
+            userId: Number(decoded.id),
+            userType: String(existing.user_type || decoded.user_type || 'individual'),
+            capacity: Number(existing.capacity || 1) || 1,
+            appliedAt: String(existing.applied_at || ''),
+          })
+        } catch (assignmentError) {
+          console.error('Campaign volunteer assignment error:', assignmentError)
+          return NextResponse.json({ error: 'Failed to attach volunteer attendance assignment' }, { status: 500 })
+        }
+      }
       return NextResponse.json({ success: true, data: { campaign_id: id, applied: true, existing } })
     }
 
@@ -114,12 +129,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const { data: actingUser } = await supabase
       .from('users')
-      .select('id, name, user_type, ngo_volunteer_capacity, profile_data, email_verified, phone_verified, verification_status')
+      .select('id, name, user_type, ngo_volunteer_capacity, profile_data, verification_status')
       .eq('id', decoded.id)
       .maybeSingle()
 
-    if (!isFullyVerifiedAccount(actingUser)) {
-      return NextResponse.json({ error: 'Complete email and document verification to volunteer' }, { status: 403 })
+    if (!isCaVerifiedAccount(actingUser?.verification_status)) {
+      return NextResponse.json(
+        { error: 'Complete identity verification before you can volunteer on this campaign.' },
+        { status: 403 }
+      )
     }
 
     const { isVolunteeringBanned } = await import('@/lib/campaign-volunteer-attendance')
@@ -155,6 +173,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
       const alreadyApplied = applications.find((item) => Number(item?.user_id || 0) === Number(decoded.id))
       if (alreadyApplied) {
+        if (decoded.user_type === 'individual') {
+          try {
+            await ensureCampaignVolunteerAssignment({
+              campaign: latest,
+              userId: Number(decoded.id),
+              userType: String(alreadyApplied.user_type || decoded.user_type || 'individual'),
+              capacity: Number(alreadyApplied.capacity || 1) || 1,
+              appliedAt: String(alreadyApplied.applied_at || ''),
+            })
+          } catch (assignmentError) {
+            console.error('Campaign volunteer assignment error:', assignmentError)
+            return NextResponse.json({ error: 'Failed to attach volunteer attendance assignment' }, { status: 500 })
+          }
+        }
         return NextResponse.json({ success: true, data: { campaign_id: id, applied: true, existing: alreadyApplied } })
       }
 
@@ -191,16 +223,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'This campaign is busy. Please try again.' }, { status: 409 })
     }
 
-    try {
-      await ensureCampaignVolunteerAssignment({
-        campaign: data,
-        userId: Number(decoded.id),
-        userType: decoded.user_type,
-        capacity,
-        appliedAt: entry.applied_at,
-      })
-    } catch (assignmentError) {
-      console.error('Campaign volunteer assignment error:', assignmentError)
+    if (decoded.user_type === 'individual') {
+      try {
+        await ensureCampaignVolunteerAssignment({
+          campaign: data,
+          userId: Number(decoded.id),
+          userType: decoded.user_type,
+          capacity,
+          appliedAt: entry.applied_at,
+        })
+      } catch (assignmentError) {
+        console.error('Campaign volunteer assignment error:', assignmentError)
+        return NextResponse.json({ error: 'Failed to attach volunteer attendance assignment' }, { status: 500 })
+      }
     }
 
     return NextResponse.json({
@@ -208,6 +243,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       data: { campaign: redactCampaignForViewer(data, Number(decoded.id)), applied: true, capacity, volunteerCount },
     })
   } catch (error) {
+    const authResponse = authErrorResponse(error)
+    if (authResponse) return authResponse
     console.error('Campaign volunteer application error:', error)
     return NextResponse.json({ error: getErrorMessage(error) || 'Failed to apply for campaign' }, { status: 500 })
   }

@@ -118,11 +118,18 @@ describe('applyCAVerificationAction on decided records', () => {
   })
 
   it.each([
-    ['pending', 'pending'],
-    ['unverified', 'unverified'],
-    ['missing', null],
-  ])('decides a %s row', async (_label, rowStatus) => {
+    ['unverified', 'unverified', 'Only pending submissions can be reviewed. Unverified accounts must resubmit first.'],
+    ['missing', null, 'Only pending submissions can be reviewed. Unverified accounts must resubmit first.'],
+  ])('refuses to decide a %s row', async (_label, rowStatus, message) => {
     const fake = setup({ table: 'company_verifications', row: { verification_status: rowStatus } })
+    await expect(
+      applyCAVerificationAction({ type: 'companies', id: 4, action: 'reject', reason: 'x', ca })
+    ).rejects.toMatchObject(caError(message, 409))
+    expect(fake.writes('company_verifications')).toHaveLength(0)
+  })
+
+  it('decides a pending row', async () => {
+    const fake = setup({ table: 'company_verifications', row: { verification_status: 'pending' } })
     const result = await applyCAVerificationAction({ type: 'companies', id: 4, action: 'reject', reason: 'x', ca })
     expect(result).toMatchObject({ status: 'rejected' })
     expect(fake.writes('company_verifications')).toHaveLength(1)
@@ -166,6 +173,15 @@ describe('applyCAVerificationAction approve', () => {
       reviewed_by: 'CA Three',
       rejection_reason: null,
     })
+    expect(user.profile_data.ca_review_history).toEqual([
+      expect.objectContaining({
+        action: 'approve',
+        kind: 'verification',
+        attempt: 1,
+        ca_id: 3,
+        next_status: 'verified',
+      }),
+    ])
     expect(user.profile_data).not.toHaveProperty('ca_compliance_tags')
     expect(fake.writes('users')[0].filters).toContainEqual(['eq', 'id', 9])
 
@@ -272,15 +288,18 @@ describe('applyCAVerificationAction concurrent decisions', () => {
     ])
   })
 
-  it('claims a row without a status with an is-null check', async () => {
+  it('refuses a row without a pending status', async () => {
     const fake = setup({
       table: 'ngo_verifications',
       row: { verification_status: null },
       user: { verification_status: null },
     })
-    await applyCAVerificationAction({ type: 'ngos', id: 4, action: 'reject', reason: 'x', ca })
-    expect(fake.writes('ngo_verifications')[0].filters).toContainEqual(['filter', 'verification_status', 'is', null])
-    expect(fake.writes('users')[0].filters).toContainEqual(['filter', 'verification_status', 'is', null])
+    await expect(
+      applyCAVerificationAction({ type: 'ngos', id: 4, action: 'reject', reason: 'x', ca })
+    ).rejects.toMatchObject(
+      caError('Only pending submissions can be reviewed. Unverified accounts must resubmit first.', 409)
+    )
+    expect(fake.writes('ngo_verifications')).toHaveLength(0)
   })
 
   it.each(['approve', 'reject'] as const)(
@@ -383,6 +402,31 @@ describe('applyCAVerificationAction NGO compliance tags', () => {
     const profile = payloadOf(fake, 'users').profile_data
     expect(profile).not.toHaveProperty('ca_compliance_tags')
     expect(profile).not.toHaveProperty('document_expiries')
+  })
+
+  it('records a resubmission after a previous CA decision', async () => {
+    const fake = setup({
+      table: 'company_verifications',
+      user: {
+        profile_data: {
+          ca_review_history: [
+            {
+              at: '2026-01-01T00:00:00Z',
+              ca_id: 3,
+              action: 'reject',
+              kind: 'verification',
+              attempt: 1,
+            },
+          ],
+        },
+      },
+    })
+    await applyCAVerificationAction({ type: 'companies', id: 4, action: 'approve', ca })
+    expect(payloadOf(fake, 'users').profile_data.ca_review_history[1]).toMatchObject({
+      action: 'approve',
+      kind: 'resubmission',
+      attempt: 2,
+    })
   })
 })
 
@@ -509,10 +553,25 @@ describe('applyCAVerificationAction reverification', () => {
     )
   })
 
-  it('reviews a downgraded NGO as a fresh submission', async () => {
+  it('refuses an unverified NGO even if a reverification flag is leftover', async () => {
     const fake = setup({
       table: 'ngo_verifications',
+      row: { verification_status: 'unverified' },
       user: { verification_status: 'unverified', profile_data: { reverification_pending: true } },
+    })
+    await expect(
+      applyCAVerificationAction({ type: 'ngos', id: 4, action: 'reject', reason: 'x', ca })
+    ).rejects.toMatchObject(
+      caError('Only pending submissions can be reviewed. Unverified accounts must resubmit first.', 409)
+    )
+    expect(mocks.reject).not.toHaveBeenCalled()
+    expect(fake.writes('ngo_verifications')).toHaveLength(0)
+  })
+
+  it('reviews a pending NGO with a leftover reverification flag as a fresh submission', async () => {
+    const fake = setup({
+      table: 'ngo_verifications',
+      user: { verification_status: 'pending', profile_data: { reverification_pending: true } },
     })
     const result = await applyCAVerificationAction({ type: 'ngos', id: 4, action: 'reject', reason: 'x', ca })
     expect(mocks.reject).not.toHaveBeenCalled()

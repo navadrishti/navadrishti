@@ -1,20 +1,35 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 import { AppRouterInstance } from 'next/dist/shared/lib/app-router-context.shared-runtime'
+import { looksTechnicalError, toUserFacingError } from '@/lib/user-facing-error'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+/** Calendar year in Asia/Kolkata — stable across UTC SSR hosts and Indian clients. */
+export function getCalendarYearIst(reference: Date = new Date()): number {
+  return Number(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+    }).format(reference)
+  )
+}
+
 // Supabase and Razorpay errors are plain objects with a message, not Error instances.
 export function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message
-  if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
-    return error.message
+  let raw = ''
+  if (error instanceof Error) raw = error.message
+  else if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
+    raw = error.message
+  } else {
+    // Razorpay SDK rejects with { statusCode, error: { description } }.
+    const description = (error as { error?: { description?: unknown } } | null)?.error?.description
+    raw = typeof description === 'string' ? description : ''
   }
-  // Razorpay SDK rejects with { statusCode, error: { description } }.
-  const description = (error as { error?: { description?: unknown } } | null)?.error?.description
-  return typeof description === 'string' ? description : ''
+  if (!raw) return ''
+  return looksTechnicalError(raw) ? toUserFacingError(raw) : raw
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- jsonb payloads have no fixed shape and callers read nested fields ad hoc

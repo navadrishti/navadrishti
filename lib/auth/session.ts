@@ -18,9 +18,9 @@ export interface UserData {
 export type ScopedTokenKind = 'platform_ca' | 'company_ca';
 
 export class AuthError extends Error {
-  readonly status: 401 | 403;
+  readonly status: 401 | 403 | 503;
 
-  constructor(message: string, status: 401 | 403 = 401) {
+  constructor(message: string, status: 401 | 403 | 503 = 401) {
     super(message);
     this.name = 'AuthError';
     this.status = status;
@@ -137,6 +137,49 @@ export function generateToken(user: UserData): string {
   );
 }
 
+export type CompanyCATokenPayload = {
+  id: number;
+  email: string;
+  name: string;
+  user_type: UserData['user_type'];
+  verification_status?: UserData['verification_status'];
+};
+
+function asUserType(value: unknown): UserData['user_type'] {
+  return typeof value === 'string' && USER_TYPES.has(value) ? (value as UserData['user_type']) : 'company';
+}
+
+/** Delegated evidence-portal sessions. Distinct from platform company JWTs. */
+export function generateCompanyCAToken(user: UserData): string {
+  const payload: CompanyCATokenPayload = {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    user_type: asUserType(user.user_type),
+    verification_status: user.verification_status || 'verified',
+  };
+  return signScopedToken(
+    'company_ca',
+    payload,
+    (process.env.CA_JWT_EXPIRES_IN || '12h') as SignOptions['expiresIn']
+  );
+}
+
+export function verifyCompanyCAToken(token: string): UserData | null {
+  const decoded = verifyScopedToken<CompanyCATokenPayload>(token, 'company_ca');
+  if (!decoded?.id || !decoded.email) {
+    return null;
+  }
+
+  return {
+    id: decoded.id,
+    email: decoded.email,
+    name: decoded.name || '',
+    user_type: asUserType(decoded.user_type),
+    verification_status: decoded.verification_status,
+  };
+}
+
 export function verifyToken(token: string): UserData | null {
   const decoded = decodeSignedToken(token);
   if (!decoded || !decoded.id || !decoded.email || !isUserSessionPayload(decoded)) {
@@ -159,13 +202,46 @@ export type TokenClaims = {
   verification_status?: string;
 };
 
-/** Claims from the request's Bearer token, or null when it is missing, malformed or expired. */
-export function getTokenClaims(request: NextRequest): TokenClaims | null {
+function readTokenClaims(request: NextRequest): TokenClaims | null {
   const header = request.headers.get('authorization');
-  if (!header?.startsWith('Bearer ')) return null;
-  const decoded = decodeSignedToken(header.slice(7));
+  const bearer = header?.startsWith('Bearer ') ? header.slice(7).trim() : '';
+  const cookie = request.cookies.get('token')?.value?.trim() || '';
+  const token = bearer || cookie;
+  if (!token) return null;
+  const decoded = decodeSignedToken(token);
   if (!decoded || !isUserSessionPayload(decoded)) return null;
   return decoded as TokenClaims;
+}
+
+type LiveUserTypeOverlay = <T extends { id: number; user_type: string }>(claims: T, pathname: string) => Promise<T>
+
+let liveUserTypeOverlay: LiveUserTypeOverlay | null = null
+
+/** Server modules register this so `lib/auth` can stay safe to import from client components. */
+export function setLiveUserTypeOverlay(overlay: LiveUserTypeOverlay | null) {
+  liveUserTypeOverlay = overlay
+}
+
+async function withLiveUserType<T extends { id: number; user_type: string }>(claims: T, pathname: string): Promise<T> {
+  if (!liveUserTypeOverlay) throw new AuthError('Authorization service temporarily unavailable', 503)
+  try {
+    return await liveUserTypeOverlay(claims, pathname)
+  } catch (error) {
+    if (error instanceof AuthError) throw error
+    console.error('Authorization overlay failed')
+    throw new AuthError('Authorization service temporarily unavailable', 503)
+  }
+}
+
+/**
+ * Claims from the request Bearer token or the httpOnly session cookie.
+ * `user_type` is overlaid from the users row when that lookup is available so a
+ * role change does not linger for the rest of the JWT lifetime.
+ */
+export async function getTokenClaims(request: NextRequest): Promise<TokenClaims | null> {
+  const claims = readTokenClaims(request);
+  if (!claims) return null;
+  return withLiveUserType(claims, request.nextUrl.pathname);
 }
 
 /** Platform end-user sessions only — never treat console admin JWTs as users. */
@@ -197,17 +273,22 @@ export function withAuth<Args extends unknown[]>(
         token = cookieToken;
       }
 
-      const user = verifyToken(token);
-      if (!isPlatformUserSession(user)) {
+      const verified = verifyToken(token);
+      if (!isPlatformUserSession(verified)) {
         return NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 });
       }
+
+      const user = await withLiveUserType(verified, req.nextUrl.pathname);
 
       const authedRequest = req as AuthenticatedRequest;
       authedRequest.user = user;
       return handler(authedRequest, ...args);
     } catch (error) {
-      console.error('Authentication error:', error);
-      return NextResponse.json({ error: 'Authentication failed' }, { status: 401 });
+      if (error instanceof AuthError) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
+      }
+      console.error('Authentication service failed');
+      return NextResponse.json({ error: 'Authorization service temporarily unavailable' }, { status: 503 });
     }
   };
 }

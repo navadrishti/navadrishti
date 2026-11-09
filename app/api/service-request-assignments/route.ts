@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase, shapeApplicationForApi } from '@/lib/db'
 import { getTokenClaims } from '@/lib/auth'
+import { authErrorResponse } from '@/lib/server-auth'
+import { parseJsonObject } from '@/lib/utils'
 import { getCompanyProjects } from '@/lib/service-request-assignments/company-projects'
 import { getNgoCompanyApplications } from '@/lib/service-request-assignments/ngo-company-applications'
 import { getProjectDetail } from '@/lib/service-request-assignments/project-detail'
@@ -16,6 +18,13 @@ import {
   historyVolunteerStatuses,
   ongoingVolunteerStatuses,
 } from '@/lib/service-request-assignments/shared'
+import {
+  isStandaloneNgoOwnedNeed,
+  listFullyAllocatedOwnedNeedIds,
+  partitionNgoOwnedNeeds,
+  shapeNgoOwnedNeedWithAssignments,
+  shouldMarkOwnedNeedCompleted,
+} from '@/lib/service-request-assignments/ngo-owned-needs'
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,7 +33,7 @@ export async function GET(request: NextRequest) {
     const mode = searchParams.get('mode') || ''
 
     // Project detail stays publicly readable; every other mode needs a session.
-    const claims = getTokenClaims(request)
+    const claims = await getTokenClaims(request)
     if (!claims && mode !== 'project-detail') {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
@@ -78,6 +87,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (userType === 'ngo') {
+      // My Needs: NGO-owned standalone needs (not CSR handoffs / My Projects).
       const { data: requests, error } = await supabase
         .from('service_requests')
         .select(`
@@ -89,7 +99,32 @@ export async function GET(request: NextRequest) {
 
       if (error) throw error
 
-      const requestIds = (requests || []).map((item) => item.id)
+      const ownedStandalone = (requests || []).filter((item) => isStandaloneNgoOwnedNeed(item))
+      const ownedIds = ownedStandalone
+        .map((item) => Number(item.id))
+        .filter((id) => Number.isFinite(id) && id > 0)
+
+      // Match marketplace / my-requests: hide needs taken into a company CSR project via contributions.
+      const csrHandoffIds = new Set<number>()
+      if (ownedIds.length > 0) {
+        const { data: assignedContributions } = await supabase
+          .from('service_request_contributions')
+          .select('service_request_id, status, contribution_type')
+          .in('service_request_id', ownedIds)
+          .eq('contribution_type', 'company_project_csr')
+          .in('status', ['accepted', 'in_progress', 'completed'])
+
+        for (const row of assignedContributions || []) {
+          const id = Number(row.service_request_id)
+          if (Number.isFinite(id) && id > 0) csrHandoffIds.add(id)
+        }
+      }
+
+      const standaloneNeeds = ownedStandalone.filter(
+        (item) => !csrHandoffIds.has(Number(item.id))
+      )
+      const requestIds = standaloneNeeds.map((item) => item.id)
+
       const { data: assignments, error: assignmentsError } = requestIds.length > 0
         ? await supabase
             .from('service_request_applications')
@@ -105,32 +140,68 @@ export async function GET(request: NextRequest) {
 
       if (assignmentsError) throw assignmentsError
 
-      const shapedAssignments = (assignments || []).map((row) => shapeApplicationForApi(row))
-
-      const grouped = (requests || []).map((requestItem) => {
-        const relatedAssignments = shapedAssignments.filter((assignment) => String(assignment.service_request_id) === String(requestItem.id))
-        return {
-          ...requestItem,
-          assignments: relatedAssignments,
-          accepted_count: relatedAssignments.filter((item) => ['accepted', 'active', 'completed'].includes(String(item.status || '').toLowerCase())).length,
-          pending_count: relatedAssignments.filter((item) => String(item.status || '').toLowerCase() === 'pending').length,
-          completed_count: relatedAssignments.filter((item) => {
-            const status = String(item.status || '').toLowerCase()
-            return status === 'completed' || item.ngo_confirmed_at
-          }).length
+      const fullyAllocatedNeedIds = listFullyAllocatedOwnedNeedIds(standaloneNeeds)
+      const nowIso = new Date().toISOString()
+      for (const row of assignments || []) {
+        if (
+          !fullyAllocatedNeedIds.has(Number(row.service_request_id)) ||
+          String(row.status || '').toLowerCase() !== 'pending'
+        ) {
+          continue
         }
-      })
+        const meta = parseJsonObject(row.response_meta)
+        const { error: leftoverError } = await supabase
+          .from('service_request_applications')
+          .update({
+            status: 'rejected',
+            rejected_at: nowIso,
+            response_meta: {
+              ...meta,
+              rejected_at: nowIso,
+              auto_rejected_reason: 'need_fully_allocated',
+            },
+            updated_at: nowIso,
+          })
+          .eq('id', row.id)
+          .eq('status', 'pending')
+        if (leftoverError) {
+          console.error('Failed to auto-reject leftover pending application', leftoverError)
+          continue
+        }
+        row.status = 'rejected'
+      }
 
-      const filtered = view === 'history'
-        ? grouped.filter((item) => ['completed', 'cancelled'].includes(String(item.status || '').toLowerCase()))
-        : grouped.filter((item) => !['completed', 'cancelled'].includes(String(item.status || '').toLowerCase()))
+      const shapedAssignments = (assignments || []).map((row) => shapeApplicationForApi(row))
+      const grouped = standaloneNeeds.map((requestItem) =>
+        shapeNgoOwnedNeedWithAssignments(requestItem, shapedAssignments)
+      )
+
+      const nowForNeeds = new Date().toISOString()
+      for (const item of grouped) {
+        if (!shouldMarkOwnedNeedCompleted(item)) continue
+        const { error: completeError } = await supabase
+          .from('service_requests')
+          .update({ status: 'completed', updated_at: nowForNeeds })
+          .eq('id', item.id)
+          .in('status', ['active', 'in_progress'])
+        if (completeError) {
+          console.error('Failed to mark fulfilled need completed', completeError)
+          continue
+        }
+        item.status = 'completed'
+      }
+
+      const { ongoing, history } = partitionNgoOwnedNeeds(grouped)
+      const filtered = view === 'history' ? history : ongoing
 
       return NextResponse.json({ success: true, data: filtered })
     }
 
     return NextResponse.json({ error: 'Unsupported user type' }, { status: 403 })
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error)
+    const auth = authErrorResponse(error)
+    if (auth) return auth
+    const errorMessage = error instanceof Error ? error.message : JSON.stringify(error)
     console.error('Error fetching assignments:', {
       error: errorMessage,
       stack: error instanceof Error ? error.stack : undefined,
@@ -148,7 +219,7 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const decoded = getTokenClaims(request)
+    const decoded = await getTokenClaims(request)
     if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
@@ -167,6 +238,8 @@ export async function PUT(request: NextRequest) {
     if (action === 'select-lead-ngo') return await selectLeadNgo(ctx)
     return await reviewProjectApplication(ctx)
   } catch (error) {
+    const auth = authErrorResponse(error)
+    if (auth) return auth
     console.error('Error reviewing company project application:', error)
     return NextResponse.json({ error: 'Failed to review project application' }, { status: 500 })
   }

@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { PRODUCT_LOGO_SRC } from "@/lib/access-control"
-import { getEditingMessageContext } from "./helpers"
+import { getEditingMessageContext, stripEditedSuffix } from "./helpers"
 import type { Message } from "./session"
 
 type ChatMessageListProps = {
@@ -55,7 +55,7 @@ export function ChatMessageList({
     const msg = messages[index]
     if (!msg || msg.role !== 'user') return
     setEditingMessageIndex(index)
-    setEditingText(msg.content)
+    setEditingText(stripEditedSuffix(msg.content))
   }
 
   const handleEditCancel = () => {
@@ -68,7 +68,7 @@ export function ChatMessageList({
   }
 
   return (
-    <div ref={containerRef} className="min-h-0 max-h-[11.5rem] flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain pr-2 sm:max-h-[13.5rem] lg:max-h-none">
+    <div ref={containerRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain pr-2">
       <div className="space-y-4">
         {messages.map((message, index) => (
           <div key={`${message.role}-${index}`} className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -158,7 +158,7 @@ export function ChatMessageList({
           <div className="flex justify-start gap-3">
             <AssistantAvatar />
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 shadow-sm">
-              <Loader2 className="h-5 w-5 animate-spin text-slate-500" />
+              <Loader2 className="h-5 w-5 animate-spin text-[#1d4ed8]" />
             </div>
           </div>
         )}

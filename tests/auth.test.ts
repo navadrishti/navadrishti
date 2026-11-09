@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken'
 import { NextRequest } from 'next/server'
 import { describe, expect, it } from 'vitest'
 import { getTokenClaims, normalizeExpiryDate, normalizePincode } from '@/lib/auth'
+import { setLiveUserTypeOverlay } from '@/lib/auth/session'
 
 function requestWithAuth(header?: string) {
   return new NextRequest('http://localhost/api/test', {
@@ -10,30 +11,31 @@ function requestWithAuth(header?: string) {
 }
 
 describe('getTokenClaims', () => {
-  it('returns the claims from a valid bearer token', () => {
+  it('returns the claims from a valid bearer token', async () => {
+    setLiveUserTypeOverlay(async (claims) => claims)
     const token = jwt.sign({ id: 7, user_type: 'ngo' }, 'test-secret')
-    expect(getTokenClaims(requestWithAuth(`Bearer ${token}`))).toMatchObject({ id: 7, user_type: 'ngo' })
+    expect(await getTokenClaims(requestWithAuth(`Bearer ${token}`))).toMatchObject({ id: 7, user_type: 'ngo' })
   })
 
-  it('returns null without a bearer token', () => {
-    expect(getTokenClaims(requestWithAuth())).toBeNull()
-    expect(getTokenClaims(requestWithAuth('Basic abc'))).toBeNull()
+  it('returns null without a bearer token', async () => {
+    expect(await getTokenClaims(requestWithAuth())).toBeNull()
+    expect(await getTokenClaims(requestWithAuth('Basic abc'))).toBeNull()
   })
 
-  it('returns null for tokens signed with another secret or already expired', () => {
+  it('returns null for tokens signed with another secret or already expired', async () => {
     const forged = jwt.sign({ id: 7, user_type: 'ngo' }, 'other-secret')
     const expired = jwt.sign({ id: 7, user_type: 'ngo', exp: Math.floor(Date.now() / 1000) - 60 }, 'test-secret')
-    expect(getTokenClaims(requestWithAuth(`Bearer ${forged}`))).toBeNull()
-    expect(getTokenClaims(requestWithAuth(`Bearer ${expired}`))).toBeNull()
+    expect(await getTokenClaims(requestWithAuth(`Bearer ${forged}`))).toBeNull()
+    expect(await getTokenClaims(requestWithAuth(`Bearer ${expired}`))).toBeNull()
   })
 
   it.each([
     ['platform admin', { id: -1, email: 'admin@system.local', user_type: 'admin' }],
     ['platform CA', { id: 3, ca_id: 'CA-3', kind: 'platform_ca' }],
     ['legacy platform CA', { id: 3, ca_id: 'CA-3', username: 'ca3' }],
-  ])('returns null for a %s token', (_label, payload) => {
+  ])('returns null for a %s token', async (_label, payload) => {
     const token = jwt.sign(payload, 'test-secret')
-    expect(getTokenClaims(requestWithAuth(`Bearer ${token}`))).toBeNull()
+    expect(await getTokenClaims(requestWithAuth(`Bearer ${token}`))).toBeNull()
   })
 })
 

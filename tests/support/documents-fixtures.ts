@@ -1,6 +1,11 @@
 import { expect } from 'vitest'
 import { eqValue, hasCall, type FakeQuery, type FakeResult } from './supabase-fake'
 
+function inValues(query: FakeQuery, column: string): string[] {
+  const call = query.calls.find((entry) => entry[0] === 'in' && entry[1] === column)
+  return Array.isArray(call?.[2]) ? (call[2] as string[]).map(String) : []
+}
+
 type Row = Record<string, unknown>
 
 export function fieldValue(html: string, label: string): string | undefined {
@@ -101,11 +106,20 @@ export const projects: Row[] = [
 export const db = {
   campaigns: [campaign] as Row[],
   projects: projects as Row[],
+  razorpayPayments: [] as Row[],
+  razorpayRefunds: [] as Row[],
 }
 
 export function resetDb() {
   db.campaigns = [campaign]
   db.projects = projects
+  db.razorpayPayments = []
+  db.razorpayRefunds = []
+}
+
+export function setRefundLedger(args: { payments: Row[]; refunds: Row[] }) {
+  db.razorpayPayments = args.payments
+  db.razorpayRefunds = args.refunds
 }
 
 function matches(row: Row, query: FakeQuery, columns: string[]) {
@@ -127,6 +141,16 @@ export function respond(query: FakeQuery): FakeResult | undefined {
   if (query.table === 'csr_projects') {
     const rows = db.projects.filter((row) => matches(row, query, ['id', 'campaign_id', 'company_user_id']))
     return { data: single ? rows[0] ?? null : rows }
+  }
+  if (query.table === 'razorpay_payments') {
+    const refs = inValues(query, 'razorpay_payment_id')
+    const rows = db.razorpayPayments.filter((row) => refs.includes(String(row.razorpay_payment_id)))
+    return { data: rows }
+  }
+  if (query.table === 'razorpay_refunds') {
+    const ids = inValues(query, 'payment_id')
+    const rows = db.razorpayRefunds.filter((row) => ids.includes(String(row.payment_id)))
+    return { data: rows }
   }
   return undefined
 }

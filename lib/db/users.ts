@@ -2,9 +2,21 @@ import 'server-only'
 import type { TablesInsert, TablesUpdate } from '@/lib/database.types'
 import { supabase } from './client'
 
-// The generated Insert type requires ngo_volunteer_capacity, but non-NGO signups never send it.
+// The users table requires ngo_volunteer_capacity on every row. That field is an NGO
+// staffing number; company CAs, companies, and individuals are not NGOs, so inserts
+// that omit it use 0 rather than failing the NOT NULL constraint.
 type NewUser = Omit<TablesInsert<'users'>, 'ngo_volunteer_capacity'> &
   Partial<Pick<TablesInsert<'users'>, 'ngo_volunteer_capacity'>>
+
+function withRequiredUserDefaults(userData: NewUser): TablesInsert<'users'> {
+  const parsed = Number(userData.ngo_volunteer_capacity)
+  const ngo_volunteer_capacity =
+    Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : 0
+  return {
+    ...userData,
+    ngo_volunteer_capacity,
+  }
+}
 
 // Everything except password and two_factor_secret.
 const USER_COLUMNS = 'id, email, user_type, name, phone, location, created_at, updated_at, email_verified, phone_verified, two_factor_enabled, account_status, last_login, login_attempts, locked_until, timezone, preferences, privacy_settings, verification_status, verification_level, verified_at, city, state_province, pincode, country, email_verified_at, phone_verified_at, age, work_experience, industry, website, company_size, ngo_size, profile_image, profile_data, device_id, ngo_volunteer_capacity'
@@ -33,7 +45,7 @@ export const users = {
   async create(userData: NewUser) {
     const { data, error } = await supabase
       .from('users')
-      .insert(userData as TablesInsert<'users'>)
+      .insert(withRequiredUserDefaults(userData))
       .select(USER_COLUMNS)
       .single();
 

@@ -1,8 +1,8 @@
 "use client"
+import { toast } from 'sonner'
 
 import { useEffect, useState } from "react"
 import { useIsClient } from "@/hooks/use-is-client"
-import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
 import { Header } from "@/components/header"
 import { Button } from "@/components/ui/button"
@@ -35,7 +35,6 @@ function readSavedPlan(userId: number | string): BudgetPlan | null {
 
 export default function CSRBudgetPage() {
   const { user, loading: authLoading } = useAuth()
-  const { toast } = useToast()
   const isHydrated = useIsClient()
   const [totalBudget, setTotalBudget] = useState(1000000)
   const [categories, setCategories] = useState<BudgetCategory[]>([
@@ -65,7 +64,7 @@ export default function CSRBudgetPage() {
   const savePlan = () => {
     if (!user?.id) return
     localStorage.setItem(planStorageKey(user.id), JSON.stringify({ totalBudget, categories } satisfies BudgetPlan))
-    toast({ title: 'Budget plan saved', description: 'Your plan is saved on this device.' })
+    toast.success('Budget plan saved', { description: 'Your plan is saved on this device.' })
   }
 
   const addCategory = () => {
@@ -117,7 +116,19 @@ export default function CSRBudgetPage() {
           </Card>
         ) : (
           <>
-        <div className="mb-8">
+        <div className="mb-8 space-y-3">
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            Planning tool only — values stay on this device and are not linked to live CSR project ledgers.
+            For live projects, open{' '}
+            <a href="/companies/dashboard?tab=csr-projects" className="font-medium underline underline-offset-2">
+              CSR Projects
+            </a>{' '}
+            or{' '}
+            <a href="/companies/dashboard?tab=impact-reports" className="font-medium underline underline-offset-2">
+              Impact Reports
+            </a>
+            .
+          </div>
           <h1 className="text-4xl font-bold text-udaan-navy mb-2">CSR Budget Planner</h1>
           <p className="text-gray-600">Allocate and manage your CSR budget effectively</p>
         </div>

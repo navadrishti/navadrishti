@@ -1,5 +1,6 @@
 'use client'
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useState } from 'react'
 import { useIsClient } from '@/hooks/use-is-client'
 import Link from 'next/link'
@@ -11,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { toast } from 'sonner'
 import { useAuth } from '@/lib/auth-context'
 import { PlatformContentSkeleton, Skeleton } from '@/components/ui/skeleton'
 
@@ -143,7 +145,6 @@ export default function SettingsPage() {
   
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [passwordError, setPasswordError] = useState('');
-  const [passwordSuccess, setPasswordSuccess] = useState('');
   
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -165,26 +166,25 @@ export default function SettingsPage() {
     e.preventDefault();
     
     setPasswordError('');
-    setPasswordSuccess('');
-    
+
     // Validation
     if (!currentPassword || !newPassword || !confirmPassword) {
       setPasswordError('Please fill in all password fields');
       return;
     }
-    
+
     if (newPassword.length < 8) {
       setPasswordError('New password must be at least 8 characters long');
       return;
     }
-    
+
     if (newPassword !== confirmPassword) {
       setPasswordError('New passwords do not match');
       return;
     }
-    
+
     setPasswordLoading(true);
-    
+
     try {
       const response = await fetch('/api/auth/change-password', {
         method: 'POST',
@@ -197,16 +197,16 @@ export default function SettingsPage() {
           newPassword
         })
       });
-      
+
       const data = await response.json();
-      
+
       if (response.ok) {
-        setPasswordSuccess('Password changed successfully!');
+        toast.success('Password changed successfully!');
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
       } else {
-        setPasswordError(data.error || 'Failed to change password');
+        setPasswordError(readApiError(data, 'Failed to change password'));
       }
     } catch {
       setPasswordError('An error occurred while changing password');
@@ -239,11 +239,10 @@ export default function SettingsPage() {
         setDeleteDialogOpen(false);
         
         logout();
-        
-        alert('Your account has been successfully deleted. We are sorry to see you go!');
+        toast.success('Your account has been deleted.');
         router.push('/');
       } else {
-        setDeleteError(data.error || 'Failed to delete account');
+        setDeleteError(readApiError(data, 'Failed to delete account'));
       }
     } catch {
       setDeleteError('An error occurred while deleting your account');
@@ -331,13 +330,7 @@ export default function SettingsPage() {
                       <AlertDescription>{passwordError}</AlertDescription>
                     </Alert>
                   )}
-                  
-                  {passwordSuccess && (
-                    <Alert>
-                      <AlertDescription className="text-green-600">{passwordSuccess}</AlertDescription>
-                    </Alert>
-                  )}
-                  
+
                   <div className="space-y-2">
                     <Label>Current Password</Label>
                     <Input 

@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server'
 import { describe, expect, it, vi } from 'vitest'
 import { findAuthUser, getAdminUser } from '@/lib/server-auth'
 
+vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db', () => ({ supabase: {}, db: {} }))
 
 const userToken = jwt.sign({ id: 12, email: 'ngo@example.org', user_type: 'ngo' }, 'test-secret')
@@ -24,10 +25,10 @@ describe('findAuthUser', () => {
     expect(findAuthUser(buildRequest({ header: `Bearer ${userToken}` }))).toMatchObject({ id: 12, user_type: 'ngo' })
   })
 
-  it('ignores the session cookie unless allowCookie is set', () => {
+  it('reads the httpOnly session cookie by default', () => {
     const request = buildRequest({ cookies: { token: userToken } })
-    expect(findAuthUser(request)).toBeNull()
-    expect(findAuthUser(request, { allowCookie: true })).toMatchObject({ id: 12 })
+    expect(findAuthUser(request)).toMatchObject({ id: 12 })
+    expect(findAuthUser(request, { allowCookie: false })).toBeNull()
   })
 
   it('returns null for forged or missing tokens', () => {

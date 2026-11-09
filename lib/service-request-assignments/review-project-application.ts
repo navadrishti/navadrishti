@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
-import { supabase, buildProjectLeadNgoPatch } from '@/lib/db'
-import { assertNgoCsr1CoversProject } from '@/lib/server-auth'
+import { supabase } from '@/lib/db'
 import { parseJsonObject } from '@/lib/utils'
 import {
   enrichProjectRecord,
@@ -33,34 +32,6 @@ export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
     return NextResponse.json({ error: 'projectId, companyId and decision are required' }, { status: 400 })
   }
 
-  if (decision === 'accepted') {
-    const { data: acceptProjectRow } = await supabase
-      .from('service_request_projects')
-      .select('id, ngo_id, description, valid_until, timeline, assigned_company_user_id, assignment_status, volunteers_needed')
-      .eq('id', projectId)
-      .eq('ngo_id', userId)
-      .maybeSingle()
-
-    if (!acceptProjectRow) {
-      return NextResponse.json({ error: 'Project not found under your NGO' }, { status: 404 })
-    }
-
-    const acceptCoverage = await assertNgoCsr1CoversProject(userId, acceptProjectRow)
-    if (!acceptCoverage.ok) {
-      return NextResponse.json({ error: acceptCoverage.error }, { status: 403 })
-    }
-
-    if (
-      Number(acceptProjectRow.assigned_company_user_id || 0) > 0 &&
-      Number(acceptProjectRow.assigned_company_user_id) !== companyId &&
-      String(acceptProjectRow.assignment_status || '').toLowerCase() === 'accepted'
-    ) {
-      return NextResponse.json({
-        error: 'A company application is already accepted for this project. You cannot accept another application.'
-      }, { status: 409 })
-    }
-  }
-
   const { data: projectForReviewRaw, error: projectForReviewError } = await supabase
     .from('service_request_projects')
     .select('*')
@@ -71,6 +42,17 @@ export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
   if (projectForReviewError) throw projectForReviewError
   if (!projectForReviewRaw) {
     return NextResponse.json({ error: 'Project not found under your NGO' }, { status: 404 })
+  }
+
+  if (
+    decision === 'accepted' &&
+    Number(projectForReviewRaw.assigned_company_user_id || 0) > 0 &&
+    Number(projectForReviewRaw.assigned_company_user_id) !== companyId &&
+    String(projectForReviewRaw.assignment_status || '').toLowerCase() === 'accepted'
+  ) {
+    return NextResponse.json({
+      error: 'A company application is already accepted for this project. You cannot accept another application.'
+    }, { status: 409 })
   }
 
   const projectForReview = enrichProjectRecord(projectForReviewRaw)
@@ -228,7 +210,6 @@ export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
 
     if (decision === 'accepted') {
       projectUpdate.status = 'in_progress'
-      Object.assign(projectUpdate, buildProjectLeadNgoPatch(userId))
       projectUpdate.assigned_company_user_id = companyId
       projectUpdate.assignment_status = 'accepted'
     } else if (decision === 'rejected' && !projectAcceptedCompanyId) {
@@ -287,7 +268,6 @@ export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
             ...(parseJsonObject(existingContext.csr_assignment)),
             mode: 'company_project_handoff',
             project_id: projectId,
-            lead_ngo_id: userId,
             assigned_company_id: companyId,
             assignment_status: 'accepted',
             assigned_at: new Date().toISOString(),
@@ -318,7 +298,6 @@ export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
           .from('service_request_projects')
           .update({
             status: 'in_progress',
-            ...buildProjectLeadNgoPatch(userId),
             assigned_company_user_id: companyId,
             assignment_status: 'accepted',
             updated_at: new Date().toISOString()
@@ -347,7 +326,6 @@ export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
             .from('service_request_projects')
             .update({
               status: 'in_progress',
-              ...buildProjectLeadNgoPatch(userId),
               assignment_status: 'accepted',
               updated_at: new Date().toISOString()
             })

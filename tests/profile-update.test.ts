@@ -59,7 +59,7 @@ describe('validateNameAndEmail', () => {
     ['', 'Name is required'],
     ['   ', 'Name is required'],
     ['x'.repeat(101), 'Name must be less than 100 characters'],
-    [42, 'Expected string, received number'],
+    [42, 'Please check this field and try again.'],
   ])('rejects name %j', async (name, error) => {
     await expect(validateNameAndEmail({ name }, 1, null)).resolves.toEqual({ ok: false, status: 400, error })
   })

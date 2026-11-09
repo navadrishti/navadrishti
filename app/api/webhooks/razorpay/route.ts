@@ -16,6 +16,11 @@ import { creditServiceRequestContribution, isServiceRequestContributionOrder } f
 import type { Json } from '@/lib/database.types';
 import { getErrorMessage, parseJsonObject } from '@/lib/utils';
 
+// Razorpay webhooks need Node crypto + durable DB writes; keep off the Edge runtime.
+export const runtime = 'nodejs';
+// Capture + refund settlement can chain several DB writes and optional provider fetches.
+export const maxDuration = 60;
+
 type RazorpayPaymentEntity = {
   id?: string;
   order_id?: string;
@@ -70,14 +75,27 @@ function verifyWebhookSignature(rawBody: string, signature: string, secret: stri
 }
 
 async function markWebhookStatus(eventRowId: string, status: 'processed' | 'failed' | 'ignored', errorMessage?: string | null) {
-  await supabase
-    .from('provider_webhook_events')
-    .update({
-      processing_status: status,
-      processed_at: new Date().toISOString(),
-      error_message: errorMessage || null,
-    })
-    .eq('id', eventRowId);
+  const patch: {
+    processing_status: 'processed' | 'failed' | 'ignored';
+    processed_at: string;
+    error_message: string | null;
+    retry_count?: number;
+  } = {
+    processing_status: status,
+    processed_at: new Date().toISOString(),
+    error_message: errorMessage || null,
+  };
+
+  if (status === 'failed') {
+    const { data: current } = await supabase
+      .from('provider_webhook_events')
+      .select('retry_count')
+      .eq('id', eventRowId)
+      .maybeSingle();
+    patch.retry_count = Number(current?.retry_count || 0) + 1;
+  }
+
+  await supabase.from('provider_webhook_events').update(patch).eq('id', eventRowId);
 }
 
 export async function POST(request: NextRequest) {

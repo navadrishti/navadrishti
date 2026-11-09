@@ -1,3 +1,4 @@
+import { readApiError } from '@/lib/user-facing-error'
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react"
 import { fetchScoredNgoDirectory } from "./api"
 import { type RemoteInviteState, acceptedLeadNgoFromRemote, isPendingLeadInvite, leadInvitesFromRemote } from "./helpers"
@@ -126,9 +127,14 @@ export function useLeadNgoInvites({
 
     const accepted = acceptedLeadNgoFromRemote(data)
     if (accepted) {
-      setConfirmedLeadNgo(accepted)
+      setConfirmedLeadNgo((prev) =>
+        JSON.stringify(prev) === JSON.stringify(accepted) ? prev : accepted
+      )
     }
-    setLeadNgoInvites(leadInvitesFromRemote(data))
+    const nextInvites = leadInvitesFromRemote(data)
+    setLeadNgoInvites((prev) =>
+      JSON.stringify(prev) === JSON.stringify(nextInvites) ? prev : nextInvites
+    )
   }
 
   const syncLeadInviteStatuses = async (overrides?: { draftCampaignId?: string | null; sessionId?: string | null }) => {
@@ -199,7 +205,7 @@ export function useLeadNgoInvites({
           await syncLeadInviteStatuses()
           return
         }
-        throw new Error(payload?.error || 'Failed to update lead NGO invite')
+        throw new Error(readApiError(payload, 'Failed to update lead NGO invite'))
       }
 
       applyRemoteInviteState(payload.data || {})
@@ -214,10 +220,10 @@ export function useLeadNgoInvites({
       appendAssistantMessage(
         alreadyInvited
           ? `Removed lead NGO invite for ${ngo.name}.`
-          : `Invited ${ngo.name} as a lead NGO candidate. They can accept from their dashboard. You can publish once a lead NGO accepts and is assigned.`,
+          : `Invited ${ngo.name} as a lead NGO candidate. They can accept from their dashboard. After acceptance, allot an Evidence Verifier — then Catalyst starts drafting.`,
       )
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to update lead NGO invite'
+      const message = readApiError(error, 'Failed to update lead NGO invite')
       appendAssistantMessage(message)
     }
   }
@@ -241,7 +247,7 @@ export function useLeadNgoInvites({
     })
     const payload = await response.json().catch(() => null)
     if (!response.ok || !payload?.success || !payload.data?.draftCampaignId) {
-      throw new Error(payload?.error || 'Could not save the campaign draft')
+      throw new Error(readApiError(payload, 'Could not save the campaign draft'))
     }
 
     applyRemoteInviteState(payload.data)
@@ -258,11 +264,6 @@ export function useLeadNgoInvites({
     if (!draftCampaignId && leadNgoInvites.length === 0) return
 
     void syncInviteStatuses()
-    const interval = setInterval(() => {
-      void syncInviteStatuses()
-    }, 5000)
-
-    return () => clearInterval(interval)
   }, [mounted, userId, token, draftCampaignId, leadNgoInvites.length, hasLockedLeadNgo])
 
   return {

@@ -21,8 +21,9 @@ interface CapabilityOffersTabProps {
   offerRequests: OfferRequestItem[];
   loadingOfferRequests: boolean;
   updatingOfferRequestId: number | null;
-  onOfferRequestStatusUpdate: (requestId: number, newStatus: 'accepted' | 'rejected') => void;
+  onOfferRequestStatusUpdate: (requestId: number, newStatus: 'accepted' | 'rejected' | 'completed') => void;
   onOfferRequestsUpdated: () => void | Promise<void>;
+  onOffersChanged?: () => void | Promise<void>;
 }
 
 export function CapabilityOffersTab({
@@ -39,6 +40,7 @@ export function CapabilityOffersTab({
   updatingOfferRequestId,
   onOfferRequestStatusUpdate,
   onOfferRequestsUpdated,
+  onOffersChanged,
 }: CapabilityOffersTabProps) {
   const pendingOfferRequests = offerRequests.filter((request) => getOfferRequestBucket(request) === 'pending');
   const inProgressOfferRequests = offerRequests.filter((request) => getOfferRequestBucket(request) === 'in-progress');
@@ -64,6 +66,7 @@ export function CapabilityOffersTab({
           emptyDescription="Create capability offers to support NGO needs and partnerships."
           canCreate={canListCapabilities}
           createBlockedHref={payoutHref}
+          onOffersChanged={onOffersChanged}
         />
       </TabsContent>
 
@@ -131,7 +134,13 @@ export function CapabilityOffersTab({
                 <p className="text-sm">Accepted requests that are now in progress will appear here.</p>
               </div>
             ) : inProgressOfferRequests.map((request) => (
-              <InProgressOfferRequestCard key={request.id} request={request} onUpdated={onOfferRequestsUpdated} />
+              <InProgressOfferRequestCard
+                key={request.id}
+                request={request}
+                onUpdated={onOfferRequestsUpdated}
+                updating={updatingOfferRequestId === request.id}
+                onComplete={(requestId) => onOfferRequestStatusUpdate(requestId, 'completed')}
+              />
             ))}
           </TabsContent>
 
@@ -142,7 +151,7 @@ export function CapabilityOffersTab({
                 <p className="text-sm">Rejected, completed, or cancelled requests will appear here.</p>
               </div>
             ) : historyOfferRequests.map((request) => (
-              <OfferRequestSummaryCard key={request.id} request={request} />
+              <OfferRequestSummaryCard key={request.id} request={request} showOverview />
             ))}
           </TabsContent>
         </Tabs>

@@ -368,6 +368,226 @@ export type Database = {
           },
         ]
       }
+      company_ca_project_assignments: {
+        Row: {
+          id: string
+          company_ca_identity_id: string
+          company_ca_user_id: number
+          company_user_id: number
+          project_id: string
+          status: string
+          assigned_by: number | null
+          assigned_at: string
+          deactivated_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          company_ca_identity_id: string
+          company_ca_user_id: number
+          company_user_id: number
+          project_id: string
+          status?: string
+          assigned_by?: number | null
+          assigned_at?: string
+          deactivated_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          company_ca_identity_id?: string
+          company_ca_user_id?: number
+          company_user_id?: number
+          project_id?: string
+          status?: string
+          assigned_by?: number | null
+          assigned_at?: string
+          deactivated_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_ca_project_assignments_company_ca_identity_id_fkey"
+            columns: ["company_ca_identity_id"]
+            isOneToOne: false
+            referencedRelation: "company_ca_identities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_ca_project_assignments_company_ca_user_id_fkey"
+            columns: ["company_ca_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_ca_project_assignments_company_user_id_fkey"
+            columns: ["company_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_ca_project_assignments_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "csr_projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_ca_project_assignments_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      company_employee_identities: {
+        Row: {
+          id: string
+          user_id: number
+          company_user_id: number
+          status: string
+          permissions: Json
+          must_change_password: boolean
+          created_by: number | null
+          created_at: string
+          updated_at: string
+          last_login_at: string | null
+          deactivated_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: number
+          company_user_id: number
+          status?: string
+          permissions?: Json
+          must_change_password?: boolean
+          created_by?: number | null
+          created_at?: string
+          updated_at?: string
+          last_login_at?: string | null
+          deactivated_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: number
+          company_user_id?: number
+          status?: string
+          permissions?: Json
+          must_change_password?: boolean
+          created_by?: number | null
+          created_at?: string
+          updated_at?: string
+          last_login_at?: string | null
+          deactivated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_employee_identities_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_employee_identities_company_user_id_fkey"
+            columns: ["company_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_employee_identities_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      company_employee_project_assignments: {
+        Row: {
+          id: string
+          company_employee_identity_id: string
+          company_employee_user_id: number
+          company_user_id: number
+          project_id: string
+          status: string
+          assigned_by: number | null
+          assigned_at: string
+          deactivated_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          company_employee_identity_id: string
+          company_employee_user_id: number
+          company_user_id: number
+          project_id: string
+          status?: string
+          assigned_by?: number | null
+          assigned_at?: string
+          deactivated_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          company_employee_identity_id?: string
+          company_employee_user_id?: number
+          company_user_id?: number
+          project_id?: string
+          status?: string
+          assigned_by?: number | null
+          assigned_at?: string
+          deactivated_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_employee_project_assignments_identity_id_fkey"
+            columns: ["company_employee_identity_id"]
+            isOneToOne: false
+            referencedRelation: "company_employee_identities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_employee_project_assignments_employee_user_id_fkey"
+            columns: ["company_employee_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_employee_project_assignments_company_user_id_fkey"
+            columns: ["company_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_employee_project_assignments_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "csr_projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_employee_project_assignments_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       company_verifications: {
         Row: {
           id: number
@@ -1588,6 +1808,148 @@ export type Database = {
           },
         ]
       }
+      ngo_field_officer_identities: {
+        Row: {
+          id: string
+          user_id: number
+          ngo_user_id: number
+          status: string
+          permissions: Json
+          must_change_password: boolean
+          created_by: number | null
+          created_at: string
+          updated_at: string
+          last_login_at: string | null
+          deactivated_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: number
+          ngo_user_id: number
+          status?: string
+          permissions?: Json
+          must_change_password?: boolean
+          created_by?: number | null
+          created_at?: string
+          updated_at?: string
+          last_login_at?: string | null
+          deactivated_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: number
+          ngo_user_id?: number
+          status?: string
+          permissions?: Json
+          must_change_password?: boolean
+          created_by?: number | null
+          created_at?: string
+          updated_at?: string
+          last_login_at?: string | null
+          deactivated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ngo_field_officer_identities_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ngo_field_officer_identities_ngo_user_id_fkey"
+            columns: ["ngo_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ngo_field_officer_identities_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ngo_field_officer_project_assignments: {
+        Row: {
+          id: string
+          field_officer_identity_id: string
+          field_officer_user_id: number
+          ngo_user_id: number
+          project_id: string
+          status: string
+          assigned_by: number | null
+          assigned_at: string
+          deactivated_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          field_officer_identity_id: string
+          field_officer_user_id: number
+          ngo_user_id: number
+          project_id: string
+          status?: string
+          assigned_by?: number | null
+          assigned_at?: string
+          deactivated_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          field_officer_identity_id?: string
+          field_officer_user_id?: number
+          ngo_user_id?: number
+          project_id?: string
+          status?: string
+          assigned_by?: number | null
+          assigned_at?: string
+          deactivated_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ngo_field_officer_project_assign_field_officer_identity_id_fkey"
+            columns: ["field_officer_identity_id"]
+            isOneToOne: false
+            referencedRelation: "ngo_field_officer_identities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ngo_field_officer_project_assignment_field_officer_user_id_fkey"
+            columns: ["field_officer_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ngo_field_officer_project_assignments_ngo_user_id_fkey"
+            columns: ["ngo_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ngo_field_officer_project_assignments_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "csr_projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ngo_field_officer_project_assignments_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ngo_verifications: {
         Row: {
           id: number
@@ -2053,7 +2415,7 @@ export type Database = {
         Row: {
           id: string
           payment_id: string
-          service_request_id: number
+          service_request_id: number | null
           initiated_by_admin_id: number | null
           support_ticket_id: string | null
           razorpay_refund_id: string | null
@@ -2070,7 +2432,7 @@ export type Database = {
         Insert: {
           id?: string
           payment_id: string
-          service_request_id: number
+          service_request_id?: number | null
           initiated_by_admin_id?: number | null
           support_ticket_id?: string | null
           razorpay_refund_id?: string | null
@@ -2087,7 +2449,7 @@ export type Database = {
         Update: {
           id?: string
           payment_id?: string
-          service_request_id?: number
+          service_request_id?: number | null
           initiated_by_admin_id?: number | null
           support_ticket_id?: string | null
           razorpay_refund_id?: string | null
@@ -3653,6 +4015,32 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      publish_campaign_with_project: {
+        Args: {
+          p_campaign_id: string
+          p_company_user_id: number
+          p_actor_user_id: number
+          p_title: string
+          p_description: string | null
+          p_category: string
+          p_location: string
+          p_budget_inr: number | null
+          p_budget_breakdown: Json
+          p_schedule_vii: string | null
+          p_sdg_alignment: number[]
+          p_lead_ngo_user_id: number
+          p_impact_metrics: Json
+          p_milestones: Json
+          p_start_date: string | null
+          p_end_date: string
+          p_region: string | null
+          p_total_budget: number | null
+          p_expected_beneficiaries: number | null
+          p_published_at: string
+          p_campaign_url?: string | null
+        }
+        Returns: Json
+      }
       adjust_service_request_progress: {
         Args: {
           p_request_id: number
@@ -3762,6 +4150,75 @@ export type Database = {
         Returns: {
           service_offer_id: number
           similarity: number
+        }[]
+      }
+      claim_csr_milestone_payment_intent: {
+        Args: {
+          p_milestone_id: string
+          p_project_id: string
+          p_payer_user_id: number
+          p_ngo_user_id: number
+          p_amount_paise: number
+          p_pricing_fingerprint: string
+          p_owner_token: string
+          p_ttl_seconds?: number
+        }
+        Returns: {
+          action: string
+          intent_id: string
+          status: string
+          razorpay_order_id: string | null
+          expires_at: string | null
+        }[]
+      }
+      complete_csr_milestone_payment_intent: {
+        Args: {
+          p_intent_id: string
+          p_owner_token: string
+          p_razorpay_order_id: string
+          p_ready_ttl_seconds?: number
+        }
+        Returns: {
+          ok: boolean
+          intent_id: string
+          status: string | null
+          razorpay_order_id: string | null
+        }[]
+      }
+      fail_csr_milestone_payment_intent: {
+        Args: {
+          p_intent_id: string
+          p_owner_token: string
+          p_error_message?: string | null
+        }
+        Returns: {
+          ok: boolean
+          intent_id: string
+          status: string | null
+        }[]
+      }
+      release_csr_milestone_payment_intent: {
+        Args: {
+          p_milestone_id: string
+          p_razorpay_order_id: string
+        }
+        Returns: {
+          ok: boolean
+          intent_id: string | null
+          status: string | null
+          already_released: boolean
+        }[]
+      }
+      observe_csr_milestone_payment_intent: {
+        Args: {
+          p_milestone_id: string
+        }
+        Returns: {
+          intent_id: string
+          status: string
+          razorpay_order_id: string | null
+          pricing_fingerprint: string
+          expires_at: string | null
         }[]
       }
     }

@@ -1,40 +1,39 @@
 'use client';
+import { toast } from 'sonner'
 
+import { readApiError } from '@/lib/user-facing-error'
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useToast } from '@/hooks/use-toast';
 
 export function useNewTicket(
   isLoggedIn: boolean,
   token: string | null | undefined,
   onSubmitted: (ticketId: string) => Promise<void>
 ) {
-  const router = useRouter();
-  const { toast } = useToast();
-  const [title, setTitle] = useState('');
+  const router = useRouter();  const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [proof, setProof] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async () => {
     if (!isLoggedIn || !token) {
-      toast({ title: 'Login required', description: 'Please log in to submit a support ticket.', variant: 'destructive' });
+      toast.error('Login required', { description: 'Please log in to submit a support ticket.' });
       router.push('/login');
       return;
     }
 
     if (title.trim().length < 3) {
-      toast({ title: 'Title required', description: 'Please enter a clear issue title.', variant: 'destructive' });
+      toast.error('Title required', { description: 'Please enter a clear issue title.' });
       return;
     }
 
     if (description.trim().length < 10) {
-      toast({ title: 'Description required', description: 'Please describe the issue in a little more detail.', variant: 'destructive' });
+      toast.error('Description required', { description: 'Please describe the issue in a little more detail.' });
       return;
     }
 
     if (!proof) {
-      toast({ title: 'Proof required', description: 'Please upload proof for the issue.', variant: 'destructive' });
+      toast.error('Proof required', { description: 'Please upload proof for the issue.' });
       return;
     }
 
@@ -53,18 +52,18 @@ export function useNewTicket(
 
       const payload = await response.json();
       if (!response.ok || !payload?.success) {
-        toast({ title: 'Submission failed', description: payload?.error || 'Could not submit your ticket.', variant: 'destructive' });
+        toast.error('Submission failed', { description: readApiError(payload, 'Could not submit your ticket.') });
         return;
       }
 
       const ticketId = payload.data?.ticketId as string;
-      toast({ title: 'Ticket submitted', description: `Reference ${ticketId}` });
+      toast.success('Ticket submitted', { description: `Reference ${ticketId}` });
       setTitle('');
       setDescription('');
       setProof(null);
       await onSubmitted(ticketId);
     } catch {
-      toast({ title: 'Submission failed', description: 'Could not submit your ticket.', variant: 'destructive' });
+      toast.error('Submission failed', { description: 'Could not submit your ticket.' });
     } finally {
       setSubmitting(false);
     }

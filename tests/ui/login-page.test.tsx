@@ -12,14 +12,24 @@ const auth = vi.hoisted(() => ({
   clearError: vi.fn(),
 }))
 
+const toast = vi.hoisted(() => ({
+  error: vi.fn(),
+  success: vi.fn(),
+}))
+
 vi.mock('@/components/header', () => ({ AuthCardBackRow: () => null }))
 vi.mock('@/lib/auth-context', () => ({ useAuth: () => auth }))
+vi.mock('sonner', () => ({
+  toast: Object.assign(vi.fn(), toast),
+}))
 
 describe('LoginPage', () => {
   beforeEach(() => {
     auth.user = null
     auth.error = null
     auth.login.mockResolvedValue(undefined)
+    toast.error.mockReset()
+    toast.success.mockReset()
   })
 
   it('submits email and password', async () => {
@@ -53,10 +63,11 @@ describe('LoginPage', () => {
     expect(await screen.findByRole('button', { name: 'Sign In' })).toBeEnabled()
   })
 
-  it('shows the auth error', () => {
+  it('does not render a duplicate inline auth error alert', () => {
+    // Login failures surface via Sonner toast from auth-context, not an inline Alert.
     auth.error = 'Invalid email or password'
     render(<LoginPage />)
-    expect(screen.getByRole('alert')).toHaveTextContent('Invalid email or password')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('redirects a signed-in NGO to its dashboard', async () => {

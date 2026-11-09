@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prepareEmailOtpSession } from '@/lib/email';
 import { limitAttempts } from '@/lib/rate-limit';
+import { zodIssuesToUserMessage } from '@/lib/user-facing-error';
 
 const EMAIL_OTP_PER_IP_LIMIT = { limit: 30, windowMs: 60 * 60 * 1000 };
 
@@ -16,7 +17,7 @@ export async function POST(req: NextRequest) {
 
     if (!validationResult.success) {
       return NextResponse.json(
-        { error: validationResult.error.issues[0]?.message || 'Invalid email address' },
+        { error: zodIssuesToUserMessage(validationResult.error.issues) || 'Please enter a valid email address' },
         { status: 400 }
       );
     }

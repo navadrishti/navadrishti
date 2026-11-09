@@ -20,12 +20,18 @@ export function MobileHeader({
   search,
   user,
   onLogout,
+  brandHref = '/',
+  hideSearch = false,
+  hideUtilityNav = false,
 }: {
   navItems: LaunchHeaderNavItem[]
   navLoading: boolean
   search: ProfileSearch
   user: User | null
   onLogout: () => void
+  brandHref?: string
+  hideSearch?: boolean
+  hideUtilityNav?: boolean
 }) {
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false)
   const { searchQuery, isSearching, handleSearchChange, clearSearch } = search
@@ -43,7 +49,7 @@ export function MobileHeader({
             <Skeleton className="h-5 w-20 rounded bg-white/40" />
           </div>
         ) : (
-          <ProductBrand href="/" nameClassName="text-white" poweredClassName="text-white/75" />
+          <ProductBrand href={brandHref} nameClassName="text-white" poweredClassName="text-white/75" />
         )}
         <div className="flex flex-1 items-center justify-end gap-2">
           <Sheet open={mobileSheetOpen} onOpenChange={setMobileSheetOpen}>
@@ -67,7 +73,7 @@ export function MobileHeader({
               <div className="flex flex-col h-full relative z-10">
                 <div className="flex-shrink-0 border-b border-white/20 bg-platform-sidebar px-3 py-2">
                   <div className="flex items-center justify-between h-12">
-                    <ProductBrand href="/" size="sm" nameClassName="text-white" poweredClassName="text-white/75" />
+                    <ProductBrand href={brandHref} size="sm" nameClassName="text-white" poweredClassName="text-white/75" />
 
                     <SheetClose asChild>
                       <Button
@@ -83,21 +89,25 @@ export function MobileHeader({
                 </div>
 
                 <div className="flex-1 overflow-y-auto bg-platform-sidebar p-6">
-                  <div className="mb-6">
-                    <NavbarSearchInput
-                      value={searchQuery}
-                      onChange={handleSearchChange}
-                      onClear={clearSearch}
-                    />
-                  </div>
-
-                  {(searchQuery.length >= 1 || isSearching) && (
-                    <div className="mt-3 border-2 border-gray-200 rounded-lg overflow-hidden">
-                      <div className="bg-white">
-                        <ProfileSearchResults search={search} variant="sheet" />
+                  {!hideSearch ? (
+                    <>
+                      <div className="mb-6">
+                        <NavbarSearchInput
+                          value={searchQuery}
+                          onChange={handleSearchChange}
+                          onClear={clearSearch}
+                        />
                       </div>
-                    </div>
-                  )}
+
+                      {(searchQuery.length >= 1 || isSearching) && (
+                        <div className="mt-3 border-2 border-gray-200 rounded-lg overflow-hidden">
+                          <div className="bg-white">
+                            <ProfileSearchResults search={search} variant="sheet" />
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : null}
                   <PrimaryNavLinks
                     items={navItems}
                     isLoading={navLoading}
@@ -107,12 +117,14 @@ export function MobileHeader({
                     linkClassName="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors"
                   />
 
-                  <SidebarUtilityNav
-                    className="mb-8"
-                    isLoading={navLoading}
-                    buttonClassName="block w-full rounded-lg border border-white bg-transparent px-3 py-2.5 text-left text-base font-medium leading-snug text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-100"
-                    linkClassName="flex items-center gap-3 px-3 py-2.5 text-base font-medium text-[#F5F7F8] hover:bg-white/5 hover:text-white rounded-lg transition-colors"
-                  />
+                  {!hideUtilityNav ? (
+                    <SidebarUtilityNav
+                      className="mb-8"
+                      isLoading={navLoading}
+                      buttonClassName="block w-full rounded-lg border border-white bg-transparent px-3 py-2.5 text-left text-base font-medium leading-snug text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-100"
+                      linkClassName="flex items-center gap-3 px-3 py-2.5 text-base font-medium text-[#F5F7F8] hover:bg-white/5 hover:text-white rounded-lg transition-colors"
+                    />
+                  ) : null}
 
                   <SheetAccount user={user} isLoading={navLoading} onLogout={onLogout} />
                 </div>

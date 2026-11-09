@@ -12,6 +12,7 @@ import {
   validateNeedAnswer,
   validateProjectAnswer,
 } from "./intake"
+import { firstUnfilledQuestionIndex, resolveNgoPromptBefore } from "./conversation"
 import { buildNeedDraft, buildProjectDraft, describeNeedDraft, describeProjectDraft } from "./drafts"
 import type { IntakeState } from "./use-intake-state"
 import type { OfferSelection } from "./use-offer-selection"
@@ -33,15 +34,14 @@ export function useIntakeConversation({ intake, offers, user, lockMobileChatScro
     setMessages,
     isTyping,
     setIsTyping,
+    messages,
     projectData,
     setProjectData,
     needsData,
     setNeedsData,
     setNeedCount,
-    projectStep,
     setProjectStep,
     setActiveNeedIndex,
-    activeNeedQuestionIndex,
     setActiveNeedQuestionIndex,
     conversationStage,
     setConversationStage,
@@ -100,7 +100,15 @@ export function useIntakeConversation({ intake, offers, user, lockMobileChatScro
   }
 
   const answerProjectQuestion = (userText: string) => {
-    const question = projectQuestions[Math.min(projectStep, projectQuestions.length - 1)]
+    const promptTarget = resolveNgoPromptBefore(messages, messages.length, needsData)
+    const questionIndex = promptTarget?.type === 'project'
+      ? promptTarget.index
+      : firstUnfilledQuestionIndex(projectQuestions, projectData)
+    if (questionIndex >= projectQuestions.length) {
+      generateDraftForProject(projectData)
+      return
+    }
+    const question = projectQuestions[questionIndex]
     const validationError = validateProjectAnswer(question.key, userText)
     if (validationError) {
       appendAssistant(validationError)
@@ -112,9 +120,9 @@ export function useIntakeConversation({ intake, offers, user, lockMobileChatScro
     }
     setProjectData(nextProjectData)
 
-    if (projectStep < projectQuestions.length - 1) {
-      const nextStep = projectStep + 1
-      setProjectStep(nextStep)
+    const nextStep = firstUnfilledQuestionIndex(projectQuestions, nextProjectData, questionIndex + 1)
+    setProjectStep(nextStep)
+    if (nextStep < projectQuestions.length) {
       appendAssistant(projectQuestions[nextStep].question)
     } else {
       generateDraftForProject(nextProjectData)
@@ -125,7 +133,11 @@ export function useIntakeConversation({ intake, offers, user, lockMobileChatScro
   const answerNeedQuestion = (userText: string) => {
     const currentNeed = needsData[0] || createEmptyNeed()
     const questionSet = getNeedQuestions(currentNeed.requestType)
-    const question = questionSet[Math.min(activeNeedQuestionIndex, questionSet.length - 1)]
+    const promptTarget = resolveNgoPromptBefore(messages, messages.length, needsData)
+    const questionIndex = promptTarget?.type === 'need'
+      ? promptTarget.questionIndex
+      : firstUnfilledQuestionIndex(questionSet, currentNeed)
+    const question = questionSet[Math.min(questionIndex, questionSet.length - 1)]
 
     const validationError = validateNeedAnswer(question.key, userText)
     if (validationError) {
@@ -146,8 +158,8 @@ export function useIntakeConversation({ intake, offers, user, lockMobileChatScro
     setNeedsData([updatedNeed])
 
     const updatedQuestionSet = getNeedQuestions(updatedNeed.requestType)
-    if (activeNeedQuestionIndex < updatedQuestionSet.length - 1) {
-      const nextQuestionIndex = activeNeedQuestionIndex + 1
+    const nextQuestionIndex = firstUnfilledQuestionIndex(updatedQuestionSet, updatedNeed, questionIndex + 1)
+    if (nextQuestionIndex < updatedQuestionSet.length) {
       setActiveNeedQuestionIndex(nextQuestionIndex)
       appendAssistant(updatedQuestionSet[nextQuestionIndex].question)
       return
@@ -166,9 +178,10 @@ export function useIntakeConversation({ intake, offers, user, lockMobileChatScro
     setIsTyping(true)
 
     setTimeout(() => {
-      if (conversationStage === 'entry') answerEntry(userText)
-      else if (conversationStage === 'project') answerProjectQuestion(userText)
-      else if (conversationStage === 'need') answerNeedQuestion(userText)
+      const promptTarget = resolveNgoPromptBefore(messages, messages.length, needsData)
+      if (promptTarget?.type === 'entry' || conversationStage === 'entry') answerEntry(userText)
+      else if (promptTarget?.type === 'project' || conversationStage === 'project') answerProjectQuestion(userText)
+      else if (promptTarget?.type === 'need' || conversationStage === 'need') answerNeedQuestion(userText)
       setIsTyping(false)
     }, ASSISTANT_REPLY_DELAY_MS)
   }

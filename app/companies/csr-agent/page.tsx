@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, Suspense } from "react"
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, Suspense } from "react"
 import { useIsClient } from "@/hooks/use-is-client"
 import { useAuth } from "@/lib/auth-context"
+import { isCaVerifiedAccount } from "@/lib/auth"
 import { Loader2 } from "lucide-react"
 import { useSearchParams } from "next/navigation"
 import {
@@ -12,6 +13,7 @@ import {
   restoreMobileChatScrollPosition,
   scrollAgentMessagesContainer,
 } from "@/lib/ai-agent-sessions"
+import { AgentIntroCard, AgentUsageNote } from "@/components/agent-guidance"
 import type { CSRAgentSession } from "./session"
 import { getUserInitials, isPendingLeadInvite, sortSessionsByRecency, upsertSession } from "./helpers"
 import { useSessionCloudSync } from "./use-session-cloud-sync"
@@ -28,6 +30,7 @@ import { useSessionActions } from "./use-session-actions"
 import { useCampaignDrafts } from "./use-campaign-drafts"
 import { usePreviewEdits } from "./use-preview-edits"
 import { useIntakeHandlers } from "./use-intake-handlers"
+import { AgentWorkspace } from "@/components/agent-workspace"
 import { AgentNoticeCard, AgentShell, ProgressHeader } from "./agent-shell"
 import { SessionSidebar } from "./session-sidebar"
 import { ChatPanel } from "./chat-panel"
@@ -64,6 +67,7 @@ function CSRAgentPage() {
   const mounted = useIsClient()
   const [sessions, setSessions] = useState<CSRAgentSession[]>([])
   const [activeSessionId, setActiveSessionId] = useState("")
+  const [evidenceVerifierIdentityId, setEvidenceVerifierIdentityId] = useState("")
   const campaign = useCampaignState()
   const {
     messages,
@@ -130,11 +134,11 @@ function CSRAgentPage() {
     canUseCampaignActions,
     activeQuestion,
   } = useQuestionnaireProgress({
+      messages,
       projectData,
       milestoneCount,
       milestoneInputs,
-    conversationStage,
-      projectStep,
+      conversationStage,
       milestoneQuestionIndex,
     generatedCampaignCount: generatedCampaigns.length,
       selectedProjectSuggestionId,
@@ -145,9 +149,9 @@ function CSRAgentPage() {
   const userInitials = getUserInitials(user?.name)
   const orderedSessions = useMemo(() => sortSessionsByRecency(sessions), [sessions])
 
-  const appendAssistantMessage = (content: string) => {
+  const appendAssistantMessage = useCallback((content: string) => {
     setMessages((current) => [...current, { role: "assistant", content }])
-  }
+  }, [setMessages])
 
   const {
     ngoDirectory,
@@ -189,6 +193,7 @@ function CSRAgentPage() {
     isQuestionnaireComplete,
     hasLeadInvites: leadNgoInvites.some(isPendingLeadInvite),
     hasAcceptedLead: Boolean(acceptedLeadNgo),
+    hasEvidenceVerifier: Boolean(String(evidenceVerifierIdentityId || "").trim()),
     isGeneratingCampaigns,
     conversationStage,
     activeQuestion,
@@ -272,6 +277,7 @@ function CSRAgentPage() {
     canUseCampaignActions,
     acceptedLeadNgo,
     leadNgoInvites,
+    evidenceVerifierIdentityId,
     serviceSuggestions,
     loadRecommendations,
     projectSuggestions,
@@ -280,6 +286,33 @@ function CSRAgentPage() {
     normalizeSessionFromState,
     appendAssistantMessage,
   })
+
+  useEffect(() => {
+    if (!hasLockedLeadNgo) {
+      setEvidenceVerifierIdentityId('')
+    }
+  }, [hasLockedLeadNgo])
+
+  const leadAcceptedPromptRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (!acceptedLeadNgo) {
+      leadAcceptedPromptRef.current = null
+      return
+    }
+    if (generatedCampaigns.length > 0 || isGeneratingCampaigns) return
+    if (String(evidenceVerifierIdentityId || "").trim()) return
+    if (leadAcceptedPromptRef.current === acceptedLeadNgo.ngoId) return
+    leadAcceptedPromptRef.current = acceptedLeadNgo.ngoId
+    appendAssistantMessage(
+      `${acceptedLeadNgo.name} accepted as lead NGO. Allot an Evidence Verifier in the Publish panel — Catalyst starts drafting only after that assignment.`
+    )
+  }, [
+    acceptedLeadNgo,
+    evidenceVerifierIdentityId,
+    generatedCampaigns.length,
+    isGeneratingCampaigns,
+    appendAssistantMessage,
+  ])
 
   const { handleSaveProjectPreviewEdit, handleSaveMilestonePreviewEdit } = usePreviewEdits({
     campaign,
@@ -299,6 +332,7 @@ function CSRAgentPage() {
     closeMilestoneSuggestions,
   } = useIntakeHandlers({
     campaign,
+    userId: user?.id,
     setServiceSuggestions,
     acceptedLeadNgo,
     finalizeConversation,
@@ -306,10 +340,6 @@ function CSRAgentPage() {
     persistSnapshot: persistCurrentSessionSnapshot,
     lockMobileChatScroll,
     scrollToBottom,
-    canPersist,
-    sessions,
-    persistSessions,
-    normalizeSessionFromState,
   })
 
   useEffect(() => {
@@ -324,6 +354,8 @@ function CSRAgentPage() {
     mounted,
     userId: user?.id,
     token,
+    sessions,
+    activeSessionId,
     setSessions,
     setActiveSessionId,
     applySession,
@@ -350,13 +382,25 @@ function CSRAgentPage() {
     if (conversationStage === "generating") return
     if (generationError) return
     if (!acceptedLeadNgo) return
+    if (!String(evidenceVerifierIdentityId || "").trim()) return
     if (isHydratingFromServerRef.current || isApplyingSessionRef.current) return
     void finalizeConversation()
   })
 
   useEffect(() => {
     finalizeWhenReady()
-  }, [mounted, user?.id, isQuestionnaireComplete, generatedCampaigns.length, isGeneratingCampaigns, isTyping, conversationStage, generationError, acceptedLeadNgo?.ngoId])
+  }, [
+    mounted,
+    user?.id,
+    isQuestionnaireComplete,
+    generatedCampaigns.length,
+    isGeneratingCampaigns,
+    isTyping,
+    conversationStage,
+    generationError,
+    acceptedLeadNgo?.ngoId,
+    evidenceVerifierIdentityId,
+  ])
 
   useEffect(() => {
     if (!isQuestionnaireComplete) return
@@ -383,61 +427,38 @@ function CSRAgentPage() {
 
   return (
     <AgentShell>
-      <ProgressHeader
-        title={promptTitle}
-        progressLabel={generatedCampaigns.length > 0 ? "100%" : `${Math.min(answeredQuestions, totalQuestions)} / ${totalQuestions || 1}`}
-        progressPercent={progressPercent}
-        cloudSaveText={cloudSaveText}
-      />
-
-          <div className="grid flex-1 gap-4 min-h-0 lg:grid-cols-[280px_1.1fr_0.9fr] lg:items-stretch lg:gap-6">
-        <SessionSidebar
-          sessions={orderedSessions}
-          activeSessionId={activeSessionId}
-          onNewSession={createNewSession}
-          onSelectSession={(session) => applySession(session)}
-          onDeleteSession={deleteSession}
-        />
-
-        <ChatPanel
-          statusLabel={generatedCampaigns.length > 0 ? "Draft complete" : activeQuestionLabel}
-          badgeLabel={conversationStage === "complete" ? "Draft ready" : activeQuestionLabel}
-        >
-          <ChatMessageList
-            containerRef={messagesContainerRef}
-            messages={messages}
-            isTyping={isTyping}
-            milestoneCount={milestoneCount}
-            userAvatar={userAvatar}
-            userName={user?.name}
-            userInitials={userInitials}
-            onEditSave={handleEditSave}
+      <AgentWorkspace
+        toolbarLabel={promptTitle}
+        renderProgress={() => (
+          <div className="space-y-2">
+            <AgentIntroCard agent="catalyst" compact />
+            <AgentUsageNote agent="catalyst" />
+            <ProgressHeader
+              title={promptTitle}
+              progressLabel={generatedCampaigns.length > 0 ? "100%" : `${Math.min(answeredQuestions, totalQuestions)} / ${totalQuestions || 1}`}
+              progressPercent={progressPercent}
+              cloudSaveText={cloudSaveText}
+              className="mb-0"
+            />
+          </div>
+        )}
+        renderSessions={({ close }) => (
+          <SessionSidebar
+            className="h-full min-h-0"
+            sessions={orderedSessions}
+            activeSessionId={activeSessionId}
+            onNewSession={() => {
+              createNewSession()
+              close()
+            }}
+            onSelectSession={(session) => {
+              applySession(session)
+              close()
+            }}
+            onDeleteSession={deleteSession}
           />
-
-          <ChatComposer
-            conversationStage={conversationStage}
-            fixedChoiceOptions={fixedChoiceOptions}
-            milestoneMode={campaign.milestoneMode}
-            showMilestoneSuggestions={campaign.showMilestoneSuggestions}
-            suggestedMilestoneSets={campaign.suggestedMilestoneSets}
-            input={input}
-            placeholder={
-              isQuestionnaireComplete
-                ? "All campaign details are captured. Use the preview panel to publish."
-                : (activeQuestion?.question || "Type your response...")
-            }
-            disabled={isTyping || (isQuestionnaireComplete && !generationError)}
-            onInputChange={setInput}
-            onInputFocus={lockMobileChatScroll}
-            onSend={handleSend}
-            onQuickPick={handleQuickPick}
-            onChooseMilestoneMode={handleChooseEnterOrSuggest}
-            onRefreshSuggestions={refreshMilestoneSuggestions}
-            onCloseSuggestions={closeMilestoneSuggestions}
-            onSelectSuggestedSet={handleSelectSuggestedSet}
-          />
-        </ChatPanel>
-
+        )}
+        renderPreview={() => (
         <PreviewPanel>
           <CampaignDetailsCard
             projectData={projectData}
@@ -476,6 +497,7 @@ function CSRAgentPage() {
             rentalCampaignId={String(draftCampaignId || editingCampaignId || '')}
             onPayAndReserve={handlePayAndReserveOffer}
             onRentalUpdated={refreshPaidRental}
+            payerVerified={isCaVerifiedAccount(user?.verification_status)}
           />
 
           {!hasLockedLeadNgo ? (
@@ -505,11 +527,53 @@ function CSRAgentPage() {
             actionsEnabled={canUseCampaignActions}
             publishing={publishing}
             publishedCampaignId={campaign.publishedCampaignId}
-            onPublish={handlePublishDraft}
+            evidenceVerifierIdentityId={evidenceVerifierIdentityId}
+            onEvidenceVerifierChange={setEvidenceVerifierIdentityId}
+            onPublish={() => void handlePublishDraft()}
             onRetry={() => finalizeConversation()}
           />
         </PreviewPanel>
-                            </div>
+        )}
+      >
+        <ChatPanel
+          statusLabel={generatedCampaigns.length > 0 ? "Draft complete" : activeQuestionLabel}
+          badgeLabel={conversationStage === "complete" ? "Draft ready" : activeQuestionLabel}
+        >
+          <ChatMessageList
+            containerRef={messagesContainerRef}
+            messages={messages}
+            isTyping={isTyping}
+            milestoneCount={milestoneCount}
+            userAvatar={userAvatar}
+            userName={user?.name}
+            userInitials={userInitials}
+            onEditSave={handleEditSave}
+          />
+
+          <ChatComposer
+            conversationStage={conversationStage}
+            fixedChoiceOptions={fixedChoiceOptions}
+            milestoneMode={campaign.milestoneMode}
+            showMilestoneSuggestions={campaign.showMilestoneSuggestions}
+            suggestedMilestoneSets={campaign.suggestedMilestoneSets}
+            input={input}
+            placeholder={
+              isQuestionnaireComplete
+                ? "All campaign details are captured. Use the preview panel to publish."
+                : (activeQuestion?.question || "Type your response...")
+            }
+            disabled={isTyping || (isQuestionnaireComplete && !generationError)}
+            onInputChange={setInput}
+            onInputFocus={lockMobileChatScroll}
+            onSend={handleSend}
+            onQuickPick={handleQuickPick}
+            onChooseMilestoneMode={handleChooseEnterOrSuggest}
+            onRefreshSuggestions={refreshMilestoneSuggestions}
+            onCloseSuggestions={closeMilestoneSuggestions}
+            onSelectSuggestedSet={handleSelectSuggestedSet}
+          />
+        </ChatPanel>
+      </AgentWorkspace>
     </AgentShell>
   )
 }

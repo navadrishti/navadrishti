@@ -1,36 +1,18 @@
-# Navadrishti docs
+# Navadrishti documentation
 
-| File | Contents |
-|------|----------|
-| [TECHNICAL_README.md](./TECHNICAL_README.md) | Roles, workflows, API and page inventory, known gaps |
-| [ARCHITECTURE.md](./ARCHITECTURE.md) | How the app is put together |
-| [API_REFERENCE.md](./API_REFERENCE.md) | Request/response examples for the main endpoints |
-| [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md) | Tables and naming conventions |
-| [VERIFICATION_FLOW.md](./VERIFICATION_FLOW.md) | User verification and the CA console |
-| [ENVIRONMENT.md](./ENVIRONMENT.md) | Environment variables |
-| [DEPLOYMENT.md](./DEPLOYMENT.md) | Building and deploying |
+The repository root [README](../README.md) is the quick start. These are the
+five primary guides:
 
-## Running locally
+1. [Project overview](./PROJECT_OVERVIEW.md) — product scope, roles and status.
+2. [Technical architecture](./TECHNICAL_ARCHITECTURE.md) — stack, boundaries,
+   authentication and data flow.
+3. [Database documentation](./DATABASE_DOCUMENTATION.md) — schema domains,
+   SQL sources and environment safeguards.
+4. [API and integrations](./API_AND_INTEGRATIONS.md) — route families, auth
+   boundaries and provider requirements.
+5. [Development and deployment](./DEVELOPMENT_AND_DEPLOYMENT.md) — setup,
+   commands, configuration and operational practices.
 
-```bash
-cp .env.example .env.local
-pnpm install
-pnpm dev
-```
-
-The app runs on `http://localhost:3000`; the admin console is at `/admin`.
-
-## User types
-
-- **NGOs** publish needs and projects, apply to capability offers, and act as Lead NGO on CSR work.
-- **Individuals** volunteer for needs and publish capability offers.
-- **Companies** run CSR campaigns, fund projects, and manage evidence reviewers.
-- **Consoles**: platform admin, Navadrishti CA, company evidence review.
-
-## AI suite
-
-- **Atlas**: NGO project and need drafting (`/ngos/ai-agent`)
-- **Catalyst**: CSR campaign drafting (`/companies/csr-agent`)
-- **Pulse**: offer and NGO matching used inside both flows
-
-Labels live in `lib/ai-agent-sessions.ts`.
+Evidence Verifier is the current product name for the company-associated
+evidence reviewer previously referred to as Company CA. Platform CA remains a
+separate platform KYC role. See the [project overview](./PROJECT_OVERVIEW.md).

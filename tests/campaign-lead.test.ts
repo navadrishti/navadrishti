@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   filterVolunteerApplicationsExcludingLeadNgo,
+  filterVolunteerAssignmentsExcludingLeadNgo,
   getCampaignLeadNgoId,
   isCampaignLeadNgo,
   isCampaignVolunteerApplicant,
@@ -36,6 +37,14 @@ describe('campaign lead NGO', () => {
   it('drops the lead from the volunteer list', () => {
     const userIds = filterVolunteerApplicationsExcludingLeadNgo(campaign).map((entry) => entry.user_id)
     expect(userIds).toEqual([30, 31])
+  })
+
+  it('drops the lead from volunteer assignments', () => {
+    const rows = filterVolunteerAssignmentsExcludingLeadNgo(campaign, [
+      { id: 'a1', assignee_user_id: 12 },
+      { id: 'a2', assignee_user_id: 30 },
+    ])
+    expect(rows.map((row) => row.id)).toEqual(['a2'])
   })
 })
 

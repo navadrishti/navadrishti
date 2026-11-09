@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { jsonRequest, tokenFor } from './support/requests'
-import { eqValue, hasCall, supabaseFake, type FakeQuery } from './support/supabase-fake'
+import { businessQueries, eqValue, hasCall, supabaseFake, type FakeQuery } from './support/supabase-fake'
 import { GET, POST } from '@/app/api/csr-agent/lead-ngo-invites/route'
 import { assertCsr1CoversRequiredThrough } from '@/lib/auth'
+
+vi.mock('server-only', () => ({}))
 
 vi.mock('@/lib/db', async () => {
   const { supabaseFake: fake } = await import('./support/supabase-fake')
@@ -42,6 +44,11 @@ function draft(overrides: Partial<Draft> = {}): Draft {
 }
 
 function respond(query: FakeQuery) {
+  if (query.table === 'users' && query.columns === 'account_status, locked_until, profile_data, user_type, verification_status') {
+    const id = Number(eqValue(query, 'id'))
+    return { data: { id, user_type: id === 10 ? 'company' : 'ngo', account_status: 'active', verification_status: 'verified', profile_data: {} } }
+  }
+  if (['company_ca_identities', 'ngo_field_officer_identities', 'company_employee_identities'].includes(query.table) && eqValue(query, 'user_id') !== undefined) return { data: null }
   if (query.table === 'users') {
     if (hasCall(query, 'in')) return { data: [] }
     return { data: { user_type: ngoUserType, verification_status: 'verified', profile_data: {} } }
@@ -82,22 +89,22 @@ describe('POST /api/csr-agent/lead-ngo-invites', () => {
   it('returns 401 without a token and never touches the db', async () => {
     const response = await post({ action: 'invite', ngoId: 5 }, null)
     expect(response.status).toBe(401)
-    expect(supabaseFake.queries).toEqual([])
+    expect(businessQueries(supabaseFake.queries)).toEqual([])
   })
 
   it('returns 401 for a forged token', async () => {
     expect((await post({ action: 'invite', ngoId: 5 }, 'not-a-jwt')).status).toBe(401)
-    expect(supabaseFake.queries).toEqual([])
+    expect(businessQueries(supabaseFake.queries)).toEqual([])
   })
 
   it.each(['ngo', 'individual'])('rejects %s users with 403', async (userType) => {
     const response = await post({ action: 'invite', ngoId: 5 }, tokenFor(5, userType))
     expect(response.status).toBe(403)
-    expect(supabaseFake.queries).toEqual([])
+    expect(businessQueries(supabaseFake.queries)).toEqual([])
   })
 
   it.each([
-    [{ sessionId: '' }, 'sessionId is required'],
+    [{ sessionId: '' }, 'sessionId or draftCampaignId is required'],
     [{ action: 'accept' }, 'Unsupported action'],
     [{ action: 'invite' }, 'Valid ngoId is required'],
     [{ action: 'revoke', ngoId: -1 }, 'Valid ngoId is required'],
@@ -124,6 +131,27 @@ describe('POST /api/csr-agent/lead-ngo-invites', () => {
     const response = await post({ action: 'invite', ngoId: 5 })
     expect(response.status).toBe(400)
     expect(await response.json()).toEqual({ error: 'CSR-1 expired' })
+  })
+
+  it('invites against an existing draft without a session id', async () => {
+    drafts = [draft({ impact_metrics: { lead_ngo_invites: [] } })]
+    const response = await POST(
+      jsonRequest(INVITES_URL, {
+        token: company,
+        body: {
+          draftCampaignId: 'c1',
+          action: 'invite',
+          ngoId: 5,
+          ngoName: 'Seva',
+          ngoEmail: 'seva@example.org',
+          projectData: { endDate: '2026-12-31' },
+        },
+      })
+    )
+    expect(response.status).toBe(200)
+    const [update] = supabaseFake.find('campaigns', 'update')
+    expect(invitesOf(update.payload)).toEqual([[5, 'invited']])
+    expect((update.payload as { impact_metrics: Record<string, unknown> }).impact_metrics.csr_agent_session_id).toBeUndefined()
   })
 
   it('creates a draft campaign on first invite', async () => {
@@ -288,12 +316,12 @@ describe('GET /api/csr-agent/lead-ngo-invites', () => {
   it('rejects non-company users with 403', async () => {
     const response = await GET(jsonRequest(`${INVITES_URL}?sessionId=s1`, { token: tokenFor(5, 'ngo') }))
     expect(response.status).toBe(403)
-    expect(supabaseFake.queries).toEqual([])
+    expect(businessQueries(supabaseFake.queries)).toEqual([])
   })
 
   it('returns 401 without a token', async () => {
     const response = await GET(jsonRequest(`${INVITES_URL}?sessionId=s1`))
     expect(response.status).toBe(401)
-    expect(supabaseFake.queries).toEqual([])
+    expect(businessQueries(supabaseFake.queries)).toEqual([])
   })
 })

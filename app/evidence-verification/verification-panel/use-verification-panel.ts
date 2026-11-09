@@ -85,7 +85,7 @@ export function useVerificationPanel() {
         return;
       }
 
-      setContext(verifyPayload.company_ca);
+      setContext(verifyPayload.evidence_verifier || verifyPayload.company_ca);
 
       const failed: string[] = [];
       const projectsResponse = await fetch('/api/csr-projects', {

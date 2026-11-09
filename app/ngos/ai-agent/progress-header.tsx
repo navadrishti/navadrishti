@@ -7,15 +7,16 @@ type ProgressHeaderProps = {
   promptCount: number
   progressPercent: number
   cloudSaveText: string
+  className?: string
 }
 
-export function ProgressHeader({ title, isDraftComplete, promptNumber, promptCount, progressPercent, cloudSaveText }: ProgressHeaderProps) {
+export function ProgressHeader({ title, isDraftComplete, promptNumber, promptCount, progressPercent, cloudSaveText, className }: ProgressHeaderProps) {
   return (
-    <section className="mb-3 overflow-hidden rounded-2xl border border-slate-200/70 bg-white/92 shadow-[0_12px_30px_rgba(15,23,42,0.08)] backdrop-blur md:mb-4">
-      <div className="flex items-center gap-3 px-4 py-3 sm:px-5">
+    <section className={`overflow-hidden rounded-2xl border border-slate-200/70 bg-white/92 shadow-[0_12px_30px_rgba(15,23,42,0.08)] backdrop-blur ${className ?? "mb-3 md:mb-4"}`}>
+      <div className="flex items-center gap-3 px-3.5 py-2.5">
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-3">
-            <p className="truncate text-sm font-semibold text-slate-950 sm:text-base">
+            <p className="truncate text-sm font-semibold text-slate-950">
               {isDraftComplete ? 'Draft complete' : title}
             </p>
             <span className="shrink-0 text-xs font-medium text-slate-500">
@@ -26,9 +27,17 @@ export function ProgressHeader({ title, isDraftComplete, promptNumber, promptCou
             <div
               className="h-full rounded-full bg-gradient-to-r from-[#f97316] via-[#fb923c] to-[#60a5fa] transition-all duration-500"
               style={{ width: `${progressPercent}%` }}
+              role="progressbar"
+              aria-valuenow={progressPercent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label="Questionnaire progress"
             />
           </div>
-          {cloudSaveText ? <p className="mt-2 text-[11px] text-slate-500">{cloudSaveText}</p> : null}
+          <p className="mt-2 text-[11px] text-slate-500">
+            Intake progress only — not generative-model processing.
+            {cloudSaveText ? ` · ${cloudSaveText}` : ''}
+          </p>
         </div>
       </div>
     </section>

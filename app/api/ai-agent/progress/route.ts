@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabase, pruneRemovedAgentSessions } from "@/lib/db"
 import { createHash } from 'crypto'
-import { findAuthUser } from "@/lib/server-auth"
+import { authErrorResponse, getAuthUserFromRequest } from "@/lib/server-auth"
 import {
   buildProjectContextWithPublished,
   readPublishedEntity,
@@ -255,8 +255,10 @@ async function buildLatestPayloadFromTables(userId: number, agent: AgentKind) {
     const projectContext =
       r.project_context && typeof r.project_context === "object" ? r.project_context : {}
     const published = readPublishedEntity(projectContext)
+    const legacyId = typeof uiState.legacyId === "string" && uiState.legacyId.trim() ? uiState.legacyId : undefined
     const base = {
       id: r.id,
+      legacyId,
       title: r.title,
       status: r.status,
       project_context: r.project_context,
@@ -314,20 +316,24 @@ async function buildLatestPayloadFromTables(userId: number, agent: AgentKind) {
   const profileData = await readProfileData(userId)
   const key = keyByAgent[agent]
   const legacy = profileData[key] as PersistedPayload | undefined
+  const requestedActiveId = typeof legacy?.activeSessionId === "string" ? legacy.activeSessionId : null
+  const resolvedActiveId = requestedActiveId
+    ? sessions.find((session) => session.id === requestedActiveId || session.legacyId === requestedActiveId)?.id
+      ?? sessions.find((session) => session.id === resolveSessionRowId(agent, userId, requestedActiveId))?.id
+      ?? sessions[0]?.id
+      ?? null
+    : sessions[0]?.id ?? null
 
   return {
     sessions,
-    activeSessionId: legacy?.activeSessionId ?? null,
+    activeSessionId: resolvedActiveId,
     updatedAt: updatedAt || new Date().toISOString(),
   }
 }
 
 export async function GET(request: NextRequest) {
   try {
-    const userId = findAuthUser(request, { allowCookie: true })?.id
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const userId = (await getAuthUserFromRequest(request)).id
 
     const { searchParams } = new URL(request.url)
     const agent = parseAgent(searchParams.get("agent"))
@@ -348,7 +354,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, data: payload })
     }
 
-    // Fallback to legacy profile_data
     const profileData = await readProfileData(userId)
     const key = keyByAgent[agent]
     const payload = profileData[key]
@@ -359,6 +364,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: payload })
   } catch (error) {
+    const auth = authErrorResponse(error)
+    if (auth) return auth
     console.error("Failed to read AI agent progress", error)
     return NextResponse.json({ error: "Failed to read AI agent progress" }, { status: 500 })
   }
@@ -366,10 +373,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const userId = findAuthUser(request, { allowCookie: true })?.id
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const userId = (await getAuthUserFromRequest(request)).id
 
     const body = await request.json().catch(() => null)
     const agent = parseAgent(body?.agent)
@@ -397,7 +401,6 @@ export async function POST(request: NextRequest) {
     const sessionsTable = agent === "csr" ? "csr_ai_agent_sessions" : "ngo_ai_agent_sessions"
     const messagesTable = agent === "csr" ? "csr_ai_agent_messages" : "ngo_ai_agent_messages"
 
-    // Compute server latest timestamp
     const { data: existingSessions } = await supabase
       .from(sessionsTable)
       .select("updated_at")
@@ -409,6 +412,13 @@ export async function POST(request: NextRequest) {
 
     if (serverUpdatedAt && Date.parse(incomingUpdatedAt) < Date.parse(serverUpdatedAt)) {
       const latestPayload = await buildLatestPayloadFromTables(userId, agent)
+      const intendedActiveId = normalizedPayload.activeSessionId
+      if (intendedActiveId && Array.isArray(latestPayload.sessions)) {
+        const matched =
+          latestPayload.sessions.find((session) => session.id === intendedActiveId || session.legacyId === intendedActiveId)
+          || latestPayload.sessions.find((session) => session.id === resolveSessionRowId(agent, userId, intendedActiveId))
+        if (matched) latestPayload.activeSessionId = matched.id
+      }
       return NextResponse.json({ error: "Stale progress payload", latest: latestPayload }, { status: 409 })
     }
 
@@ -556,6 +566,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
+    const auth = authErrorResponse(error)
+    if (auth) return auth
     console.error("Failed to save AI agent progress", error)
     return NextResponse.json({ error: "Failed to save AI agent progress" }, { status: 500 })
   }
