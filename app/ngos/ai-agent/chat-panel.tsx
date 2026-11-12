@@ -128,6 +128,11 @@ type ChatComposerProps = {
   onQuickPick: (value: string) => void
   onApplyOffer: (offerId: number, needIndex: number) => void | Promise<void>
   onRemoveOffer: (needIndex: number, offerId: number) => void
+  canSuggestAnswer?: boolean
+  isSuggestingAnswer?: boolean
+  onGetSuggestion?: () => void | Promise<void>
+  suggestionOption?: string
+  onUseSuggestion?: (suggestion: string) => void
 }
 
 export function ChatComposer({
@@ -143,6 +148,11 @@ export function ChatComposer({
   onQuickPick,
   onApplyOffer,
   onRemoveOffer,
+  canSuggestAnswer = false,
+  isSuggestingAnswer = false,
+  onGetSuggestion = () => undefined,
+  suggestionOption = '',
+  onUseSuggestion = () => undefined,
 }: ChatComposerProps) {
   return (
     <div className="-mx-3 mt-auto shrink-0 border-t border-slate-200 bg-white px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:mx-0 lg:mt-4 lg:rounded-2xl lg:border lg:px-2.5 lg:py-3 lg:pb-3 lg:shadow-sm">
@@ -172,6 +182,32 @@ export function ChatComposer({
             onApplyOffer={onApplyOffer}
             onRemoveOffer={onRemoveOffer}
           />
+        </div>
+      )}
+      {canSuggestAnswer && (
+        <div className="mb-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="rounded-full border-blue-200 text-xs text-blue-700 hover:bg-blue-50"
+            disabled={isTyping || isSuggestingAnswer}
+            onClick={() => void onGetSuggestion()}
+          >
+            ✨ {isSuggestingAnswer ? 'Getting suggestion...' : 'Get suggestion'}
+          </Button>
+          {suggestionOption ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="ml-2 max-w-full rounded-full border-amber-200 bg-amber-50 text-left text-xs text-amber-900 hover:bg-amber-100"
+              disabled={isTyping}
+              onClick={() => onUseSuggestion(suggestionOption)}
+            >
+              ✨ {suggestionOption}
+            </Button>
+          ) : null}
         </div>
       )}
       <div className="flex items-end gap-2">

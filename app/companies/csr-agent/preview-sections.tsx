@@ -231,7 +231,7 @@ export function LeadNgoSection({
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-slate-950">Possible Lead NGOs</p>
-          <p className="mt-1 text-xs text-slate-500">Invite one or more lead NGO candidates. They accept from their dashboard. After acceptance, allot an Evidence Verifier — then Catalyst drafts for publish.</p>
+          <p className="mt-1 text-xs text-slate-500">Invite one or more lead NGO candidates. They accept from their dashboard. After acceptance, allot an Evidence Verifier — then the questionnaire-based draft can be prepared.</p>
         </div>
         {loading && <Loader2 className="h-4 w-4 animate-spin text-slate-500" />}
       </div>
@@ -354,7 +354,7 @@ export function PublishStatusSection({
       {generating ? (
         <div className="flex w-full items-start gap-3 rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm leading-5 text-white">
           <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-[#93c5fd]" />
-          <p className="min-w-0 flex-1">Catalyst is assembling your campaign draft from the intake and milestones.</p>
+          <p className="min-w-0 flex-1">Preparing your campaign draft from the questionnaire and milestones.</p>
         </div>
       ) : publishedCampaignId ? (
         <div className="flex w-full flex-col gap-3 rounded-xl border border-white/15 bg-white/10 p-4">
@@ -401,24 +401,24 @@ export function PublishStatusSection({
         </div>
       ) : acceptedLead && !hasEvidenceVerifier ? (
         <div className="rounded-xl border border-amber-200/40 bg-amber-950/30 px-4 py-3 text-sm leading-5 text-amber-50">
-          {acceptedLead.name} accepted as lead NGO. Allot an Evidence Verifier above — Catalyst starts drafting only after that assignment.
+          {acceptedLead.name} accepted as lead NGO. Allot an Evidence Verifier above — then the questionnaire-based campaign draft can be prepared.
         </div>
       ) : acceptedLead ? (
         <div className="flex w-full items-start gap-3 rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm leading-5 text-white">
           <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-[#93c5fd]" />
-          <p className="min-w-0 flex-1">Evidence Verifier allotted. Catalyst is assembling your campaign draft…</p>
+          <p className="min-w-0 flex-1">Evidence Verifier allotted. Preparing your campaign draft…</p>
         </div>
       ) : questionnaireComplete && invites.some(isPendingLeadInvite) ? (
         <div className="rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm leading-5 text-white/90">
-          Waiting for a lead NGO to accept the invite from their dashboard. After acceptance, allot an Evidence Verifier so Catalyst can draft.
+          Waiting for a lead NGO to accept the invite from their dashboard. After acceptance, allot an Evidence Verifier so the draft can be prepared.
         </div>
       ) : questionnaireComplete && !leadLocked ? (
         <div className="rounded-xl border border-dashed border-white/25 bg-white/5 px-4 py-3 text-sm leading-5 text-white/80">
-          Invite at least one lead NGO above. Once they accept, allot an Evidence Verifier — then Catalyst will assemble the draft for publish.
+          Invite at least one lead NGO above. Once they accept, allot an Evidence Verifier — then the questionnaire-based draft can be prepared for publishing.
         </div>
       ) : (
         <div className="rounded-xl border border-dashed border-white/25 bg-white/5 px-4 py-3 text-sm leading-5 text-white/75">
-          Answer the remaining questions in the chat. After a lead NGO accepts and you allot an Evidence Verifier, Catalyst prepares the draft here.
+          Answer the remaining questions in the chat. After a lead NGO accepts and you allot an Evidence Verifier, the draft will be prepared here.
         </div>
       )}
       {error && !generationFailed ? (
@@ -430,7 +430,7 @@ export function PublishStatusSection({
           <DialogHeader>
             <DialogTitle>Review campaign draft</DialogTitle>
             <DialogDescription>
-              Check the assembled draft below. Publishing creates live campaign records.
+              Review the draft below. Publishing creates live campaign records.
             </DialogDescription>
           </DialogHeader>
 

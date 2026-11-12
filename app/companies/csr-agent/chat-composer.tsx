@@ -26,6 +26,11 @@ type ChatComposerProps = {
   onRefreshSuggestions: () => void
   onCloseSuggestions: () => void
   onSelectSuggestedSet: (setIndex: number) => void
+  canSuggestAnswer?: boolean
+  isSuggestingAnswer?: boolean
+  onGetSuggestion?: () => void | Promise<void>
+  suggestionOption?: string
+  onUseSuggestion?: (suggestion: string) => void
 }
 
 export function ChatComposer({
@@ -45,6 +50,11 @@ export function ChatComposer({
   onRefreshSuggestions,
   onCloseSuggestions,
   onSelectSuggestedSet,
+  canSuggestAnswer = false,
+  isSuggestingAnswer = false,
+  onGetSuggestion = () => undefined,
+  suggestionOption = '',
+  onUseSuggestion = () => undefined,
 }: ChatComposerProps) {
   const [isRefreshingSuggestions, setIsRefreshingSuggestions] = useState(false)
 
@@ -108,7 +118,7 @@ export function ChatComposer({
               disabled={disabled}
               onClick={() => onChooseMilestoneMode('suggest')}
             >
-              Get suggestions
+              ✨ Get suggestions
             </Button>
 
             {milestoneMode === 'suggest' && (
@@ -165,6 +175,33 @@ export function ChatComposer({
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {canSuggestAnswer && !(conversationStage === 'milestone-count' && milestoneMode === 'suggest') && (
+        <div className="mb-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="rounded-full border-blue-200 text-xs text-blue-700 hover:bg-blue-50"
+            disabled={disabled || isSuggestingAnswer}
+            onClick={() => void onGetSuggestion()}
+          >
+            ✨ {isSuggestingAnswer ? 'Getting suggestion...' : 'Get suggestion'}
+          </Button>
+          {suggestionOption ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="ml-2 max-w-full rounded-full border-amber-200 bg-amber-50 text-left text-xs text-amber-900 hover:bg-amber-100"
+              disabled={disabled}
+              onClick={() => onUseSuggestion(suggestionOption)}
+            >
+              ✨ {suggestionOption}
+            </Button>
+          ) : null}
         </div>
       )}
 

@@ -16,9 +16,11 @@ export const buildNeedDraft = (need: NeedIntakeData, fallbackContact?: string): 
   const urgency = deriveAutoUrgency(need.timeline || '')
   const scheduleCategory = parseProjectCategory(need.category || '') || normalizeProjectCategory(need.category)
 
+  const beneficiaryLabel = need.beneficiaryCount ? `${need.beneficiaryCount} beneficiaries` : 'the identified beneficiaries'
+  const locationLabel = need.location ? ` in ${need.location}` : ''
   const normalizedNeed = {
-    title: need.title || 'Service Support Requirement',
-    description: need.description || `Support needed to deliver outcomes for ${need.beneficiaryCount || '100'} beneficiaries.`,
+    title: need.title || `${scheduleCategory} support${locationLabel}`,
+    description: need.description || `Seeking ${requestType.toLowerCase()} support for ${beneficiaryLabel}${locationLabel}, with delivery tracked against the stated timeline.`,
     request_type: requestType,
     category: scheduleCategory,
     location: need.location || 'Location to be confirmed',
@@ -27,7 +29,7 @@ export const buildNeedDraft = (need: NeedIntakeData, fallbackContact?: string): 
     budget: 'Negotiable',
     estimated_budget: need.estimatedBudget || 'INR 50,000',
     beneficiary_count: need.beneficiaryCount || '100',
-    impact_description: need.impactDescription || 'Measurable improvements for beneficiaries through targeted intervention.',
+    impact_description: need.impactDescription || `Improve outcomes for ${beneficiaryLabel}${locationLabel} through the requested ${requestType.toLowerCase()} intervention.`,
     contactInfo: need.contactInfo || fallbackContact || 'ngo@example.org',
     material_items: requestType === 'Material Need' ? (need.material_items || 'Specify item list and quantities') : '',
     skill_role: requestType === 'Skill / Service Need' ? (need.skill_role || 'Specify required role') : '',
@@ -53,8 +55,8 @@ export const buildProjectDraft = (project: ProjectIntakeData): ServiceRequestDra
   source: 'ngo-ai-agent',
   projectMode: 'new',
   project: {
-    title: project.projectTitle || 'CSR Project Initiative',
-    description: project.projectDescription || 'Project focused on improving community outcomes through structured support.',
+    title: project.projectTitle || `${project.projectCategory || 'Community'} impact project${project.location ? ` - ${project.location}` : ''}`,
+    description: project.projectDescription || `A ${String(project.projectCategory || 'community').toLowerCase()} project${project.location ? ` in ${project.location}` : ''} focused on measurable community outcomes for ${project.expectedBeneficiaries || 'the intended beneficiaries'}.`,
     location: project.location || 'Location to be confirmed',
     timeline: project.timeline || '3 months',
     category: parseProjectCategory(project.projectCategory || '') || normalizeProjectCategory(project.projectCategory)

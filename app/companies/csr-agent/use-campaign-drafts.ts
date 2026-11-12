@@ -114,20 +114,20 @@ export function useCampaignDrafts({
 
     if (!canUseCampaignActions && !overrides.questionnaireComplete) {
       setConversationStage('milestones')
-      appendAssistantMessage('Please select an existing project or finish the campaign details before I generate the final draft.')
+      appendAssistantMessage('Please select an existing project or finish the campaign details before I prepare the final draft.')
       return
     }
 
     if (!acceptedLeadNgo) {
       setConversationStage('milestones')
-      appendAssistantMessage('Please wait for a lead NGO to accept the invite from their dashboard before Catalyst can draft.')
+      appendAssistantMessage('Please wait for a lead NGO to accept the invite from their dashboard before the campaign draft can be prepared.')
       return
     }
 
     if (!String(evidenceVerifierIdentityId || '').trim()) {
       setConversationStage('milestones')
       appendAssistantMessage(
-        `${acceptedLeadNgo.name} is accepted as lead NGO. Allot an Evidence Verifier in the Publish panel — Catalyst starts drafting only after that assignment.`
+        `${acceptedLeadNgo.name} is accepted as lead NGO. Allot an Evidence Verifier in the Publish panel — then your campaign draft will be prepared from the questionnaire.`
       )
       return
     }
@@ -136,7 +136,7 @@ export function useCampaignDrafts({
     setIsGeneratingCampaigns(true)
     setGenerationError(null)
     appendAssistantMessage(
-      `Evidence Verifier allotted. ${AGENT_NAMES.pulse} is matching capability offers while Catalyst assembles your campaign draft from the intake and selected milestones.`
+      `Evidence Verifier allotted. ${AGENT_NAMES.pulse} is matching capability offers while your campaign draft is prepared from the questionnaire and selected milestones.`
     )
 
     try {
@@ -145,12 +145,12 @@ export function useCampaignDrafts({
       setConversationStage("complete")
       appendAssistantMessage(
         generated.length > 0
-          ? 'Done. Catalyst assembled 1 campaign draft from your answers and milestones. Review it in the right panel.'
-          : 'Done. Catalyst could not assemble a campaign draft from the current intake. Please review milestones and try again.'
+          ? 'Done. Your campaign draft is ready from the answers and milestones you provided. Review it in the right panel.'
+          : 'A campaign draft could not be prepared from the current intake. Please review the questionnaire and milestones, then try again.'
       )
     } catch (error) {
       setConversationStage("milestones")
-      const message = toUserFacingError(error instanceof Error ? error.message : "Could not generate campaign drafts. Please try again.")
+      const message = toUserFacingError(error instanceof Error ? error.message : "Could not prepare the campaign draft. Please try again.")
       setGenerationError(message)
       appendAssistantMessage(message)
     } finally {
@@ -165,7 +165,7 @@ export function useCampaignDrafts({
       return
     }
     if (!generatedCampaigns.length) {
-      appendAssistantMessage('Please generate or keep a draft before publishing.')
+      appendAssistantMessage('Please complete the questionnaire and keep a draft before publishing.')
       return
     }
     if (!acceptedLeadNgo) {

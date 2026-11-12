@@ -135,6 +135,7 @@ export function useIntakeProgress({
     progressPercent,
     fixedChoiceOptions,
     activeQuestionLabel,
+    activeQuestion,
     promptTitle,
     promptCount,
     promptNumber,

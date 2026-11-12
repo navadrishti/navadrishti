@@ -55,15 +55,30 @@ export function useIntakeConversation({ intake, offers, user, lockMobileChatScro
     setMessages(prev => [...prev, { role: 'assistant', content }])
   }
 
-  const generateDraftForNeed = (need: NeedIntakeData) => {
-    const draft = buildNeedDraft(need, user?.email)
+  const enhanceDraftCopy = async (draft: ReturnType<typeof buildNeedDraft>) => {
+    try {
+      const response = await fetch('/api/ai-agent/enhance-copy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ draft }),
+      })
+      if (!response.ok) return draft
+      const result = await response.json() as { draft?: ReturnType<typeof buildNeedDraft> }
+      return result.draft || draft
+    } catch {
+      return draft
+    }
+  }
+
+  const generateDraftForNeed = async (need: NeedIntakeData) => {
+    const draft = await enhanceDraftCopy(buildNeedDraft(need, user?.email))
     setGeneratedDraft(draft)
     setConversationStage('complete')
     appendAssistant(describeNeedDraft(draft))
   }
 
-  const generateDraftForProject = (project: ProjectIntakeData) => {
-    const draft = buildProjectDraft(project)
+  const generateDraftForProject = async (project: ProjectIntakeData) => {
+    const draft = await enhanceDraftCopy(buildProjectDraft(project))
     setGeneratedDraft(draft)
     setConversationStage('complete')
     appendAssistant(describeProjectDraft(draft))
@@ -105,7 +120,7 @@ export function useIntakeConversation({ intake, offers, user, lockMobileChatScro
       ? promptTarget.index
       : firstUnfilledQuestionIndex(projectQuestions, projectData)
     if (questionIndex >= projectQuestions.length) {
-      generateDraftForProject(projectData)
+      void generateDraftForProject(projectData)
       return
     }
     const question = projectQuestions[questionIndex]
@@ -125,7 +140,7 @@ export function useIntakeConversation({ intake, offers, user, lockMobileChatScro
     if (nextStep < projectQuestions.length) {
       appendAssistant(projectQuestions[nextStep].question)
     } else {
-      generateDraftForProject(nextProjectData)
+      void generateDraftForProject(nextProjectData)
     }
   }
 
@@ -167,7 +182,7 @@ export function useIntakeConversation({ intake, offers, user, lockMobileChatScro
 
     // The draft change triggers useRelatedOffersLoader, which owns recommendations and selection.
     setLastCompletedNeedIndex(0)
-    generateDraftForNeed(updatedNeed)
+    void generateDraftForNeed(updatedNeed)
   }
 
   const submitUserText = (userText: string) => {

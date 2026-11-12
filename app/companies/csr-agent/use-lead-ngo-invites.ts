@@ -220,7 +220,7 @@ export function useLeadNgoInvites({
       appendAssistantMessage(
         alreadyInvited
           ? `Removed lead NGO invite for ${ngo.name}.`
-          : `Invited ${ngo.name} as a lead NGO candidate. They can accept from their dashboard. After acceptance, allot an Evidence Verifier — then Catalyst starts drafting.`,
+          : `Invited ${ngo.name} as a lead NGO candidate. They can accept from their dashboard. After acceptance, allot an Evidence Verifier — then the questionnaire-based campaign draft can be prepared.`,
       )
     } catch (error) {
       const message = readApiError(error, 'Failed to update lead NGO invite')
