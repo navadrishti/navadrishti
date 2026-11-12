@@ -134,7 +134,7 @@ export function getActiveQuestionLabel({
   if (!hasLeadInvites) return "All details captured — invite a lead NGO to continue"
   if (!hasAcceptedLead) return "Waiting for lead NGO acceptance"
   if (!hasEvidenceVerifier) return "Allot an Evidence Verifier to start drafting"
-  return isGeneratingCampaigns ? "Catalyst is assembling the draft..." : "Ready to publish"
+  return isGeneratingCampaigns ? "Preparing your draft..." : "Ready to publish"
 }
 
 export function getPromptTitle({
@@ -147,7 +147,7 @@ export function getPromptTitle({
 }: StatusLabelInput) {
   if (hasDraft) return "Ready to publish"
   if (isQuestionnaireComplete) {
-    if (hasAcceptedLead && hasEvidenceVerifier) return "Catalyst drafting"
+    if (hasAcceptedLead && hasEvidenceVerifier) return "Preparing draft"
     if (hasAcceptedLead) return "Allot Evidence Verifier"
     return hasLeadInvites ? "Waiting for lead NGO" : "Invite a lead NGO"
   }

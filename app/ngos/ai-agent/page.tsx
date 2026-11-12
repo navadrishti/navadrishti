@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
+import { useState } from "react"
 import { useIsClient } from "@/hooks/use-is-client"
 import { useAuth } from "@/lib/auth-context"
 import { AgentShell } from "@/components/agent-shell"
@@ -34,6 +35,81 @@ export default function NGOAIAgentPage() {
   const offers = useOfferSelection(setMessages)
   const { offersLoading, relatedOffersByNeed, selectedOfferIdsByNeed, lastCompletedNeedIndex } = offers
   const progress = useIntakeProgress(intake)
+  const [isSuggestingAnswer, setIsSuggestingAnswer] = useState(false)
+  const [suggestionOption, setSuggestionOption] = useState("")
+  const getQuestionSuggestion = async () => {
+    const question = progress.activeQuestion
+    if (!question || question.key === "projectTitle" || question.key === "title" || isSuggestingAnswer) return
+    setIsSuggestingAnswer(true)
+    try {
+      const response = await fetch("/api/ai-agent/suggest-answer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agent: "ngo",
+          question: question.question,
+          context: {
+            intakePath,
+            projectData: {
+              projectTitle: projectData.projectTitle,
+              projectCategory: projectData.projectCategory,
+              location: projectData.location,
+              city: projectData.city,
+              state: projectData.state,
+              pincode: projectData.pincode,
+              timeline: projectData.timeline,
+              projectDescription: projectData.projectDescription,
+              expectedBeneficiaries: projectData.expectedBeneficiaries,
+              validUntil: projectData.validUntil,
+              budget: projectData.budget,
+              impact: projectData.impact,
+              volunteersNeeded: projectData.volunteersNeeded,
+            },
+            needsData: needsData.map((need) => ({
+              title: need.title,
+              requestType: need.requestType,
+              category: need.category,
+              description: need.description,
+              location: need.location,
+              beneficiaryCount: need.beneficiaryCount,
+              urgency: need.urgency,
+              timeline: need.timeline,
+              estimatedBudget: need.estimatedBudget,
+              impactDescription: need.impactDescription,
+              material_items: need.material_items,
+              skill_role: need.skill_role,
+              skill_duration: need.skill_duration,
+              infrastructure_scope: need.infrastructure_scope,
+            })),
+          },
+        }),
+      })
+      const result = await response.json() as { suggestion?: string; error?: string }
+      if (result.suggestion) {
+        setSuggestionOption(result.suggestion)
+        setMessages((current) => [...current, {
+          role: "assistant",
+          content: "✨ I prepared one suggested answer. You can use it, edit it, or type your own answer.",
+        }])
+      } else {
+        setMessages((current) => [...current, {
+          role: "assistant",
+          content: result.error || "Suggestions are currently unavailable. You can type your answer instead.",
+        }])
+      }
+    } catch {
+      setMessages((current) => [...current, {
+        role: "assistant",
+        content: "Suggestions are currently unavailable. You can type your answer instead.",
+      }])
+    } finally {
+      setIsSuggestingAnswer(false)
+    }
+  }
+  const useSuggestion = (suggestion: string) => {
+    setInput(suggestion)
+    setSuggestionOption("")
+  }
 
   const effectiveUserType = mounted ? user?.user_type : undefined
   const userAvatar = typeof user?.profile_image === 'string' ? user.profile_image.trim() : ''
@@ -207,6 +283,11 @@ export default function NGOAIAgentPage() {
             onQuickPick={handleQuickPick}
             onApplyOffer={offers.applyOfferFromChat}
             onRemoveOffer={offers.toggleOfferForNeed}
+            canSuggestAnswer={Boolean(progress.activeQuestion && progress.activeQuestion.key !== "projectTitle" && progress.activeQuestion.key !== "title")}
+            isSuggestingAnswer={isSuggestingAnswer}
+            onGetSuggestion={getQuestionSuggestion}
+            suggestionOption={suggestionOption}
+            onUseSuggestion={useSuggestion}
           />
         </ChatPanel>
       </AgentWorkspace>

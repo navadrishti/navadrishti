@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   generateCampaigns,
-  buildFallbackCampaigns,
   generateCampaignsInputSchema,
   type Campaign,
 } from "@/lib/csr-agent/llm";
+import { enhanceCampaignCopy } from "@/lib/geminiClient";
 import {
   enforceCsrGenerateAbuseLimit,
   resolveOwnedCompanyId,
@@ -64,43 +64,13 @@ export async function POST(request: NextRequest) {
       ? body.recommendations
       : [];
 
-    let campaigns: Campaign[];
-    let degraded = false;
-    let warning = "";
-
-    try {
-      campaigns = await generateCampaigns(validation.data);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "LLM call failed";
-      const canFallback =
-        message.includes("currently unavailable") ||
-        message.includes("GEMINI_API_KEY") ||
-        message.includes("Gemini API key") ||
-        message.includes("API Key not found") ||
-        message.includes("Failed to parse LLM response") ||
-        message.includes("Gemini API 400") ||
-        message.includes("Gemini request timed out") ||
-        message.includes("Invalid LLM response");
-
-      if (!canFallback) {
-        const status = message.includes(" 429:") ? 429 : 502;
-        return NextResponse.json<CampaignResponse>(
-          { success: false, error: "Campaign drafting is currently unavailable. Please try again." },
-          { status }
-        );
-      }
-
-      campaigns = buildFallbackCampaigns(validation.data);
-      degraded = true;
-      warning = "Generated fallback drafts because the AI model is currently unavailable.";
-    }
+    const campaigns = await generateCampaigns(validation.data);
+    const enhancedCampaigns = await Promise.all(campaigns.map((campaign) => enhanceCampaignCopy(campaign)));
 
     return NextResponse.json<CampaignResponse>({
       success: true,
-      data: campaigns,
+      data: enhancedCampaigns,
       recommendations,
-      degraded,
-      warning: degraded ? warning : undefined,
       recommendationMessage: recommendations.length > 0
         ? "Capability recommendations were matched and used in the CSR draft."
         : "No strong capability matches were found for this CSR request.",

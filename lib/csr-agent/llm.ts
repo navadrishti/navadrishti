@@ -167,130 +167,6 @@ xi  - Disaster management
 xii - Other (PM Relief Fund)
 `;
 
-function buildPrompt(input: GenerateCampaignsInput): string {
-  const {
-    budget,
-    category,
-    city,
-    state_province,
-    start_date,
-    end_date,
-    milestones,
-    milestone_info,
-    requirementDetails,
-  } = input;
-
-  const locationStr = `${city}${state_province ? `, ${state_province}` : ""}`;
-
-  return `
-You are a CSR strategy expert helping Indian companies design practical, real-world CSR campaign drafts.
-
-The goal is to generate **80% complete, realistic campaign drafts** that companies can refine further.
-Output must be concise, actionable, and strictly formatted.
-
-${SCHEDULE_VII}
-
------------------------------------
-COMPANY REQUIREMENTS
------------------------------------
-- Budget: ₹${budget}
-- Category: ${category}
-- Location: ${locationStr}
-- Start Date: ${start_date}
-- End Date: ${end_date}
-- Milestones: ${milestones}
-- User defined Milestone Details: ${JSON.stringify(milestone_info ?? [])}
-- Additional Requirement Details: ${requirementDetails}
-
------------------------------------
-REAL-WORLD RULES
------------------------------------
-
-1. **Budget Consistency**
-- Total of milestone budgets must exactly match ${budget}
-- budget_breakdown keys must sum exactly to budget_inr
-- Allocate logically per campaign type
-
-2. **Timeline Consistency**
-- Distribute timeline logically across milestones
-- Sum of milestone.duration_weeks ≈ total timeline in weeks
-
-3. **Execution Realism (Concise)**
-Each campaign must clearly state:
-- Beneficiary identification method and should be a whole integer.
-- Delivery model (NGO partner, camps, direct build, etc.)
-- 2-3 specific ground execution steps in ${locationStr}
-- Description max 40 words per campaign
-
-4. **Milestone Enhancement**
-For each milestone:
-- Assign logical duration_weeks and duration_days (7 days = 1 week)
-- Define upto 3 clear, measurable deliverables
-
-5. **Diversity (Zero Overlap)**
-Generate EXACTLY 3 campaigns, each solving the problem through a different operational "Lever":
-- **Campaign 1 (Direct Implementation):** Use ${JSON.stringify(milestone_info ?? [])} as the direct blueprint. Focus on infrastructure and physical build.
-- **Campaign 2 (Capacity Building):** Pivot toward training, workshops, and institutional strengthening. Adapt milestones to focus on "Human Capital."
-- **Campaign 3 (Access & Distribution):** Pivot toward kits, logistics, and last-mile resource delivery. Adapt milestones to focus on "Tangible Goods."
-
------------------------------------
-STRICT RULES
------------------------------------
-- schedule_vii must directly align with ${category}
-- beneficiaries must be a whole integer
-- Output MUST be raw, valid JSON
-- NO markdown, NO code blocks, NO extra text, NO conversational filler
-- Use numbers for all budget/time fields, not strings
-- For Campaign 1: Strictly use the descriptions and budgets from ${JSON.stringify(milestone_info ?? [])}. Do not alter them.
-- For Campaigns 2 & 3: ADAPT milestone descriptions and deliverables to match their respective lever (Capacity Building or Access & Distribution).
-- Do not reuse milestone titles, descriptions, or logic from Campaign 1 in Campaigns 2 or 3. Each campaign must have a completely unique operational roadmap.
-
------------------------------------
-OUTPUT FORMAT
------------------------------------
-
-{
-  "campaigns": [
-    {
-      "title": "string",
-      "description": "max 40 words: execution method, beneficiary ID, ground steps in ${locationStr} with respect to ${requirementDetails}",
-      "category": "${category}",
-      "location": "${locationStr}",
-      "budget_inr": ${budget},
-      "budget_breakdown": {
-        "infrastructure": 0,
-        "training": 0,
-        "materials": 0,
-        "monitoring": 0,
-        "contingency": 0
-      },
-
-      "schedule_vii": "string",
-      "sdg_alignment": [1, 4],
-      "start_date": "${start_date}",
-      "end_date": "${end_date}",
-
-      "impact_metrics": {
-        "beneficiaries": 0,
-        "duration": "${start_date} to ${end_date}"
-      },
-
-      "milestones": [
-        {
-          "title": "string",
-          "description": "max 35 words: specific action",
-          "duration_days": 0,
-          "duration_weeks": 0,
-          "budget_allocated": 0,
-          "deliverables": ["string", "string", "string"]
-        }
-      ]
-    }
-  ]
-}
-`;
-}
-
 const safeNumber = (value: number, fallback = 0) => (Number.isFinite(value) ? value : fallback)
 
 const splitBudget = (total: number, percentages: [number, number, number, number, number]) => {
@@ -473,40 +349,14 @@ export async function suggestMilestoneSets(input: SuggestMilestonesInput): Promi
   }
 }
 
-/** Generate campaign drafts with Gemini and validate the provider response. */
+/**
+ * Assemble campaign drafts from the questionnaire.
+ *
+ * This intentionally remains deterministic: the questionnaire is the source
+ * of truth for publishable campaign data.
+ */
 export async function generateCampaigns(input: GenerateCampaignsInput): Promise<Campaign[]> {
-  const prompt = buildPrompt(input)
-
-  try {
-    const raw = await GeminiChat([{ role: "user", content: prompt }])
-    const parsed = parseJson(raw)
-    const result = campaignResponseSchema.safeParse(parsed)
-
-    if (!result.success) {
-      console.error("Campaign response validation failed:", result.error.flatten())
-      throw new Error("Invalid LLM response structure")
-    }
-
-    return result.data.campaigns
-  } catch (err) {
-    if (err instanceof GeminiError) {
-      console.error("Campaign drafting API error:", err.message)
-      throw new Error("Campaign drafting is currently unavailable.")
-    }
-
-    if (err instanceof Error && err.message) {
-      if (err.message.includes("GEMINI_API_KEY is missing")) {
-        throw new Error("Campaign drafting is currently unavailable.")
-      }
-
-      if (err.message.includes("API Key not found") || err.message.includes("API_KEY_INVALID")) {
-        throw new Error("Campaign drafting is currently unavailable.")
-      }
-    }
-
-    console.error("JSON parse failed:", err)
-    throw new Error("Failed to parse LLM response")
-  }
+  return assembleCampaigns(input)
 }
 
 /** @deprecated Prefer assembleCampaigns — kept for callers/tests that used the fallback name. */
@@ -520,7 +370,7 @@ export function buildFallbackCampaigns(input: GenerateCampaignsInput): Campaign[
  */
 export function assembleCampaigns(input: GenerateCampaignsInput): Campaign[] {
   const location = `${input.city}${input.state_province ? `, ${input.state_province}` : ""}`
-  const campaignCategory = input.category
+  const campaignCategory = input.category.trim()
   const budget = Math.max(1, Math.round(input.budget))
   const milestoneCount = Math.max(1, Math.min(10, Math.round(input.milestones || 1)))
   const requirementText = (input.requirementDetails || "community impact").trim()
@@ -546,7 +396,7 @@ export function assembleCampaigns(input: GenerateCampaignsInput): Campaign[] {
 
     return {
       title: sourceTitle || `Milestone ${index + 1}`,
-      description: sourceDescription || `Phase ${index + 1} for ${requirementText} in ${location}`,
+      description: sourceDescription || `Deliver the ${requirementText.toLowerCase()} workstream in ${location}.`,
       duration_weeks: weeks,
       budget_allocated: milestoneBudgets[index] || 0,
       start_date: source.start_date,
@@ -562,7 +412,7 @@ export function assembleCampaigns(input: GenerateCampaignsInput): Campaign[] {
   return [
     {
       title: `${campaignCategory} Campaign — ${input.city}`,
-      description: `Ground execution in ${location} for ${requirementText}. Volunteer requirement: ${volunteerRequirement}. Assembled from your intake and selected milestones.`,
+      description: `A ${campaignCategory.toLowerCase()} initiative in ${location} focused on ${requirementText.toLowerCase()}. Delivery will follow the selected milestones with ${volunteerRequirement.toLowerCase()}.`,
       category: campaignCategory,
       location,
       budget_inr: budget,

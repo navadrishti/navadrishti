@@ -315,8 +315,8 @@ export function useIntakeHandlers({
     appendAssistantMessage(
       `Selected suggested milestone set: ${set.title}. ${
         acceptedLeadNgo
-          ? 'Allot an Evidence Verifier in the Publish panel if you have not already — Catalyst assembles the draft after that.'
-          : 'Invite a lead NGO in the preview panel, wait for acceptance, then allot an Evidence Verifier before Catalyst assembles the draft.'
+          ? 'Allot an Evidence Verifier in the Publish panel if you have not already — the draft will be prepared after that.'
+          : 'Invite a lead NGO in the preview panel, wait for acceptance, then allot an Evidence Verifier before the questionnaire-based draft is prepared.'
       }`
     )
     persistSnapshot({})

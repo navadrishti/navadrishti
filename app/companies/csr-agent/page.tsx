@@ -199,6 +199,38 @@ function CSRAgentPage() {
     activeQuestion,
   }
   const activeQuestionLabel = getActiveQuestionLabel(statusLabelInput)
+  const [isSuggestingAnswer, setIsSuggestingAnswer] = useState(false)
+  const [suggestionOption, setSuggestionOption] = useState("")
+  const getQuestionSuggestion = async () => {
+    if (!activeQuestion || activeQuestion.key === "campaignName" || isSuggestingAnswer) return
+    setIsSuggestingAnswer(true)
+    try {
+      const response = await fetch("/api/ai-agent/suggest-answer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agent: "csr",
+          question: activeQuestion.question,
+          context: { projectData, milestoneCount, milestoneInputs },
+        }),
+      })
+      const result = await response.json() as { suggestion?: string; error?: string }
+      if (result.suggestion) {
+        setSuggestionOption(result.suggestion)
+        appendAssistantMessage("✨ I prepared one suggested answer. You can use it, edit it, or type your own answer.")
+      } else {
+        appendAssistantMessage(result.error || "Suggestions are currently unavailable. You can type your answer instead.")
+      }
+    } catch {
+      appendAssistantMessage("Suggestions are currently unavailable. You can type your answer instead.")
+    } finally {
+      setIsSuggestingAnswer(false)
+    }
+  }
+  const useSuggestion = (suggestion: string) => {
+    setInput(suggestion)
+    setSuggestionOption("")
+  }
   const promptTitle = getPromptTitle(statusLabelInput)
 
   const { sessionSyncKey, normalizeSessionFromState, persistCurrentSessionSnapshot } = useSessionSnapshot({
@@ -304,7 +336,7 @@ function CSRAgentPage() {
     if (leadAcceptedPromptRef.current === acceptedLeadNgo.ngoId) return
     leadAcceptedPromptRef.current = acceptedLeadNgo.ngoId
     appendAssistantMessage(
-      `${acceptedLeadNgo.name} accepted as lead NGO. Allot an Evidence Verifier in the Publish panel — Catalyst starts drafting only after that assignment.`
+      `${acceptedLeadNgo.name} accepted as lead NGO. Allot an Evidence Verifier in the Publish panel — then your campaign draft will be prepared from the questionnaire.`
     )
   }, [
     acceptedLeadNgo,
@@ -571,6 +603,17 @@ function CSRAgentPage() {
             onRefreshSuggestions={refreshMilestoneSuggestions}
             onCloseSuggestions={closeMilestoneSuggestions}
             onSelectSuggestedSet={handleSelectSuggestedSet}
+            canSuggestAnswer={Boolean(
+              activeQuestion &&
+                activeQuestion.key !== "campaignName" &&
+                activeQuestion.key !== "milestoneCount" &&
+                activeQuestion.key !== "description" &&
+                activeQuestion.key !== "budgetTarget"
+            )}
+            isSuggestingAnswer={isSuggestingAnswer}
+            onGetSuggestion={getQuestionSuggestion}
+            suggestionOption={suggestionOption}
+            onUseSuggestion={useSuggestion}
           />
         </ChatPanel>
       </AgentWorkspace>
