@@ -89,7 +89,7 @@ async function applyOcr(type: CAQueueType, row: VerificationQueueRow, item: CAQu
   const missingKey = !process.env.GEMINI_API_KEY
 
   for (const [index, doc] of item.documents.entries()) {
-    const cacheKey = `${doc.file_url}::gemini-verbatim-v5`
+    const cacheKey = `${doc.file_url}::gemini-verbatim-v6`
     const cached = parseJsonObject(cache[cacheKey])
     if (Array.isArray(cached.fields) && cached.fields.length > 0) {
       nextDocs.push({

@@ -23,8 +23,8 @@ export async function GeminiVisionJSON(
   const API_KEY = process.env.GEMINI_API_KEY
   if (!API_KEY) throw new Error('GEMINI_API_KEY is missing.')
 
-  // Defaults track Google AI models available to new API keys (2026-11 probe).
-  const PRIMARY = process.env.GEMINI_MODEL || 'gemini-3.5-flash'
+  // Stable Gemini defaults; GEMINI_* overrides remain available for deployments.
+  const PRIMARY = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite'
   const FALLBACK = process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.5-flash-lite'
   const currentModel = retryCount < 2 ? PRIMARY : FALLBACK
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${API_KEY}`
@@ -300,7 +300,7 @@ function keepExtractedField(label: string, value: string, verbatim: string) {
 
 export function isGeminiOcrUnavailable(error: unknown) {
   const message = error instanceof Error ? error.message : String(error)
-  return /GEMINI_API_KEY is missing|API_KEY_INVALID|API key not valid|403|401/i.test(message)
+  return /GEMINI_API_KEY is missing|API_KEY_INVALID|API key not valid|403|401|404|NOT_FOUND|model.*not found/i.test(message)
 }
 
 async function fetchDocumentForGemini(fileUrl: string) {
