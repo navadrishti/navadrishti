@@ -288,7 +288,7 @@ describe('listCAQueue', () => {
 })
 
 describe('getCAReview', () => {
-  const cacheKey = (url: string) => `${url}::gemini-verbatim-v5`
+  const cacheKey = (url: string) => `${url}::gemini-verbatim-v6`
 
   it('throws a 404 when the record is missing', async () => {
     useDb({ 'individual_verifications.select': [{ error: { message: 'no rows' } }] })

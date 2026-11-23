@@ -184,7 +184,7 @@ describe('CA review OCR', () => {
     expect(profile.verification_documents.individual.status).toBe('pending')
     expect(Object.keys(profile.verification_documents.individual.ocr_cache)).toEqual([
       'other',
-      `${trustedUrl}::gemini-verbatim-v5`,
+      `${trustedUrl}::gemini-verbatim-v6`,
     ])
   })
 
