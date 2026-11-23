@@ -1,7 +1,12 @@
 import 'server-only'
 
 import { supabase } from '@/lib/db'
-import { extractVisibleKycFields, isGeminiOcrUnavailable } from '@/lib/gemini-vision'
+import {
+  canonicalizeOcrLabel,
+  extractVisibleKycFields,
+  isGeminiOcrUnavailable,
+  isGeminiQuotaUnavailable,
+} from '@/lib/gemini-vision'
 import type { CAQueueType, CAReviewDocument } from '@/lib/ca-review-types'
 import { parseJsonObject } from '@/lib/utils'
 import { buildCrossDocumentComparisons } from './cross-field-comparisons'
@@ -18,7 +23,9 @@ import {
   type VerificationQueueRow,
 } from './queue-config'
 
-const MAX_OCR_DOCS = 12
+// A document uses extraction plus a confirmation request. Limit one CA
+// review batch so the free-tier per-minute quota is not exhausted immediately.
+const MAX_OCR_DOCS = 7
 
 async function ocrDocument(doc: CAReviewDocument): Promise<CAReviewDocument> {
   try {
@@ -85,17 +92,27 @@ async function applyOcr(type: CAQueueType, row: VerificationQueueRow, item: CAQu
   const nextDocs: CAReviewDocument[] = []
   let cacheChanged = false
   let serviceDown = false
+  let quotaDown = false
   let overLimit = false
   const missingKey = !process.env.GEMINI_API_KEY
 
   for (const [index, doc] of item.documents.entries()) {
-    const cacheKey = `${doc.file_url}::gemini-verbatim-v6`
+    const cacheKey = `${doc.file_url}::gemini-verbatim-v9`
     const cached = parseJsonObject(cache[cacheKey])
     if (Array.isArray(cached.fields) && cached.fields.length > 0) {
+      const normalizedFields = cached.fields
+        .map((entry) => {
+          if (!entry || typeof entry !== 'object') return null
+          const field = entry as Record<string, unknown>
+          const label = canonicalizeOcrLabel(field.label)
+          const value = typeof field.value === 'string' ? field.value.trim() : ''
+          return label && value ? { label, value } : null
+        })
+        .filter((field): field is { label: string; value: string } => field !== null)
       nextDocs.push({
         ...doc,
-        ocr_fields: cached.fields,
-        ocr_status: 'completed',
+        ocr_fields: normalizedFields,
+        ocr_status: normalizedFields.length > 0 ? 'completed' : 'skipped',
       })
       continue
     }
@@ -120,6 +137,7 @@ async function applyOcr(type: CAQueueType, row: VerificationQueueRow, item: CAQu
       }
     } catch (error) {
       serviceDown = isGeminiOcrUnavailable(error)
+      quotaDown = isGeminiQuotaUnavailable(error)
       console.error(`OCR failed for ${doc.file_url}:`, error)
       nextDocs.push({ ...doc, ocr_fields: [], ocr_status: serviceDown ? 'skipped' : 'failed' })
     }
@@ -142,7 +160,9 @@ async function applyOcr(type: CAQueueType, row: VerificationQueueRow, item: CAQu
   const ocrError = missingKey
     ? 'Document reading is not configured.'
     : serviceDown
-      ? 'Document reading is unavailable right now. Open the files and compare them manually.'
+      ? quotaDown
+        ? 'Gemini OCR quota is exhausted. Wait a minute or enable billing, then reopen this review.'
+        : 'Document reading is unavailable right now. Open the files and compare them manually.'
       : nextDocs.some((doc) => doc.ocr_status === 'failed')
         ? 'Some documents could not be read. Open them and compare manually.'
         : overLimit

@@ -21,7 +21,12 @@ vi.mock('@/lib/db', async () => {
   const { supabaseFake } = await import('./support/supabase-fake')
   return { supabase: supabaseFake.client, db: {}, listCompanyCampaignVolunteerAttendance: mocks.attendance }
 })
-vi.mock('@/lib/gemini-vision', () => ({ extractVisibleKycFields: mocks.extract, isGeminiOcrUnavailable: () => false }))
+vi.mock('@/lib/gemini-vision', () => ({
+  extractVisibleKycFields: mocks.extract,
+  canonicalizeOcrLabel: (label: unknown) => typeof label === 'string' ? label : '',
+  isGeminiOcrUnavailable: () => false,
+  isGeminiQuotaUnavailable: () => false,
+}))
 
 const secret = 'test-secret'
 const caToken = jwt.sign({ id: 3, ca_id: 'CA-3', username: 'ca3', display_name: 'CA Three', kind: 'platform_ca' }, secret)
@@ -184,7 +189,7 @@ describe('CA review OCR', () => {
     expect(profile.verification_documents.individual.status).toBe('pending')
     expect(Object.keys(profile.verification_documents.individual.ocr_cache)).toEqual([
       'other',
-      `${trustedUrl}::gemini-verbatim-v6`,
+      `${trustedUrl}::gemini-verbatim-v9`,
     ])
   })
 

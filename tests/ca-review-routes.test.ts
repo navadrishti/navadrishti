@@ -25,7 +25,11 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db', () => ({ supabase: { from: mocks.from }, db: {} }))
-vi.mock('@/lib/gemini-vision', () => ({ extractVisibleKycFields: vi.fn(), isGeminiOcrUnavailable: () => false }))
+vi.mock('@/lib/gemini-vision', () => ({
+  extractVisibleKycFields: vi.fn(),
+  canonicalizeOcrLabel: (label: unknown) => typeof label === 'string' ? label : '',
+  isGeminiOcrUnavailable: () => false,
+}))
 vi.mock('@/lib/ca-review', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/ca-review')>()),
   listCAQueue: mocks.list,

@@ -16,7 +16,12 @@ export function isDocumentImageUrl(url: string, fileName = '') {
 }
 
 export function isDocumentPdfUrl(url: string, fileName = '') {
-  return /pdf/i.test(url) || /\.pdf$/i.test(fileName) || url.includes('/raw/upload')
+  return (
+    /pdf/i.test(url) ||
+    /\.pdf$/i.test(fileName) ||
+    url.includes('/raw/upload') ||
+    url.includes('/api/verification/documents/')
+  )
 }
 
 function entityLabel(type: CAReviewEntityType) {

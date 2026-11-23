@@ -29,7 +29,11 @@ function namesMatch(a: string, b: string) {
   const shorter = left.length <= right.length ? left : right
   const longer = left.length <= right.length ? right : left
   return shorter.every((token) =>
-    longer.some((other) => other === token || other.startsWith(token) || token.startsWith(other))
+    longer.some((other) => {
+      if (other === token) return true
+      if (token.length < 4 || other.length < 4) return false
+      return other.startsWith(token) || token.startsWith(other)
+    })
   )
 }
 

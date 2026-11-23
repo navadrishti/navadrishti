@@ -69,7 +69,7 @@ const nextConfig = {
           "img-src 'self' data: blob: https://res.cloudinary.com",
           "font-src 'self' data:",
           "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.razorpay.com https://checkout.razorpay.com https://vitals.vercel-insights.com https://*.cloudinary.com",
-          "frame-src 'self' https://api.razorpay.com https://checkout.razorpay.com",
+          "frame-src 'self' blob: https://api.razorpay.com https://checkout.razorpay.com",
         ].join('; '),
       },
       ...(process.env.NODE_ENV === 'production'

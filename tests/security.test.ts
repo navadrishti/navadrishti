@@ -28,6 +28,10 @@ describe('next.config.mjs', () => {
     expect(config).toContain('removeConsole')
   })
 
+  it('allows blob URLs in document frames', () => {
+    expect(config).toContain("frame-src 'self' blob:")
+  })
+
   it.each([
     'X-Frame-Options',
     'X-Content-Type-Options',

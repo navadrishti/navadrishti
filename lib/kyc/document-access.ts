@@ -171,14 +171,17 @@ export async function downloadKycAssetBytes(ref: KycDocumentRef): Promise<{
   const buffer = Buffer.from(await response.arrayBuffer())
   const headerType = response.headers.get('content-type') || ''
   const contentType =
-    headerType && !headerType.includes('text/html')
+    headerType &&
+    !headerType.includes('text/html') &&
+    !headerType.includes('application/octet-stream')
       ? headerType
-      : guessContentType(ref.publicId, ref.resourceType)
+      : guessContentType(ref.publicId, ref.resourceType, buffer)
 
   return { buffer, contentType }
 }
 
-function guessContentType(publicId: string, resourceType: string): string {
+function guessContentType(publicId: string, resourceType: string, buffer?: Buffer): string {
+  if (buffer?.subarray(0, 5).toString('ascii').startsWith('%PDF')) return 'application/pdf'
   const lower = publicId.toLowerCase()
   if (lower.endsWith('.pdf')) return 'application/pdf'
   if (lower.endsWith('.png')) return 'image/png'
