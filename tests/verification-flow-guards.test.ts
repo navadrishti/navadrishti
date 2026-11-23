@@ -190,6 +190,16 @@ describe('isTrustedDocumentUrl', () => {
 })
 
 describe('extractVisibleKycFields', () => {
+  it('canonicalizes common OCR field labels', async () => {
+    const { canonicalizeOcrLabel } = await import('@/lib/gemini-vision')
+    expect(canonicalizeOcrLabel('PAN')).toBe('PAN Number')
+    expect(canonicalizeOcrLabel('Permanent Account Number')).toBe('PAN Number')
+    expect(canonicalizeOcrLabel('Aadhaar No')).toBe('Aadhaar Number')
+    expect(canonicalizeOcrLabel('GST No')).toBe('GSTIN')
+    expect(canonicalizeOcrLabel("Father's Name")).toBe("Father's Name")
+    expect(canonicalizeOcrLabel('Unknown Field')).toBe('')
+  })
+
   it('refuses to download documents from outside the Cloudinary cloud', async () => {
     const fetchSpy = vi.fn()
     vi.stubGlobal('fetch', fetchSpy)

@@ -72,7 +72,10 @@ export async function GeminiVisionJSON(
           disableThinking: false,
         })
       }
-      if ((res.status === 429 || res.status >= 500) && retryCount < 3) {
+      if (res.status === 429) {
+        throw new GeminiError(res.status, await res.text())
+      }
+      if (res.status >= 500 && retryCount < 3) {
         const retryAfterHeader = res.headers.get('retry-after')
         let waitTime = Math.pow(2, retryCount) * 1000 + Math.random() * 500
         if (res.status === 429 && retryAfterHeader) {
@@ -234,11 +237,20 @@ const OCR_CONFIRM_SCHEMA = {
   required: ['checks'],
 }
 
-function guessMimeType(url: string, contentType?: string | null) {
+function guessMimeType(
+  url: string,
+  contentType?: string | null,
+  resourceType?: 'image' | 'raw' | 'video',
+  bytes?: Buffer
+) {
+  if (bytes?.subarray(0, 5).toString('ascii').startsWith('%PDF')) {
+    return 'application/pdf'
+  }
   if (contentType) {
     const mime = contentType.split(';')[0].trim().toLowerCase()
     if (mime && mime !== 'application/octet-stream') return mime
   }
+  if (resourceType === 'raw') return 'application/pdf'
   if (/\.pdf$/i.test(url) || url.includes('/raw/upload')) return 'application/pdf'
   if (/\.png$/i.test(url)) return 'image/png'
   if (/\.webp$/i.test(url)) return 'image/webp'
@@ -267,6 +279,106 @@ function filledMaskedValue(value: string, verbatim: string) {
 
 function isAllowedLabel(label: string) {
   return ALLOWED_LABELS.has(label.replace(/\s+/g, '').toUpperCase())
+}
+
+const LABEL_ALIASES: Record<string, string> = {
+  PAN: 'PAN Number',
+  PANNO: 'PAN Number',
+  PANNUMBER: 'PAN Number',
+  PERMANENTACCOUNTNUMBER: 'PAN Number',
+  AADHAAR: 'Aadhaar Number',
+  AADHAARNO: 'Aadhaar Number',
+  AADHAARNUMBER: 'Aadhaar Number',
+  UID: 'Aadhaar Number',
+  UIDNO: 'Aadhaar Number',
+  GST: 'GSTIN',
+  GSTNO: 'GSTIN',
+  GSTNUMBER: 'GSTIN',
+  CINNO: 'CIN',
+  CINNUMBER: 'CIN',
+  REGNO: 'Registration Number',
+  REGISTRATIONNO: 'Registration Number',
+  REGISTRATIONNUMBER: 'Registration Number',
+  FCRANO: 'FCRA Number',
+  FCRANUMBER: 'FCRA Number',
+  TWELVEANO: '12A Number',
+  TWELVEANUMBER: '12A Number',
+  EIGHTYGNO: '80G Number',
+  EIGHTYGNUMBER: '80G Number',
+  CSR1NO: 'CSR-1 Registration Number',
+  CSR1NUMBER: 'CSR-1 Registration Number',
+  NAME: 'Name',
+  FULLNAME: 'Full Name',
+  FATHERNAME: 'Father\'s Name',
+  FATHERSNAME: 'Father\'s Name',
+  DOB: 'Date of Birth',
+  DATEOFBIRTH: 'Date of Birth',
+  ADDRESS: 'Address',
+  REGISTEREDADDRESS: 'Registered Address',
+  REGISTEREDOFFICEADDRESS: 'Registered Office',
+  COMPANYNAME: 'Company Name',
+  LEGALNAME: 'Legal Name',
+  ORGANIZATIONNAME: 'Organization Name',
+  NGOName: 'Organization Name',
+  VALIDITY: 'Valid Until',
+  VALIDUPTO: 'Valid Upto',
+  VALIDTILL: 'Valid Till',
+  EXPIRY: 'Expiry Date',
+  EXPIRYDATE: 'Expiry Date',
+  DATEOFEXPIRY: 'Expiry Date',
+}
+
+export function canonicalizeOcrLabel(label: unknown): string {
+  if (typeof label !== 'string') return ''
+  const trimmed = label.trim()
+  const compactLabel = trimmed.replace(/[\s\-_.:/]/g, '').replace(/['’]/g, '').toUpperCase()
+  if (LABEL_ALIASES[compactLabel]) return LABEL_ALIASES[compactLabel]
+  const CANONICAL_LABELS: Record<string, string> = {
+    NAME: 'Name',
+    FULLNAME: 'Full Name',
+    FATHERSNAME: 'Father\'s Name',
+    DATEOFBIRTH: 'Date of Birth',
+    PANNUMBER: 'PAN Number',
+    AADHAARNUMBER: 'Aadhaar Number',
+    GSTIN: 'GSTIN',
+    GSTNUMBER: 'GST Number',
+    CIN: 'CIN',
+    REGISTRATIONNUMBER: 'Registration Number',
+    FCRANUMBER: 'FCRA Number',
+    TWELVEANUMBER: '12A Number',
+    EIGHTYGNUMBER: '80G Number',
+    CSR1REGISTRATIONNUMBER: 'CSR-1 Registration Number',
+    ADDRESS: 'Address',
+    REGISTEREDADDRESS: 'Registered Address',
+    REGISTEREDOFFICE: 'Registered Office',
+    PERMANENTADDRESS: 'Permanent Address',
+    DATEOFINCORPORATION: 'Date of Incorporation',
+    DATEOFREGISTRATION: 'Date of Registration',
+    COMPANYNAME: 'Company Name',
+    LEGALNAME: 'Legal Name',
+    ORGANIZATIONNAME: 'Organization Name',
+    ACCOUNTHOLDERNAME: 'Account Holder Name',
+    ACCOUNTNUMBER: 'Account Number',
+    BANKNAME: 'Bank Name',
+    IFSC: 'IFSC',
+    ACCOUNTTYPE: 'Account Type',
+    STATEMENTFROM: 'Statement From',
+    STATEMENTTO: 'Statement To',
+    OPENINGBALANCE: 'Opening Balance',
+    CLOSINGBALANCE: 'Closing Balance',
+    APPROVALDATE: 'Approval Date',
+    VALIDFROM: 'Valid From',
+    VALIDUNTIL: 'Valid Until',
+    VALIDTILL: 'Valid Till',
+    VALIDUPTO: 'Valid Upto',
+    EXPIRYDATE: 'Expiry Date',
+    DATEOFEXPIRY: 'Date of Expiry',
+    FCRAEXPIRY: 'FCRA Expiry',
+    TWELVEAEXPIRY: '12A Expiry',
+    EIGHTYGEXPIRY: '80G Expiry',
+    CSR1EXPIRY: 'CSR-1 Expiry',
+  }
+  return CANONICAL_LABELS[compactLabel] || ''
 }
 
 function looksLikeDateValue(value: string) {
@@ -300,7 +412,12 @@ function keepExtractedField(label: string, value: string, verbatim: string) {
 
 export function isGeminiOcrUnavailable(error: unknown) {
   const message = error instanceof Error ? error.message : String(error)
-  return /GEMINI_API_KEY is missing|API_KEY_INVALID|API key not valid|403|401|404|NOT_FOUND|model.*not found/i.test(message)
+  return /GEMINI_API_KEY is missing|API_KEY_INVALID|API key not valid|403|401|404|429|RESOURCE_EXHAUSTED|quota|NOT_FOUND|model.*not found/i.test(message)
+}
+
+export function isGeminiQuotaUnavailable(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error)
+  return /429|RESOURCE_EXHAUSTED|quota exceeded|rate limit/i.test(message)
 }
 
 async function fetchDocumentForGemini(fileUrl: string) {
@@ -329,7 +446,7 @@ async function fetchDocumentForGemini(fileUrl: string) {
     }
     return {
       data: buffer.toString('base64'),
-      mimeType: guessMimeType(storage.publicId, contentType),
+      mimeType: guessMimeType(storage.publicId, contentType, storage.resourceType, buffer),
     }
   }
 
@@ -346,7 +463,7 @@ async function fetchDocumentForGemini(fileUrl: string) {
   }
   return {
     data: buffer.toString('base64'),
-    mimeType: guessMimeType(fileUrl, response.headers.get('content-type')),
+    mimeType: guessMimeType(fileUrl, response.headers.get('content-type'), undefined, buffer),
   }
 }
 
@@ -357,7 +474,8 @@ export async function extractVisibleKycFields(input: {
 }) {
   const file = await fetchDocumentForGemini(input.fileUrl)
   const extracted = await GeminiVisionJSON(
-    `Copy visible printed KYC fields from the attached file only.
+    `Document context: ${input.label} (${input.fileName})
+Copy visible printed KYC fields from the attached file only.
 
 Do not use the file name or document type to invent values.
 Include a field only if every character of its value is clearly printed on this file.
@@ -393,11 +511,12 @@ Omit any field you cannot quote. If none, {"fields":[]}.`,
     const label = typeof row.label === 'string' ? row.label.trim() : ''
     const value = typeof row.value === 'string' ? row.value.trim() : ''
     const verbatim = typeof row.verbatim === 'string' ? row.verbatim.trim() : ''
-    if (!keepExtractedField(label, value, verbatim)) continue
-    const key = label.replace(/\s+/g, '').toUpperCase()
+    const canonicalLabel = canonicalizeOcrLabel(label)
+    if (!canonicalLabel || !keepExtractedField(canonicalLabel, value, verbatim)) continue
+    const key = canonicalLabel
     if (seen.has(key)) continue
     seen.add(key)
-    candidates.push({ label, value })
+    candidates.push({ label: canonicalLabel, value })
   }
 
   if (candidates.length === 0) return []

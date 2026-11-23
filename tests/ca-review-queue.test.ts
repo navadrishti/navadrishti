@@ -10,7 +10,9 @@ vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db', () => ({ supabase: { from: mocks.from }, db: {} }))
 vi.mock('@/lib/gemini-vision', () => ({
   extractVisibleKycFields: mocks.extract,
-  isGeminiOcrUnavailable: (error: unknown) => /GEMINI_API_KEY is missing|401|403/.test(String(error)),
+  canonicalizeOcrLabel: (label: unknown) => typeof label === 'string' ? label : '',
+  isGeminiOcrUnavailable: (error: unknown) => /GEMINI_API_KEY is missing|401|403|429|RESOURCE_EXHAUSTED|quota/i.test(String(error)),
+  isGeminiQuotaUnavailable: (error: unknown) => /429|RESOURCE_EXHAUSTED|quota/i.test(String(error)),
 }))
 
 function useDb(responses: Record<string, FakeResult[]> = {}) {
@@ -288,7 +290,7 @@ describe('listCAQueue', () => {
 })
 
 describe('getCAReview', () => {
-  const cacheKey = (url: string) => `${url}::gemini-verbatim-v6`
+  const cacheKey = (url: string) => `${url}::gemini-verbatim-v9`
 
   it('throws a 404 when the record is missing', async () => {
     useDb({ 'individual_verifications.select': [{ error: { message: 'no rows' } }] })
@@ -374,7 +376,7 @@ describe('getCAReview', () => {
     const urls = Array.from({ length: 14 }, (_, index) => `https://res.cloudinary.com/demo/raw/upload/doc-${index + 1}.pdf`)
     const documents = Object.fromEntries(urls.map((url, index) => [`companyDoc${index + 1}`, url]))
 
-    it('keeps every document but only reads the first twelve', async () => {
+    it('keeps every document but only reads the first seven', async () => {
       vi.stubEnv('GEMINI_API_KEY', 'key')
       mocks.extract.mockResolvedValue([{ label: 'GSTIN', value: '27AAAPL1234C1Z5' }])
       const fake = useDb({
@@ -385,15 +387,15 @@ describe('getCAReview', () => {
 
       expect(review.documents.map((doc) => doc.file_url)).toEqual(urls)
       expect(review.documents_total).toBe(14)
-      expect(mocks.extract).toHaveBeenCalledTimes(12)
-      expect(mocks.extract).not.toHaveBeenCalledWith(expect.objectContaining({ fileUrl: urls[12] }))
-      expect(review.documents.map((doc) => doc.ocr_status)).toEqual([...Array(12).fill('completed'), 'skipped', 'skipped'])
+      expect(mocks.extract).toHaveBeenCalledTimes(7)
+      expect(mocks.extract).not.toHaveBeenCalledWith(expect.objectContaining({ fileUrl: urls[7] }))
+      expect(review.documents.map((doc) => doc.ocr_status)).toEqual([...Array(7).fill('completed'), ...Array(7).fill('skipped')])
       expect(review.documents[13].ocr_fields).toEqual([])
-      expect(review.ocr_error).toBe('Only the first 12 documents were read automatically. Open the rest and compare manually.')
+      expect(review.ocr_error).toBe('Only the first 7 documents were read automatically. Open the rest and compare manually.')
 
       const cache = ((fake.writes('users')[0].payload as { profile_data: Profile }).profile_data
         .verification_documents as Record<string, Profile>).company.ocr_cache as Profile
-      expect(Object.keys(cache)).toHaveLength(12)
+      expect(Object.keys(cache)).toHaveLength(7)
     })
 
     it('still uses cached OCR for documents past the limit', async () => {
@@ -403,7 +405,7 @@ describe('getCAReview', () => {
       useDb({ 'company_verifications.select': [{ data: row({}, {}, withDocs('company', documents, { ocr_cache })) }] })
       const review = await getCAReview('companies', 4)
 
-      expect(mocks.extract).toHaveBeenCalledTimes(12)
+      expect(mocks.extract).toHaveBeenCalledTimes(7)
       expect(review.documents[12].ocr_status).toBe('skipped')
       expect(review.documents[13]).toMatchObject({
         ocr_status: 'completed',

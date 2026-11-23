@@ -54,7 +54,7 @@ describe('valuesMatch', () => {
     ['Mr. Ramesh Kumar', 'RAMESH KUMAR', true],
     ['Smt Sita Devi', 'sita devi', true],
     ['Ramesh K', 'Ramesh Kumar', true],
-    ['Ram Kumar', 'Ramesh Kumar', true],
+    ['Ram Kumar', 'Ramesh Kumar', false],
     ['Kumar Ramesh', 'Ramesh Kumar', true],
     ['M/S Acme Traders', 'Acme Traders', true],
     ['Suresh Kumar', 'Ramesh Kumar', false],
@@ -161,6 +161,39 @@ describe('buildCrossDocumentComparisons', () => {
     expect(byField(rows, 'Date of Birth').status).toBe('match')
     expect(byField(rows, 'Aadhaar Number').status).toBe('match')
     expect(byField(rows, 'PAN Number').status).toBe('match')
+  })
+
+  it('compares the form against document values and all matching documents', () => {
+    const rows = buildCrossDocumentComparisons(
+      'individuals',
+      [
+        doc('individualAadhaar', 'Aadhaar Card', { Name: 'Ramesh Kumar', 'Aadhaar Number': '123456789012' }),
+        doc('individualPanCard', 'PAN Card', { Name: 'RAMESH KUMAR', 'PAN Number': 'ABCDE1234F' }),
+      ],
+      { name: 'Ramesh Kumar', aadhaar: '1234-5678-9012', pan: 'ABCDE1234F' }
+    )
+
+    expect(byField(rows, 'Name')).toMatchObject({ status: 'match', match: true, deviations: [] })
+    expect(byField(rows, 'Aadhaar Number')).toMatchObject({ status: 'match', match: true, deviations: [] })
+    expect(byField(rows, 'PAN Number')).toMatchObject({ status: 'match', match: true, deviations: [] })
+  })
+
+  it('does not confuse unrelated names or ID variants', () => {
+    const rows = buildCrossDocumentComparisons(
+      'individuals',
+      [
+        doc('individualAadhaar', 'Aadhaar Card', { Name: 'Ram Kumar', 'Aadhaar Number': '123456789012' }),
+        doc('individualPanCard', 'PAN Card', { 'PAN Number': 'ABCDE1234F' }),
+      ],
+      { name: 'Ramesh Kumar', aadhaar: '123456789012', pan: 'ABCDE1234G' }
+    )
+
+    expect(byField(rows, 'Name').status).toBe('mismatch')
+    expect(byField(rows, 'PAN Number')).toMatchObject({
+      status: 'mismatch',
+      match: false,
+      deviations: ['Form input'],
+    })
   })
 
   it('only compares id fields against their own document', () => {

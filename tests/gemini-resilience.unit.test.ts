@@ -22,30 +22,22 @@ afterEach(() => {
 })
 
 describe('GeminiVisionJSON resilience (mocked)', () => {
-  it('retries on 429 then succeeds', async () => {
-    fetchMock
-      .mockResolvedValueOnce(
-        new Response('rate', { status: 429, headers: { 'retry-after': '0' } })
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            candidates: [{ content: { parts: [{ text: '{"fields":[]}' }] } }],
-          }),
-          { status: 200 }
-        )
-      )
+  it('fails fast on 429 without flooding the API', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response('RESOURCE_EXHAUSTED', { status: 429, headers: { 'retry-after': '60' } })
+    )
 
     const { GeminiVisionJSON } = await import('@/lib/gemini-vision')
-    const result = await GeminiVisionJSON(
-      'x',
-      { mimeType: 'application/pdf', data: Buffer.from('%PDF').toString('base64') },
-      0,
-      'sys',
-      { disableThinking: true }
-    )
-    expect(result).toEqual({ fields: [] })
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    await expect(
+      GeminiVisionJSON(
+        'x',
+        { mimeType: 'application/pdf', data: Buffer.from('%PDF').toString('base64') },
+        0,
+        'sys',
+        { disableThinking: true }
+      )
+    ).rejects.toThrow(/429|RESOURCE_EXHAUSTED/)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('rejects malformed JSON model output', async () => {
