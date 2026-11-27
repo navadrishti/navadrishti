@@ -173,27 +173,6 @@ export function hasFieldOfficerPermission(
   return value === undefined || value === true
 }
 
-export async function revokeFieldDevicesForOfficer(input: {
-  ngoUserId: number
-  officerUserId: number
-}): Promise<void> {
-  const now = new Date().toISOString()
-  const { error } = await supabase
-    .from('field_devices')
-    .update({
-      status: 'revoked',
-      revoked_at: now,
-    })
-    .eq('ngo_user_id', input.ngoUserId)
-    .eq('assigned_user_id', input.officerUserId)
-    .is('revoked_at', null)
-
-  if (error) {
-    console.error('[ngo-field-officer] failed to revoke field devices:', error)
-    throw new Error('Failed to revoke field devices for officer')
-  }
-}
-
 export async function writeFieldOfficerAudit(input: {
   identityId: string
   eventType: string

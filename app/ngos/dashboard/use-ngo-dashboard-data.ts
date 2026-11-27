@@ -337,7 +337,6 @@ const response = await fetch(`/api/csr-projects/${projectId}/evidence?viewer=ngo
         method: 'POST',
         headers: clientAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
-          device_id: `web:${projectId}`,
           captured_at: new Date().toISOString(),
           description: description.trim() || `Web evidence for project ${projectId}`,
         }),

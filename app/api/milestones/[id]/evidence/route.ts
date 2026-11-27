@@ -6,6 +6,8 @@ import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth';
 import { isProjectFinancialLead } from '@/lib/csr-agent/project-financial-access';
 
 const LOCKED_MILESTONE_STATUSES = ['approved', 'completed'];
+// The existing evidence table requires this column; installation IDs are no longer collected.
+const LEGACY_DEVICE_ID_PLACEHOLDER = 'unknown';
 
 export async function POST(
   request: NextRequest,
@@ -68,7 +70,6 @@ export async function POST(
 
     const body = await request.json();
     const {
-      device_id,
       description,
       notes,
       gps_lat,
@@ -80,9 +81,9 @@ export async function POST(
       documents
     } = body;
 
-    if (!device_id || !captured_at) {
+    if (!captured_at) {
       return NextResponse.json(
-        { error: 'device_id and captured_at are required' },
+        { error: 'captured_at is required' },
         { status: 400 }
       );
     }
@@ -95,7 +96,7 @@ export async function POST(
       project_id: project.id,
       uploaded_by: user.id,
       ngo_user_id: user.id,
-      device_id,
+      device_id: LEGACY_DEVICE_ID_PLACEHOLDER,
       description: fieldNotes,
       gps_lat: gps_lat ?? null,
       gps_long: gps_long ?? null,

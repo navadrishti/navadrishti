@@ -265,7 +265,7 @@ describe('NGO field officer identity lifecycle', () => {
     expect(fake.writes('ngo_field_officer_identities', 'update')).toHaveLength(0)
   })
 
-  it('deactivates own officer without device revocation and audits the NGO administrator', async () => {
+  it('deactivates own officer and audits the NGO administrator', async () => {
     const fake = fakeForNgo({
       'ngo_field_officer_identities.select': [
         {
@@ -304,8 +304,6 @@ describe('NGO field officer identity lifecycle', () => {
       { params: Promise.resolve({ identityId: 'fo-1' }) }
     )
     expect(response.status).toBe(200)
-    expect(fake.writes('field_devices', 'update')).toHaveLength(0)
-
     const audit = fake.writes('csr_audit_log', 'insert')[0]
     expect(audit.payload).toMatchObject({
       event_type: 'ngo_field_officer_deactivated',

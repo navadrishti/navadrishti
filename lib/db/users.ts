@@ -19,7 +19,7 @@ function withRequiredUserDefaults(userData: NewUser): TablesInsert<'users'> {
 }
 
 // Everything except password and two_factor_secret.
-const USER_COLUMNS = 'id, email, user_type, name, phone, location, created_at, updated_at, email_verified, phone_verified, two_factor_enabled, account_status, last_login, login_attempts, locked_until, timezone, preferences, privacy_settings, verification_status, verification_level, verified_at, city, state_province, pincode, country, email_verified_at, phone_verified_at, age, work_experience, industry, website, company_size, ngo_size, profile_image, profile_data, device_id, ngo_volunteer_capacity'
+const USER_COLUMNS = 'id, email, user_type, name, phone, location, created_at, updated_at, email_verified, phone_verified, two_factor_enabled, account_status, last_login, login_attempts, locked_until, timezone, preferences, privacy_settings, verification_status, verification_level, verified_at, city, state_province, pincode, country, email_verified_at, phone_verified_at, age, work_experience, industry, website, company_size, ngo_size, profile_image, profile_data, ngo_volunteer_capacity'
 
 export const users = {
   async findByEmail(email: string) {
