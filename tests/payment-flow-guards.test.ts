@@ -499,6 +499,61 @@ describe('milestone review', () => {
 })
 
 describe('milestone evidence submission', () => {
+  it('accepts authorized evidence without device metadata', async () => {
+    respond((query) => {
+      if (query.table === 'csr_project_milestones' && query.op === 'select' && eqValue(query, 'id')) {
+        return { data: { id: 'm1', project_id: 'p1', status: 'pending', milestone_order: 1 } }
+      }
+      if (query.table === 'csr_project_milestones' && query.op === 'select') {
+        return { data: [{ id: 'm1', status: 'pending', milestone_order: 1 }] }
+      }
+      if (query.table === 'csr_projects') return { data: project }
+      if (query.table === 'csr_milestone_evidence' && query.op === 'insert') {
+        return { data: { id: 'e1', device_id: 'unknown' } }
+      }
+      return undefined
+    })
+
+    const response = await submitEvidence(
+      jsonRequest('http://localhost/api/milestones/m1/evidence', {
+        token: tokenFor(12, 'ngo'),
+        body: { captured_at: '2026-09-01T00:00:00Z' },
+      }),
+      context
+    )
+
+    expect(response.status).toBe(201)
+    expect(writes('csr_milestone_evidence', 'insert')[0].payload).toMatchObject({
+      milestone_id: 'm1',
+      project_id: 'p1',
+      uploaded_by: 12,
+      device_id: 'unknown',
+      captured_at: '2026-09-01T00:00:00Z',
+    })
+  })
+
+  it('still requires the evidence capture timestamp', async () => {
+    respond((query) => {
+      if (query.table === 'csr_project_milestones' && query.op === 'select' && eqValue(query, 'id')) {
+        return { data: { id: 'm1', project_id: 'p1', status: 'pending', milestone_order: 1 } }
+      }
+      if (query.table === 'csr_project_milestones' && query.op === 'select') {
+        return { data: [{ id: 'm1', status: 'pending', milestone_order: 1 }] }
+      }
+      if (query.table === 'csr_projects') return { data: project }
+      return undefined
+    })
+    const response = await submitEvidence(
+      jsonRequest('http://localhost/api/milestones/m1/evidence', {
+        token: tokenFor(12, 'ngo'),
+        body: {},
+      }),
+      context
+    )
+    expect(response.status).toBe(400)
+    expect(writes('csr_milestone_evidence', 'insert')).toHaveLength(0)
+  })
+
   it.each(['approved', 'completed'])('rejects evidence for a %s milestone', async (status) => {
     respond((query) => {
       if (query.table === 'csr_project_milestones') return { data: { id: 'm1', project_id: 'p1', status } }
@@ -508,7 +563,7 @@ describe('milestone evidence submission', () => {
     const response = await submitEvidence(
       jsonRequest('http://localhost/api/milestones/m1/evidence', {
         token: tokenFor(12, 'ngo'),
-        body: { device_id: 'dev_1', captured_at: '2026-09-01T00:00:00Z' },
+        body: { captured_at: '2026-09-01T00:00:00Z' },
       }),
       context
     )
@@ -536,7 +591,7 @@ describe('milestone evidence submission', () => {
     const response = await submitEvidence(
       jsonRequest('http://localhost/api/milestones/m2/evidence', {
         token: tokenFor(12, 'ngo'),
-        body: { device_id: 'dev_1', captured_at: '2026-09-01T00:00:00Z' },
+        body: { captured_at: '2026-09-01T00:00:00Z' },
       }),
       { params: Promise.resolve({ id: 'm2' }) }
     )

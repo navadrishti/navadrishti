@@ -30,7 +30,7 @@ execution or the marketplace package domain with a CSR execution project.
 | Marketplace offers | `service_offers` → `service_clients`; offer capabilities and reviews are stored separately. Engagement assignment and attendance tables support service delivery. |
 | CSR planning and execution | `campaigns` represent campaign planning. Execution uses `csr_projects` → `csr_project_milestones` → evidence documents/media and milestone reviews. `service_request_projects` is a distinct marketplace package domain, not `csr_projects`. |
 | Payments and platform operations | `razorpay_payment_orders`, `razorpay_payments`, `razorpay_refunds`, `provider_webhook_events`, `user_notifications`, support tickets, rate limits and one-time codes. CSR payment confirmations are separate from Razorpay marketplace records. |
-| Field/audit and agents | `field_events`, `field_sync_receipts`, `field_devices`, CSR audit/reference tables and Atlas/Catalyst agent session tables. Their exact use depends on the corresponding application flow. |
+| Field/audit and agents | `field_events`, `field_sync_receipts`, `field_devices`, CSR audit/reference tables and Atlas/Catalyst agent session tables. `field_devices` is legacy and no longer used by application authorization; records and schema are intentionally retained pending a separately reviewed migration. |
 
 The product term **Evidence Verifier** maps to retained internal
 `company_ca_*` names. It is not the Platform CA role. `users.verification_status`
