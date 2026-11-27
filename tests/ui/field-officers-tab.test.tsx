@@ -222,6 +222,20 @@ describe('FieldOfficersTab', () => {
                 created_at: '2026-11-01T10:00:00.000Z',
                 created_by: 21,
               },
+              {
+                id: 'a2',
+                event_type: 'ngo_field_officer_device_bound',
+                event_payload: {},
+                created_at: '2026-11-02T10:00:00.000Z',
+                created_by: 21,
+              },
+              {
+                id: 'a3',
+                event_type: 'ngo_field_officer_device_reassigned',
+                event_payload: {},
+                created_at: '2026-11-03T10:00:00.000Z',
+                created_by: 21,
+              },
             ],
           }),
           editName: 'Ravi Officer',
@@ -291,6 +305,7 @@ describe('FieldOfficersTab', () => {
     expect(screen.getByText('Officer detail')).toBeInTheDocument()
     expect(screen.getByText('Account activity')).toBeInTheDocument()
     expect(screen.getByText('Account created')).toBeInTheDocument()
+    expect(screen.queryByText(/device/i)).not.toBeInTheDocument()
     expect(screen.getByText('Project assignments')).toBeInTheDocument()
     expect(screen.getAllByText('Clean Water Drive').length).toBeGreaterThan(0)
     expect(screen.getAllByText('School Kits').length).toBeGreaterThan(0)

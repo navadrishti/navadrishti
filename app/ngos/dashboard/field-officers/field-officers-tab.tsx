@@ -123,6 +123,12 @@ export function FieldOfficersTab({ fo }: { fo: FieldOfficersState }) {
     mutatingAssignmentId,
   } = fo
 
+  const activity =
+    detail?.activity?.flatMap((item) => {
+      const label = formatOfficerActivityLabel(item.event_type)
+      return label ? [{ ...item, label }] : []
+    }) ?? []
+
   if (!verified) {
     return (
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
@@ -141,8 +147,8 @@ export function FieldOfficersTab({ fo }: { fo: FieldOfficersState }) {
         <div>
           <h3 className="font-semibold text-slate-900">Field Officers</h3>
           <p className="mt-1 max-w-3xl text-sm text-slate-600">
-            Create field accounts and assign CSR projects. Field Officers sign in from any compatible
-            device, access only assigned projects, and submit milestone evidence.
+            Create field accounts and assign CSR projects. Field Officers sign in to access assigned
+            projects and submit milestone evidence.
           </p>
         </div>
         <Button type="button" variant="outline" size="sm" onClick={() => void fetchOfficers()} disabled={loading}>
@@ -197,7 +203,7 @@ export function FieldOfficersTab({ fo }: { fo: FieldOfficersState }) {
           <p className="mt-1 text-xs text-slate-600">
             Creates a separate login for milestone evidence collection. Evidence submission is enabled
             automatically. Assign projects after creation. The officer must change the initial password
-            on first field-app sign-in and may use any compatible device.
+            on first field-app sign-in.
           </p>
         </div>
         {formError ? <p className="text-sm text-rose-700">{formError}</p> : null}
@@ -626,9 +632,8 @@ export function FieldOfficersTab({ fo }: { fo: FieldOfficersState }) {
                 </Badge>
                 <p className="text-sm text-slate-700">
                   Field Officers collect and submit milestone evidence for assigned projects. Evidence
-                  permission is always enabled for active officers. Device registration is not
-                  required. Assignment editing locks 48 hours before each project&apos;s scheduled
-                  start (Asia/Kolkata).
+                  permission is always enabled for active officers. Assignment editing locks 48 hours
+                  before each project&apos;s scheduled start (Asia/Kolkata).
                 </p>
               </section>
 
@@ -638,16 +643,14 @@ export function FieldOfficersTab({ fo }: { fo: FieldOfficersState }) {
                 <h5 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Account activity
                 </h5>
-                {Array.isArray(detail.activity) && detail.activity.length > 0 ? (
+                {activity.length > 0 ? (
                   <ul className="space-y-2">
-                    {detail.activity.map((item) => (
+                    {activity.map((item) => (
                       <li
                         key={item.id}
                         className="flex flex-col gap-0.5 rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between"
                       >
-                        <span className="font-medium text-slate-900">
-                          {formatOfficerActivityLabel(item.event_type)}
-                        </span>
+                        <span className="font-medium text-slate-900">{item.label}</span>
                         <span className="text-xs text-slate-500">{formatWhen(item.created_at)}</span>
                       </li>
                     ))}

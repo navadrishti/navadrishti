@@ -117,7 +117,7 @@ export function officerEmail(officer: FieldOfficerIdentity): string {
   return user?.email?.trim() || 'No email'
 }
 
-export function formatOfficerActivityLabel(eventType: string): string {
+export function formatOfficerActivityLabel(eventType: string): string | null {
   switch (eventType) {
     case 'ngo_field_officer_created':
       return 'Account created'
@@ -138,9 +138,8 @@ export function formatOfficerActivityLabel(eventType: string): string {
     case 'ngo_field_officer_project_assignment_reactivated':
       return 'Project assignment reactivated'
     case 'ngo_field_officer_device_bound':
-      return 'Device bound'
     case 'ngo_field_officer_device_reassigned':
-      return 'Device reassigned'
+      return null
     default:
       return eventType.replace(/^ngo_field_officer_/, '').replaceAll('_', ' ')
   }
